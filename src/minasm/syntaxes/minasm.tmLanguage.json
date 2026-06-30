@@ -1,0 +1,42 @@
+{
+  "name": "minasm",
+  "scopeName": "source.minasm",
+  "fileTypes": [".minasm"],
+  "patterns": [
+    {
+      "name": "comment.line",
+      "begin": ";",
+      "end": "$"
+    },
+    {
+      "name": "keyword.control.minasm",
+      "match": "\\b(ABB|ABQ|ABV|ABW|ABZ|AC\\.B|AC\\.Z|ACB|ACI|ACV|ACW|ACZ|AD\\.B|AD\\.R|AD\\.T|AD\\.Z|ADB|ADI|ADL|ADQ|ADR|ADT|ADV|ADW|ADZ|AIB|AIL|AIQ|AIR|AIT|AIV|AIW|AIZ|AN\\.B|AN\\.Z|ANB|ANI|ANR|ANT|ANZ|AVV|AZB|AZL|AZQ|AZV|AZW|AZZ|BCC|BCS|BEQ|BGT|BLE|BMI|BNE|BPL|CBB|CBZ|CIB|CIR|CIT|CIZ|CLB|CLC|CLL|CLQ|CLV|CLW|CLZ|CPB|CPI|CPR|CPT|CPZ|CZB|CZZ|DEB|DEC|DEL|DEQ|DEV|DEW|DEZ|FCC|FCS|FEQ|FGT|FLE|FMI|FNE|FPA|FPL|INB|INC|INK|INL|INQ|INT|INV|INW|INZ|JAR|JAS|JPA|JPR|JPS|LAB|LAP|LDB|LDI|LDR|LDS|LDT|LDZ|LL0|LL1|LL2|LL3|LL4|LL5|LL6|LL7|LLB|LLL|LLQ|LLV|LLW|LLZ|LR0|LR1|LR2|LR3|LR4|LR5|LR6|LR7|LRB|LRZ|LZB|LZP|MBB|MBZ|MIB|MIR|MIT|MIV|MIW|MIZ|MVV|MWV|MZB|MZZ|NEB|NEG|NEL|NEQ|NEV|NEW|NEZ|NOB|NOL|NOQ|NOT|NOV|NOW|NOZ|OR\\.B|OR\\.Z|ORB|ORI|ORR|ORT|ORZ|PHS|PLS|RAP|RDB|RDR|RL0|RL1|RL2|RL3|RL4|RL5|RL6|RL7|RLB|RLL|RLQ|RLV|RLW|RLZ|RR1|RRB|RRZ|RTS|RZP|SBB|SBQ|SBV|SBW|SBZ|SC\\.B|SC\\.Z|SCB|SCI|SCV|SCW|SCZ|SEC|SIB|SIL|SIQ|SIR|SIT|SIV|SIW|SIZ|STB|STR|STS|STT|STZ|SU\\.B|SU\\.R|SU\\.T|SU\\.Z|SUB|SUI|SUL|SUQ|SUR|SUT|SUV|SUW|SUZ|SVV|SZB|SZL|SZP|SZQ|SZV|SZW|SZZ|WDB|WDR|WIN|XR\\.B|XR\\.Z|XRB|XRI|XRR|XRT|XRZ)\\b|\\B(#emit|#mute|#org|#page)\\b"
+    },
+    {
+      "name": "string.quoted.double.minasm",
+      "begin": "\"",
+      "end": "\"",
+      "patterns": [
+        {
+          "include": "#string-character-escape"
+        }
+      ]
+    },
+    {
+      "name": "string.quoted.single.minasm",
+      "begin": "'",
+      "end": "'",
+      "patterns": [
+        {
+          "include": "#string-character-escape"
+        }
+      ]
+    }
+  ],
+  "repository": {
+    "string-character-escape": {
+      "name": "constant.character.escape.minasm",
+      "match": "\\\\(x[0-9A-Fa-f]{2}|u[0-9A-Fa-f]{4}|u\\{[0-9A-Fa-f]+\\}|[0-2][0-7]{0,2}|3[0-6][0-7]?|37[0-7]?|[4-7][0-7]?|.|$)"
+    }
+  }
+}

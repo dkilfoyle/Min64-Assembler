@@ -1,0 +1,11 @@
+{
+  "projectName": "Minasm",
+  "out": "../ls/generated",
+  "languages": [
+    {
+      "id": "minasm",
+      "grammar": "../ls/minasm.langium",
+      "fileExtensions": [".minasm"]
+    }
+  ]
+}

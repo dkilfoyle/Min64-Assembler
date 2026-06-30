@@ -1,0 +1,76 @@
+:root {
+  --bg:       #0d0f11;
+  --surface:  #161b22;
+  --border:   #30363d;
+  --accent:   #58a6ff;
+  --muted:    #8b949e;
+  --text:     #e6edf3;
+  --chip-bg:  #1f2937;
+}
+
+html, body, #root {
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
+}
+
+.ide-root {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.ide-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 20px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  height: 46px;
+}
+
+.ide-header h1 {
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+}
+
+.ide-chip {
+  background: var(--chip-bg);
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.ide-sub {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+}
+
+.ide-status {
+  font-size: 0.72rem;
+  color: var(--muted);
+  padding: 3px 8px;
+  border-radius: 3px;
+  background: var(--chip-bg);
+  transition: color 0.2s;
+}
+.ide-status.ready   { color: #3fb950; }
+.ide-status.loading { color: #d29922; }
+.ide-status.error   { color: #f85149; }
+
+.ide-main {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
