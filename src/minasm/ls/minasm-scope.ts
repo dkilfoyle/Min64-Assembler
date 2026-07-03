@@ -22,8 +22,8 @@ export class MinasmScopeComputation extends DefaultScopeComputation {
     // export all labels to global scope
     const descriptions: AstNodeDescription[] = [];
     const model = document.parseResult.value as Program;
-    model.lines.forEach((line) => {
-      if (line.label) descriptions.push(this.descriptions.createDescription(line.label!, line.label!.name));
+    model.entries.forEach((entry) => {
+      if (entry.label) descriptions.push(this.descriptions.createDescription(entry.label!, entry.label!.name));
     });
     return descriptions;
   }

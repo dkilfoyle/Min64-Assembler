@@ -7,9 +7,11 @@
 import * as langium from 'langium';
 
 export const MinasmTerminals = {
-    HEX: /0x[0-9A-Fa-f]+/,
+    HEX16: /0x[0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f]/,
+    HEX8: /0x[0-9A-Fa-f][0-9A-Fa-f]/,
     DECI: /[0-9]+/,
     COMMENT: /;[^\n]*/,
+    CHAR: /'([^'\\]|\\.)'/,
     STRING: /"(\\.|[^"\\])*"|'(\\.|[^'\\])*'/,
     ID: /[a-zA-Z_][a-zA-Z0-9_]*/,
     WS: /\s+/,
@@ -26,6 +28,8 @@ export type MinasmKeywordNames =
     | ","
     | "-"
     | ":"
+    | "<"
+    | ">"
     | "ABB"
     | "ABQ"
     | "ABV"
@@ -186,6 +190,7 @@ export type MinasmKeywordNames =
     | "NEZ"
     | "NOB"
     | "NOL"
+    | "NOP"
     | "NOQ"
     | "NOT"
     | "NOV"
@@ -198,6 +203,7 @@ export type MinasmKeywordNames =
     | "ORR"
     | "ORT"
     | "ORZ"
+    | "OUT"
     | "PHS"
     | "PLS"
     | "RAP"
@@ -282,7 +288,8 @@ export type MinasmKeywordNames =
 
 export type MinasmTokenNames = MinasmTerminalNames | MinasmKeywordNames;
 
-export interface BinaryExpression extends Expression {
+export interface BinaryExpression extends langium.AstNode {
+    readonly $container: BinaryExpression | Instruction;
     readonly $type: 'BinaryExpression';
     left: Expression;
     operator: '+' | '-';
@@ -291,36 +298,74 @@ export interface BinaryExpression extends Expression {
 
 export const BinaryExpression = {
     $type: 'BinaryExpression',
-    label: 'label',
     left: 'left',
     operator: 'operator',
-    right: 'right',
-    string: 'string'
+    right: 'right'
 } as const;
 
 export function isBinaryExpression(item: unknown): item is BinaryExpression {
     return reflection.isInstance(item, BinaryExpression.$type);
 }
 
-export interface Bytes extends langium.AstNode {
-    readonly $container: Line;
-    readonly $type: 'Bytes';
-    data: Array<NumberLit>;
+export interface ByteLiteral extends langium.AstNode {
+    readonly $container: BinaryExpression | Data | Instruction;
+    readonly $type: 'ByteLiteral';
+    value: number;
 }
 
-export const Bytes = {
-    $type: 'Bytes',
-    data: 'data'
+export const ByteLiteral = {
+    $type: 'ByteLiteral',
+    value: 'value'
 } as const;
 
-export function isBytes(item: unknown): item is Bytes {
-    return reflection.isInstance(item, Bytes.$type);
+export function isByteLiteral(item: unknown): item is ByteLiteral {
+    return reflection.isInstance(item, ByteLiteral.$type);
+}
+
+export interface CharLiteral extends langium.AstNode {
+    readonly $container: BinaryExpression | Data | Instruction;
+    readonly $type: 'CharLiteral';
+    value: string;
+}
+
+export const CharLiteral = {
+    $type: 'CharLiteral',
+    value: 'value'
+} as const;
+
+export function isCharLiteral(item: unknown): item is CharLiteral {
+    return reflection.isInstance(item, CharLiteral.$type);
+}
+
+export interface Data extends langium.AstNode {
+    readonly $container: Entry;
+    readonly $type: 'Data';
+    items: Array<DataItem>;
+}
+
+export const Data = {
+    $type: 'Data',
+    items: 'items'
+} as const;
+
+export function isData(item: unknown): item is Data {
+    return reflection.isInstance(item, Data.$type);
+}
+
+export type DataItem = ByteLiteral | CharLiteral | StringLiteral | WordLiteral;
+
+export const DataItem = {
+    $type: 'DataItem'
+} as const;
+
+export function isDataItem(item: unknown): item is DataItem {
+    return reflection.isInstance(item, DataItem.$type);
 }
 
 export interface Directive extends langium.AstNode {
-    readonly $container: Line;
+    readonly $container: Entry;
     readonly $type: 'Directive';
-    address?: string;
+    address?: number;
     dir: '#emit' | '#mute' | '#org' | '#page';
 }
 
@@ -334,15 +379,33 @@ export function isDirective(item: unknown): item is Directive {
     return reflection.isInstance(item, Directive.$type);
 }
 
-export interface Expression extends Operand {
-    readonly $type: 'BinaryExpression' | 'Expression' | 'NumberLit';
-    label: langium.Reference<Label>;
+export interface Entry extends langium.AstNode {
+    readonly $container: Program;
+    readonly $type: 'Entry';
+    comment?: string;
+    data?: Data;
+    directive?: Directive;
+    instruction?: Instruction;
+    label?: Label;
 }
 
+export const Entry = {
+    $type: 'Entry',
+    comment: 'comment',
+    data: 'data',
+    directive: 'directive',
+    instruction: 'instruction',
+    label: 'label'
+} as const;
+
+export function isEntry(item: unknown): item is Entry {
+    return reflection.isInstance(item, Entry.$type);
+}
+
+export type Expression = BinaryExpression | ByteLiteral | CharLiteral | LabelReference | StringLiteral | WordLiteral;
+
 export const Expression = {
-    $type: 'Expression',
-    label: 'label',
-    string: 'string'
+    $type: 'Expression'
 } as const;
 
 export function isExpression(item: unknown): item is Expression {
@@ -350,9 +413,9 @@ export function isExpression(item: unknown): item is Expression {
 }
 
 export interface Instruction extends langium.AstNode {
-    readonly $container: Line;
+    readonly $container: Entry;
     readonly $type: 'Instruction';
-    op: OPERATOR;
+    op: OPERATOR0 | OPERATOR1 | OPERATOR2 | OPERATOR3;
     operands: Array<Operand>;
 }
 
@@ -367,7 +430,7 @@ export function isInstruction(item: unknown): item is Instruction {
 }
 
 export interface Label extends langium.AstNode {
-    readonly $container: Line;
+    readonly $container: Entry;
     readonly $type: 'Label';
     name: string;
 }
@@ -381,92 +444,118 @@ export function isLabel(item: unknown): item is Label {
     return reflection.isInstance(item, Label.$type);
 }
 
-export interface Line extends langium.AstNode {
-    readonly $container: Program;
-    readonly $type: 'Line';
-    bytes?: Bytes;
-    comment?: string;
-    directive?: Directive;
-    instruction?: Instruction;
-    label?: Label;
+export interface LabelReference extends langium.AstNode {
+    readonly $container: BinaryExpression | Instruction;
+    readonly $type: 'LabelReference';
+    byteSelector?: '<' | '>';
+    label: langium.Reference<Label>;
 }
 
-export const Line = {
-    $type: 'Line',
-    bytes: 'bytes',
-    comment: 'comment',
-    directive: 'directive',
-    instruction: 'instruction',
+export const LabelReference = {
+    $type: 'LabelReference',
+    byteSelector: 'byteSelector',
     label: 'label'
 } as const;
 
-export function isLine(item: unknown): item is Line {
-    return reflection.isInstance(item, Line.$type);
+export function isLabelReference(item: unknown): item is LabelReference {
+    return reflection.isInstance(item, LabelReference.$type);
 }
 
-export interface NumberLit extends Expression {
-    readonly $container: Bytes;
-    readonly $type: 'NumberLit';
-    value: string;
-}
-
-export const NumberLit = {
-    $type: 'NumberLit',
-    label: 'label',
-    string: 'string',
-    value: 'value'
-} as const;
-
-export function isNumberLit(item: unknown): item is NumberLit {
-    return reflection.isInstance(item, NumberLit.$type);
-}
-
-export interface Operand extends langium.AstNode {
-    readonly $type: 'BinaryExpression' | 'Expression' | 'NumberLit' | 'Operand';
-    string: string;
-}
+export type Operand = Expression;
 
 export const Operand = {
-    $type: 'Operand',
-    string: 'string'
+    $type: 'Operand'
 } as const;
 
 export function isOperand(item: unknown): item is Operand {
     return reflection.isInstance(item, Operand.$type);
 }
 
-export type OPERATOR = 'ABB' | 'ABQ' | 'ABV' | 'ABW' | 'ABZ' | 'AC.B' | 'AC.Z' | 'ACB' | 'ACI' | 'ACV' | 'ACW' | 'ACZ' | 'AD.B' | 'AD.R' | 'AD.T' | 'AD.Z' | 'ADB' | 'ADI' | 'ADL' | 'ADQ' | 'ADR' | 'ADT' | 'ADV' | 'ADW' | 'ADZ' | 'AIB' | 'AIL' | 'AIQ' | 'AIR' | 'AIT' | 'AIV' | 'AIW' | 'AIZ' | 'AN.B' | 'AN.Z' | 'ANB' | 'ANI' | 'ANR' | 'ANT' | 'ANZ' | 'AVV' | 'AZB' | 'AZL' | 'AZQ' | 'AZV' | 'AZW' | 'AZZ' | 'BCC' | 'BCS' | 'BEQ' | 'BGT' | 'BLE' | 'BMI' | 'BNE' | 'BPL' | 'CBB' | 'CBZ' | 'CIB' | 'CIR' | 'CIT' | 'CIZ' | 'CLB' | 'CLC' | 'CLL' | 'CLQ' | 'CLV' | 'CLW' | 'CLZ' | 'CPB' | 'CPI' | 'CPR' | 'CPT' | 'CPZ' | 'CZB' | 'CZZ' | 'DEB' | 'DEC' | 'DEL' | 'DEQ' | 'DEV' | 'DEW' | 'DEZ' | 'FCC' | 'FCS' | 'FEQ' | 'FGT' | 'FLE' | 'FMI' | 'FNE' | 'FPA' | 'FPL' | 'INB' | 'INC' | 'INK' | 'INL' | 'INQ' | 'INT' | 'INV' | 'INW' | 'INZ' | 'JAR' | 'JAS' | 'JPA' | 'JPR' | 'JPS' | 'LAB' | 'LAP' | 'LDB' | 'LDI' | 'LDR' | 'LDS' | 'LDT' | 'LDZ' | 'LL0' | 'LL1' | 'LL2' | 'LL3' | 'LL4' | 'LL5' | 'LL6' | 'LL7' | 'LLB' | 'LLL' | 'LLQ' | 'LLV' | 'LLW' | 'LLZ' | 'LR0' | 'LR1' | 'LR2' | 'LR3' | 'LR4' | 'LR5' | 'LR6' | 'LR7' | 'LRB' | 'LRZ' | 'LZB' | 'LZP' | 'MBB' | 'MBZ' | 'MIB' | 'MIR' | 'MIT' | 'MIV' | 'MIW' | 'MIZ' | 'MVV' | 'MWV' | 'MZB' | 'MZZ' | 'NEB' | 'NEG' | 'NEL' | 'NEQ' | 'NEV' | 'NEW' | 'NEZ' | 'NOB' | 'NOL' | 'NOQ' | 'NOT' | 'NOV' | 'NOW' | 'NOZ' | 'OR.B' | 'OR.Z' | 'ORB' | 'ORI' | 'ORR' | 'ORT' | 'ORZ' | 'PHS' | 'PLS' | 'RAP' | 'RDB' | 'RDR' | 'RL0' | 'RL1' | 'RL2' | 'RL3' | 'RL4' | 'RL5' | 'RL6' | 'RL7' | 'RLB' | 'RLL' | 'RLQ' | 'RLV' | 'RLW' | 'RLZ' | 'RR1' | 'RRB' | 'RRZ' | 'RTS' | 'RZP' | 'SBB' | 'SBQ' | 'SBV' | 'SBW' | 'SBZ' | 'SC.B' | 'SC.Z' | 'SCB' | 'SCI' | 'SCV' | 'SCW' | 'SCZ' | 'SEC' | 'SIB' | 'SIL' | 'SIQ' | 'SIR' | 'SIT' | 'SIV' | 'SIW' | 'SIZ' | 'STB' | 'STR' | 'STS' | 'STT' | 'STZ' | 'SU.B' | 'SU.R' | 'SU.T' | 'SU.Z' | 'SUB' | 'SUI' | 'SUL' | 'SUQ' | 'SUR' | 'SUT' | 'SUV' | 'SUW' | 'SUZ' | 'SVV' | 'SZB' | 'SZL' | 'SZP' | 'SZQ' | 'SZV' | 'SZW' | 'SZZ' | 'WDB' | 'WDR' | 'WIN' | 'XR.B' | 'XR.Z' | 'XRB' | 'XRI' | 'XRR' | 'XRT' | 'XRZ';
+export type OPERATOR0 = 'CLC' | 'DEC' | 'INC' | 'INK' | 'INT' | 'LL0' | 'LL1' | 'LL2' | 'LL3' | 'LL4' | 'LL5' | 'LL6' | 'LL7' | 'LR0' | 'LR1' | 'LR2' | 'LR3' | 'LR4' | 'LR5' | 'LR6' | 'LR7' | 'NEG' | 'NOP' | 'NOT' | 'OUT' | 'PHS' | 'PLS' | 'RL0' | 'RL1' | 'RL2' | 'RL3' | 'RL4' | 'RL5' | 'RL6' | 'RL7' | 'RR1' | 'RTS' | 'SEC' | 'WIN';
 
-export function isOPERATOR(item: unknown): item is OPERATOR {
-    return item === 'INT' || item === 'INK' || item === 'WIN' || item === 'SEC' || item === 'CLC' || item === 'LL0' || item === 'LL1' || item === 'LL2' || item === 'LL3' || item === 'LL4' || item === 'LL5' || item === 'LL6' || item === 'LL7' || item === 'RL0' || item === 'RL1' || item === 'RL2' || item === 'RL3' || item === 'RL4' || item === 'RL5' || item === 'RL6' || item === 'RL7' || item === 'RR1' || item === 'LR0' || item === 'LR1' || item === 'LR2' || item === 'LR3' || item === 'LR4' || item === 'LR5' || item === 'LR6' || item === 'LR7' || item === 'LLZ' || item === 'LLB' || item === 'LLV' || item === 'LLW' || item === 'LLQ' || item === 'LLL' || item === 'LRZ' || item === 'LRB' || item === 'RLZ' || item === 'RLB' || item === 'RLV' || item === 'RLW' || item === 'RLQ' || item === 'RLL' || item === 'RRZ' || item === 'RRB' || item === 'NOT' || item === 'NOZ' || item === 'NOB' || item === 'NOV' || item === 'NOW' || item === 'NOQ' || item === 'NOL' || item === 'NEG' || item === 'NEZ' || item === 'NEB' || item === 'NEV' || item === 'NEW' || item === 'NEQ' || item === 'NEL' || item === 'ANI' || item === 'ANZ' || item === 'ANB' || item === 'ANT' || item === 'ANR' || item === 'AN.Z' || item === 'AN.B' || item === 'ORI' || item === 'ORZ' || item === 'ORB' || item === 'ORT' || item === 'ORR' || item === 'OR.Z' || item === 'OR.B' || item === 'XRI' || item === 'XRZ' || item === 'XRB' || item === 'XRT' || item === 'XRR' || item === 'XR.Z' || item === 'XR.B' || item === 'FNE' || item === 'FEQ' || item === 'FCC' || item === 'FCS' || item === 'FPL' || item === 'FMI' || item === 'FGT' || item === 'FLE' || item === 'FPA' || item === 'BNE' || item === 'BEQ' || item === 'BCC' || item === 'BCS' || item === 'BPL' || item === 'BMI' || item === 'BGT' || item === 'BLE' || item === 'JPA' || item === 'JPR' || item === 'JAR' || item === 'JPS' || item === 'JAS' || item === 'RTS' || item === 'PHS' || item === 'PLS' || item === 'LDS' || item === 'STS' || item === 'RDB' || item === 'RDR' || item === 'RAP' || item === 'RZP' || item === 'WDB' || item === 'WDR' || item === 'LDI' || item === 'LDZ' || item === 'LDB' || item === 'LDT' || item === 'LDR' || item === 'LAP' || item === 'LAB' || item === 'LZP' || item === 'LZB' || item === 'STZ' || item === 'STB' || item === 'STT' || item === 'STR' || item === 'SZP' || item === 'MIZ' || item === 'MIB' || item === 'MIT' || item === 'MIR' || item === 'MIV' || item === 'MIW' || item === 'MZZ' || item === 'MZB' || item === 'MBZ' || item === 'MBB' || item === 'MVV' || item === 'MWV' || item === 'CLZ' || item === 'CLB' || item === 'CLV' || item === 'CLW' || item === 'CLQ' || item === 'CLL' || item === 'INC' || item === 'INZ' || item === 'INB' || item === 'INV' || item === 'INW' || item === 'INQ' || item === 'INL' || item === 'DEC' || item === 'DEZ' || item === 'DEB' || item === 'DEV' || item === 'DEW' || item === 'DEQ' || item === 'DEL' || item === 'ADI' || item === 'ADZ' || item === 'ADB' || item === 'ADT' || item === 'ADR' || item === 'AD.Z' || item === 'AD.B' || item === 'AD.T' || item === 'AD.R' || item === 'ADV' || item === 'ADW' || item === 'ADQ' || item === 'ADL' || item === 'AIZ' || item === 'AIB' || item === 'AIT' || item === 'AIR' || item === 'AIV' || item === 'AIW' || item === 'AIQ' || item === 'AIL' || item === 'AZZ' || item === 'AZB' || item === 'AZV' || item === 'AZW' || item === 'AZQ' || item === 'AZL' || item === 'ABZ' || item === 'ABB' || item === 'ABV' || item === 'ABW' || item === 'ABQ' || item === 'AVV' || item === 'SUI' || item === 'SUZ' || item === 'SUB' || item === 'SUT' || item === 'SUR' || item === 'SU.Z' || item === 'SU.B' || item === 'SU.T' || item === 'SU.R' || item === 'SUV' || item === 'SUW' || item === 'SUQ' || item === 'SUL' || item === 'SIZ' || item === 'SIB' || item === 'SIT' || item === 'SIR' || item === 'SIV' || item === 'SIW' || item === 'SIQ' || item === 'SIL' || item === 'SZZ' || item === 'SZB' || item === 'SZV' || item === 'SZW' || item === 'SZQ' || item === 'SZL' || item === 'SBZ' || item === 'SBB' || item === 'SBV' || item === 'SBW' || item === 'SBQ' || item === 'SVV' || item === 'CPI' || item === 'CPZ' || item === 'CPB' || item === 'CPT' || item === 'CPR' || item === 'CIZ' || item === 'CIB' || item === 'CIT' || item === 'CIR' || item === 'CZZ' || item === 'CZB' || item === 'CBZ' || item === 'CBB' || item === 'ACI' || item === 'ACZ' || item === 'ACB' || item === 'AC.Z' || item === 'AC.B' || item === 'ACV' || item === 'ACW' || item === 'SCI' || item === 'SCZ' || item === 'SCB' || item === 'SC.Z' || item === 'SC.B' || item === 'SCV' || item === 'SCW';
+export function isOPERATOR0(item: unknown): item is OPERATOR0 {
+    return item === 'NOP' || item === 'OUT' || item === 'INT' || item === 'INK' || item === 'WIN' || item === 'SEC' || item === 'CLC' || item === 'LL0' || item === 'LL1' || item === 'LL2' || item === 'LL3' || item === 'LL4' || item === 'LL5' || item === 'LL6' || item === 'LL7' || item === 'RL0' || item === 'RL1' || item === 'RL2' || item === 'RL3' || item === 'RL4' || item === 'RL5' || item === 'RL6' || item === 'RL7' || item === 'RR1' || item === 'LR0' || item === 'LR1' || item === 'LR2' || item === 'LR3' || item === 'LR4' || item === 'LR5' || item === 'LR6' || item === 'LR7' || item === 'NOT' || item === 'NEG' || item === 'RTS' || item === 'PHS' || item === 'PLS' || item === 'INC' || item === 'DEC';
+}
+
+export type OPERATOR1 = 'AC.B' | 'AC.Z' | 'ACB' | 'ACI' | 'ACV' | 'ACW' | 'ACZ' | 'AD.B' | 'AD.R' | 'AD.T' | 'AD.Z' | 'ADB' | 'ADI' | 'ADL' | 'ADQ' | 'ADR' | 'ADT' | 'ADV' | 'ADW' | 'ADZ' | 'AN.B' | 'AN.Z' | 'ANB' | 'ANI' | 'ANR' | 'ANT' | 'ANZ' | 'BCC' | 'BCS' | 'BEQ' | 'BGT' | 'BLE' | 'BMI' | 'BNE' | 'BPL' | 'CLB' | 'CLL' | 'CLQ' | 'CLV' | 'CLW' | 'CLZ' | 'CPB' | 'CPI' | 'CPR' | 'CPT' | 'CPZ' | 'DEB' | 'DEL' | 'DEQ' | 'DEV' | 'DEW' | 'DEZ' | 'FCC' | 'FCS' | 'FEQ' | 'FGT' | 'FLE' | 'FMI' | 'FNE' | 'FPA' | 'FPL' | 'INB' | 'INL' | 'INQ' | 'INV' | 'INW' | 'INZ' | 'JAR' | 'JAS' | 'JPA' | 'JPR' | 'JPS' | 'LAB' | 'LAP' | 'LDB' | 'LDI' | 'LDR' | 'LDS' | 'LDT' | 'LDZ' | 'LLB' | 'LLL' | 'LLQ' | 'LLV' | 'LLW' | 'LLZ' | 'LRB' | 'LRZ' | 'NEB' | 'NEL' | 'NEQ' | 'NEV' | 'NEW' | 'NEZ' | 'NOB' | 'NOL' | 'NOQ' | 'NOV' | 'NOW' | 'NOZ' | 'OR.B' | 'OR.Z' | 'ORB' | 'ORI' | 'ORR' | 'ORT' | 'ORZ' | 'RAP' | 'RDR' | 'RLB' | 'RLL' | 'RLQ' | 'RLV' | 'RLW' | 'RLZ' | 'RRB' | 'RRZ' | 'SC.B' | 'SC.Z' | 'SCB' | 'SCI' | 'SCV' | 'SCW' | 'SCZ' | 'STB' | 'STR' | 'STS' | 'STT' | 'STZ' | 'SU.B' | 'SU.R' | 'SU.T' | 'SU.Z' | 'SUB' | 'SUI' | 'SUL' | 'SUQ' | 'SUR' | 'SUT' | 'SUV' | 'SUW' | 'SUZ' | 'WDR' | 'XR.B' | 'XR.Z' | 'XRB' | 'XRI' | 'XRR' | 'XRT' | 'XRZ';
+
+export function isOPERATOR1(item: unknown): item is OPERATOR1 {
+    return item === 'LLZ' || item === 'LLB' || item === 'LLV' || item === 'LLW' || item === 'LLQ' || item === 'LLL' || item === 'LRZ' || item === 'LRB' || item === 'RLZ' || item === 'RLB' || item === 'RLV' || item === 'RLW' || item === 'RLQ' || item === 'RLL' || item === 'RRZ' || item === 'RRB' || item === 'NOZ' || item === 'NOB' || item === 'NOV' || item === 'NOW' || item === 'NOQ' || item === 'NOL' || item === 'NEZ' || item === 'NEB' || item === 'NEV' || item === 'NEW' || item === 'NEQ' || item === 'NEL' || item === 'ANI' || item === 'ANZ' || item === 'ANB' || item === 'ANT' || item === 'ANR' || item === 'AN.Z' || item === 'AN.B' || item === 'ORI' || item === 'ORZ' || item === 'ORB' || item === 'ORT' || item === 'ORR' || item === 'OR.Z' || item === 'OR.B' || item === 'XRI' || item === 'XRZ' || item === 'XRB' || item === 'XRT' || item === 'XRR' || item === 'XR.Z' || item === 'XR.B' || item === 'FNE' || item === 'FEQ' || item === 'FCC' || item === 'FCS' || item === 'FPL' || item === 'FMI' || item === 'FGT' || item === 'FLE' || item === 'FPA' || item === 'BNE' || item === 'BEQ' || item === 'BCC' || item === 'BCS' || item === 'BPL' || item === 'BMI' || item === 'BGT' || item === 'BLE' || item === 'JPA' || item === 'JPR' || item === 'JAR' || item === 'JPS' || item === 'JAS' || item === 'LDS' || item === 'STS' || item === 'RDR' || item === 'RAP' || item === 'WDR' || item === 'LDI' || item === 'LDZ' || item === 'LDB' || item === 'LDT' || item === 'LDR' || item === 'LAP' || item === 'LAB' || item === 'STZ' || item === 'STB' || item === 'STT' || item === 'STR' || item === 'CLZ' || item === 'CLB' || item === 'CLV' || item === 'CLW' || item === 'CLQ' || item === 'CLL' || item === 'INZ' || item === 'INB' || item === 'INV' || item === 'INW' || item === 'INQ' || item === 'INL' || item === 'DEZ' || item === 'DEB' || item === 'DEV' || item === 'DEW' || item === 'DEQ' || item === 'DEL' || item === 'ADI' || item === 'ADZ' || item === 'ADB' || item === 'ADT' || item === 'ADR' || item === 'AD.Z' || item === 'AD.B' || item === 'AD.T' || item === 'AD.R' || item === 'ADV' || item === 'ADW' || item === 'ADQ' || item === 'ADL' || item === 'SUI' || item === 'SUZ' || item === 'SUB' || item === 'SUT' || item === 'SUR' || item === 'SU.Z' || item === 'SU.B' || item === 'SU.T' || item === 'SU.R' || item === 'SUV' || item === 'SUW' || item === 'SUQ' || item === 'SUL' || item === 'CPI' || item === 'CPZ' || item === 'CPB' || item === 'CPT' || item === 'CPR' || item === 'ACI' || item === 'ACZ' || item === 'ACB' || item === 'AC.Z' || item === 'AC.B' || item === 'ACV' || item === 'ACW' || item === 'SCI' || item === 'SCZ' || item === 'SCB' || item === 'SC.Z' || item === 'SC.B' || item === 'SCV' || item === 'SCW';
+}
+
+export type OPERATOR2 = 'ABB' | 'ABQ' | 'ABV' | 'ABW' | 'ABZ' | 'AIB' | 'AIL' | 'AIQ' | 'AIR' | 'AIT' | 'AIV' | 'AIW' | 'AIZ' | 'AVV' | 'AZB' | 'AZL' | 'AZQ' | 'AZV' | 'AZW' | 'AZZ' | 'CBB' | 'CBZ' | 'CIB' | 'CIR' | 'CIT' | 'CIZ' | 'CZB' | 'CZZ' | 'LZB' | 'LZP' | 'MBB' | 'MBZ' | 'MIB' | 'MIR' | 'MIT' | 'MIV' | 'MIW' | 'MIZ' | 'MVV' | 'MWV' | 'MZB' | 'MZZ' | 'RDB' | 'RZP' | 'SBB' | 'SBQ' | 'SBV' | 'SBW' | 'SBZ' | 'SIB' | 'SIL' | 'SIQ' | 'SIR' | 'SIT' | 'SIV' | 'SIW' | 'SIZ' | 'SVV' | 'SZB' | 'SZL' | 'SZP' | 'SZQ' | 'SZV' | 'SZW' | 'SZZ' | 'WDB';
+
+export function isOPERATOR2(item: unknown): item is OPERATOR2 {
+    return item === 'RDB' || item === 'RZP' || item === 'WDB' || item === 'LZP' || item === 'LZB' || item === 'SZP' || item === 'MIZ' || item === 'MIB' || item === 'MIT' || item === 'MIR' || item === 'MIV' || item === 'MIW' || item === 'MZZ' || item === 'MZB' || item === 'MBZ' || item === 'MBB' || item === 'MVV' || item === 'MWV' || item === 'AIZ' || item === 'AIB' || item === 'AIT' || item === 'AIR' || item === 'AIV' || item === 'AIW' || item === 'AIQ' || item === 'AIL' || item === 'AZZ' || item === 'AZB' || item === 'AZV' || item === 'AZW' || item === 'AZQ' || item === 'AZL' || item === 'ABZ' || item === 'ABB' || item === 'ABV' || item === 'ABW' || item === 'ABQ' || item === 'AVV' || item === 'SIZ' || item === 'SIB' || item === 'SIT' || item === 'SIR' || item === 'SIV' || item === 'SIW' || item === 'SIQ' || item === 'SIL' || item === 'SZZ' || item === 'SZB' || item === 'SZV' || item === 'SZW' || item === 'SZQ' || item === 'SZL' || item === 'SBZ' || item === 'SBB' || item === 'SBV' || item === 'SBW' || item === 'SBQ' || item === 'SVV' || item === 'CIZ' || item === 'CIB' || item === 'CIT' || item === 'CIR' || item === 'CZZ' || item === 'CZB' || item === 'CBZ' || item === 'CBB';
+}
+
+export type OPERATOR3 = 'RZP';
+
+export function isOPERATOR3(item: unknown): item is OPERATOR3 {
+    return item === 'RZP';
 }
 
 /** A textual representation of a state machine */
 export interface Program extends langium.AstNode {
     readonly $type: 'Program';
-    lines: Array<Line>;
+    entries: Array<Entry>;
 }
 
 export const Program = {
     $type: 'Program',
-    lines: 'lines'
+    entries: 'entries'
 } as const;
 
 export function isProgram(item: unknown): item is Program {
     return reflection.isInstance(item, Program.$type);
 }
 
+export interface StringLiteral extends langium.AstNode {
+    readonly $container: BinaryExpression | Data | Instruction;
+    readonly $type: 'StringLiteral';
+    value: string;
+}
+
+export const StringLiteral = {
+    $type: 'StringLiteral',
+    value: 'value'
+} as const;
+
+export function isStringLiteral(item: unknown): item is StringLiteral {
+    return reflection.isInstance(item, StringLiteral.$type);
+}
+
+export interface WordLiteral extends langium.AstNode {
+    readonly $container: BinaryExpression | Data | Instruction;
+    readonly $type: 'WordLiteral';
+    value: number;
+}
+
+export const WordLiteral = {
+    $type: 'WordLiteral',
+    value: 'value'
+} as const;
+
+export function isWordLiteral(item: unknown): item is WordLiteral {
+    return reflection.isInstance(item, WordLiteral.$type);
+}
+
 export type MinasmAstType = {
     BinaryExpression: BinaryExpression
-    Bytes: Bytes
+    ByteLiteral: ByteLiteral
+    CharLiteral: CharLiteral
+    Data: Data
+    DataItem: DataItem
     Directive: Directive
+    Entry: Entry
     Expression: Expression
     Instruction: Instruction
     Label: Label
-    Line: Line
-    NumberLit: NumberLit
+    LabelReference: LabelReference
     Operand: Operand
     Program: Program
+    StringLiteral: StringLiteral
+    WordLiteral: WordLiteral
 }
 
 export class MinasmAstReflection extends langium.AbstractAstReflection {
@@ -474,10 +563,6 @@ export class MinasmAstReflection extends langium.AbstractAstReflection {
         BinaryExpression: {
             name: BinaryExpression.$type,
             properties: {
-                label: {
-                    name: BinaryExpression.label,
-                    referenceType: Label.$type
-                },
                 left: {
                     name: BinaryExpression.left
                 },
@@ -486,20 +571,41 @@ export class MinasmAstReflection extends langium.AbstractAstReflection {
                 },
                 right: {
                     name: BinaryExpression.right
-                },
-                string: {
-                    name: BinaryExpression.string
                 }
             },
             superTypes: [Expression.$type]
         },
-        Bytes: {
-            name: Bytes.$type,
+        ByteLiteral: {
+            name: ByteLiteral.$type,
             properties: {
-                data: {
-                    name: Bytes.data,
+                value: {
+                    name: ByteLiteral.value
+                }
+            },
+            superTypes: [DataItem.$type, Expression.$type]
+        },
+        CharLiteral: {
+            name: CharLiteral.$type,
+            properties: {
+                value: {
+                    name: CharLiteral.value
+                }
+            },
+            superTypes: [DataItem.$type, Expression.$type]
+        },
+        Data: {
+            name: Data.$type,
+            properties: {
+                items: {
+                    name: Data.items,
                     defaultValue: []
                 }
+            },
+            superTypes: []
+        },
+        DataItem: {
+            name: DataItem.$type,
+            properties: {
             },
             superTypes: []
         },
@@ -516,16 +622,35 @@ export class MinasmAstReflection extends langium.AbstractAstReflection {
             },
             superTypes: []
         },
+        Entry: {
+            name: Entry.$type,
+            properties: {
+                comment: {
+                    name: Entry.comment,
+                    optional: true
+                },
+                data: {
+                    name: Entry.data,
+                    optional: true
+                },
+                directive: {
+                    name: Entry.directive,
+                    optional: true
+                },
+                instruction: {
+                    name: Entry.instruction,
+                    optional: true
+                },
+                label: {
+                    name: Entry.label,
+                    optional: true
+                }
+            },
+            superTypes: []
+        },
         Expression: {
             name: Expression.$type,
             properties: {
-                label: {
-                    name: Expression.label,
-                    referenceType: Label.$type
-                },
-                string: {
-                    name: Expression.string
-                }
             },
             superTypes: [Operand.$type]
         },
@@ -552,44 +677,16 @@ export class MinasmAstReflection extends langium.AbstractAstReflection {
             },
             superTypes: []
         },
-        Line: {
-            name: Line.$type,
+        LabelReference: {
+            name: LabelReference.$type,
             properties: {
-                bytes: {
-                    name: Line.bytes,
-                    optional: true
-                },
-                comment: {
-                    name: Line.comment,
-                    optional: true
-                },
-                directive: {
-                    name: Line.directive,
-                    optional: true
-                },
-                instruction: {
-                    name: Line.instruction,
+                byteSelector: {
+                    name: LabelReference.byteSelector,
                     optional: true
                 },
                 label: {
-                    name: Line.label,
-                    optional: true
-                }
-            },
-            superTypes: []
-        },
-        NumberLit: {
-            name: NumberLit.$type,
-            properties: {
-                label: {
-                    name: NumberLit.label,
+                    name: LabelReference.label,
                     referenceType: Label.$type
-                },
-                string: {
-                    name: NumberLit.string
-                },
-                value: {
-                    name: NumberLit.value
                 }
             },
             superTypes: [Expression.$type]
@@ -597,22 +694,37 @@ export class MinasmAstReflection extends langium.AbstractAstReflection {
         Operand: {
             name: Operand.$type,
             properties: {
-                string: {
-                    name: Operand.string
-                }
             },
             superTypes: []
         },
         Program: {
             name: Program.$type,
             properties: {
-                lines: {
-                    name: Program.lines,
+                entries: {
+                    name: Program.entries,
                     defaultValue: [],
                     optional: true
                 }
             },
             superTypes: []
+        },
+        StringLiteral: {
+            name: StringLiteral.$type,
+            properties: {
+                value: {
+                    name: StringLiteral.value
+                }
+            },
+            superTypes: [DataItem.$type, Expression.$type]
+        },
+        WordLiteral: {
+            name: WordLiteral.$type,
+            properties: {
+                value: {
+                    name: WordLiteral.value
+                }
+            },
+            superTypes: [DataItem.$type, Expression.$type]
         }
     } as const satisfies langium.AstMetaData
 }

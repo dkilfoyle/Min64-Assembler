@@ -9,6 +9,8 @@ import { DocumentState, EmptyFileSystem } from "langium";
 import { startLanguageServer } from "langium/lsp";
 import { BrowserMessageReader, BrowserMessageWriter, createConnection } from "vscode-languageserver/browser";
 import { createMinasmServices } from "../ls/minasm-module.js";
+import { assembler } from "../assembler/assembler.js";
+import { isProgram } from "../ls/generated/ast.js";
 
 let messageReader: BrowserMessageReader | undefined;
 let messageWriter: BrowserMessageWriter | undefined;
@@ -33,7 +35,12 @@ export const start = async (port: MessagePort | DedicatedWorkerGlobalScope, name
 
   shared.workspace.DocumentBuilder.onBuildPhase(DocumentState.Validated, (documents) => {
     for (const document of documents) {
-      console.log("On build phase", document.parseResult.value);
+      if (isProgram(document.parseResult.value)) {
+        console.log("On build phase", document.parseResult.value.entries);
+        assembler.assemble(document.parseResult.value);
+        console.log(assembler.hex.toString());
+        console.log(Array.from(assembler.labels.entries()).map(([k, v]) => `${k} -> ${v.toString(16)}`));
+      }
     }
   });
 };

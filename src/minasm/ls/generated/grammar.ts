@@ -18,7 +18,7 @@ export const MinasmModelGrammar = (): Grammar => loadedMinasmModelGrammar ?? (lo
       "name": "Program",
       "definition": {
         "$type": "Assignment",
-        "feature": "lines",
+        "feature": "entries",
         "operator": "+=",
         "terminal": {
           "$type": "RuleCall",
@@ -35,7 +35,7 @@ export const MinasmModelGrammar = (): Grammar => loadedMinasmModelGrammar ?? (lo
     },
     {
       "$type": "ParserRule",
-      "name": "Line",
+      "name": "Entry",
       "definition": {
         "$type": "Alternatives",
         "elements": [
@@ -46,7 +46,7 @@ export const MinasmModelGrammar = (): Grammar => loadedMinasmModelGrammar ?? (lo
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@14"
+                "$ref": "#/rules@23"
               },
               "arguments": []
             }
@@ -58,7 +58,7 @@ export const MinasmModelGrammar = (): Grammar => loadedMinasmModelGrammar ?? (lo
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@3"
+                "$ref": "#/rules@5"
               },
               "arguments": []
             }
@@ -70,7 +70,7 @@ export const MinasmModelGrammar = (): Grammar => loadedMinasmModelGrammar ?? (lo
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@4"
+                "$ref": "#/rules@6"
               },
               "arguments": []
             }
@@ -82,160 +82,22 @@ export const MinasmModelGrammar = (): Grammar => loadedMinasmModelGrammar ?? (lo
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@5"
-              },
-              "arguments": []
-            }
-          },
-          {
-            "$type": "Assignment",
-            "feature": "bytes",
-            "operator": "=",
-            "terminal": {
-              "$type": "RuleCall",
-              "rule": {
                 "$ref": "#/rules@2"
               },
               "arguments": []
             }
-          }
-        ]
-      },
-      "entry": false,
-      "fragment": false,
-      "parameters": []
-    },
-    {
-      "$type": "ParserRule",
-      "name": "Bytes",
-      "definition": {
-        "$type": "Group",
-        "elements": [
+          },
           {
             "$type": "Assignment",
             "feature": "data",
-            "operator": "+=",
-            "terminal": {
-              "$type": "RuleCall",
-              "rule": {
-                "$ref": "#/rules@11"
-              },
-              "arguments": []
-            }
-          },
-          {
-            "$type": "Group",
-            "elements": [
-              {
-                "$type": "Keyword",
-                "value": ","
-              },
-              {
-                "$type": "Assignment",
-                "feature": "data",
-                "operator": "+=",
-                "terminal": {
-                  "$type": "RuleCall",
-                  "rule": {
-                    "$ref": "#/rules@11"
-                  },
-                  "arguments": []
-                }
-              }
-            ],
-            "cardinality": "*"
-          }
-        ]
-      },
-      "entry": false,
-      "fragment": false,
-      "parameters": []
-    },
-    {
-      "$type": "ParserRule",
-      "name": "Label",
-      "definition": {
-        "$type": "Group",
-        "elements": [
-          {
-            "$type": "Assignment",
-            "feature": "name",
             "operator": "=",
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@16"
+                "$ref": "#/rules@3"
               },
               "arguments": []
             }
-          },
-          {
-            "$type": "Keyword",
-            "value": ":"
-          }
-        ]
-      },
-      "entry": false,
-      "fragment": false,
-      "parameters": []
-    },
-    {
-      "$type": "ParserRule",
-      "name": "Instruction",
-      "definition": {
-        "$type": "Group",
-        "elements": [
-          {
-            "$type": "Assignment",
-            "feature": "op",
-            "operator": "=",
-            "terminal": {
-              "$type": "RuleCall",
-              "rule": {
-                "$ref": "#/rules@6"
-              },
-              "arguments": []
-            }
-          },
-          {
-            "$type": "Group",
-            "elements": [
-              {
-                "$type": "Assignment",
-                "feature": "operands",
-                "operator": "+=",
-                "terminal": {
-                  "$type": "RuleCall",
-                  "rule": {
-                    "$ref": "#/rules@7"
-                  },
-                  "arguments": []
-                }
-              },
-              {
-                "$type": "Group",
-                "elements": [
-                  {
-                    "$type": "Keyword",
-                    "value": ","
-                  },
-                  {
-                    "$type": "Assignment",
-                    "feature": "operands",
-                    "operator": "+=",
-                    "terminal": {
-                      "$type": "RuleCall",
-                      "rule": {
-                        "$ref": "#/rules@7"
-                      },
-                      "arguments": []
-                    }
-                  }
-                ],
-                "cardinality": "*"
-              }
-            ],
-            "cardinality": "?"
           }
         ]
       },
@@ -290,7 +152,7 @@ export const MinasmModelGrammar = (): Grammar => loadedMinasmModelGrammar ?? (lo
                 "terminal": {
                   "$type": "RuleCall",
                   "rule": {
-                    "$ref": "#/rules@12"
+                    "$ref": "#/rules@20"
                   },
                   "arguments": []
                 }
@@ -305,11 +167,292 @@ export const MinasmModelGrammar = (): Grammar => loadedMinasmModelGrammar ?? (lo
     },
     {
       "$type": "ParserRule",
-      "name": "OPERATOR",
+      "name": "Data",
+      "definition": {
+        "$type": "Group",
+        "elements": [
+          {
+            "$type": "Assignment",
+            "feature": "items",
+            "operator": "+=",
+            "terminal": {
+              "$type": "RuleCall",
+              "rule": {
+                "$ref": "#/rules@4"
+              },
+              "arguments": []
+            }
+          },
+          {
+            "$type": "Group",
+            "elements": [
+              {
+                "$type": "Keyword",
+                "value": ","
+              },
+              {
+                "$type": "Assignment",
+                "feature": "items",
+                "operator": "+=",
+                "terminal": {
+                  "$type": "RuleCall",
+                  "rule": {
+                    "$ref": "#/rules@4"
+                  },
+                  "arguments": []
+                }
+              }
+            ],
+            "cardinality": "*"
+          }
+        ]
+      },
+      "entry": false,
+      "fragment": false,
+      "parameters": []
+    },
+    {
+      "$type": "ParserRule",
+      "name": "DataItem",
+      "definition": {
+        "$type": "Alternatives",
+        "elements": [
+          {
+            "$type": "RuleCall",
+            "rule": {
+              "$ref": "#/rules@18"
+            },
+            "arguments": []
+          },
+          {
+            "$type": "RuleCall",
+            "rule": {
+              "$ref": "#/rules@19"
+            },
+            "arguments": []
+          },
+          {
+            "$type": "RuleCall",
+            "rule": {
+              "$ref": "#/rules@15"
+            },
+            "arguments": []
+          },
+          {
+            "$type": "RuleCall",
+            "rule": {
+              "$ref": "#/rules@16"
+            },
+            "arguments": []
+          }
+        ]
+      },
+      "entry": false,
+      "fragment": false,
+      "parameters": []
+    },
+    {
+      "$type": "ParserRule",
+      "name": "Label",
+      "definition": {
+        "$type": "Group",
+        "elements": [
+          {
+            "$type": "Assignment",
+            "feature": "name",
+            "operator": "=",
+            "terminal": {
+              "$type": "RuleCall",
+              "rule": {
+                "$ref": "#/rules@26"
+              },
+              "arguments": []
+            }
+          },
+          {
+            "$type": "Keyword",
+            "value": ":"
+          }
+        ]
+      },
+      "entry": false,
+      "fragment": false,
+      "parameters": []
+    },
+    {
+      "$type": "ParserRule",
+      "name": "Instruction",
+      "definition": {
+        "$type": "Alternatives",
+        "elements": [
+          {
+            "$type": "Assignment",
+            "feature": "op",
+            "operator": "=",
+            "terminal": {
+              "$type": "RuleCall",
+              "rule": {
+                "$ref": "#/rules@7"
+              },
+              "arguments": []
+            }
+          },
+          {
+            "$type": "Group",
+            "elements": [
+              {
+                "$type": "Assignment",
+                "feature": "op",
+                "operator": "=",
+                "terminal": {
+                  "$type": "RuleCall",
+                  "rule": {
+                    "$ref": "#/rules@8"
+                  },
+                  "arguments": []
+                }
+              },
+              {
+                "$type": "Assignment",
+                "feature": "operands",
+                "operator": "+=",
+                "terminal": {
+                  "$type": "RuleCall",
+                  "rule": {
+                    "$ref": "#/rules@11"
+                  },
+                  "arguments": []
+                }
+              }
+            ]
+          },
+          {
+            "$type": "Group",
+            "elements": [
+              {
+                "$type": "Assignment",
+                "feature": "op",
+                "operator": "=",
+                "terminal": {
+                  "$type": "RuleCall",
+                  "rule": {
+                    "$ref": "#/rules@9"
+                  },
+                  "arguments": []
+                }
+              },
+              {
+                "$type": "Assignment",
+                "feature": "operands",
+                "operator": "+=",
+                "terminal": {
+                  "$type": "RuleCall",
+                  "rule": {
+                    "$ref": "#/rules@11"
+                  },
+                  "arguments": []
+                }
+              },
+              {
+                "$type": "Keyword",
+                "value": ","
+              },
+              {
+                "$type": "Assignment",
+                "feature": "operands",
+                "operator": "+=",
+                "terminal": {
+                  "$type": "RuleCall",
+                  "rule": {
+                    "$ref": "#/rules@11"
+                  },
+                  "arguments": []
+                }
+              }
+            ]
+          },
+          {
+            "$type": "Group",
+            "elements": [
+              {
+                "$type": "Assignment",
+                "feature": "op",
+                "operator": "=",
+                "terminal": {
+                  "$type": "RuleCall",
+                  "rule": {
+                    "$ref": "#/rules@10"
+                  },
+                  "arguments": []
+                }
+              },
+              {
+                "$type": "Assignment",
+                "feature": "operands",
+                "operator": "+=",
+                "terminal": {
+                  "$type": "RuleCall",
+                  "rule": {
+                    "$ref": "#/rules@11"
+                  },
+                  "arguments": []
+                }
+              },
+              {
+                "$type": "Keyword",
+                "value": ","
+              },
+              {
+                "$type": "Assignment",
+                "feature": "operands",
+                "operator": "+=",
+                "terminal": {
+                  "$type": "RuleCall",
+                  "rule": {
+                    "$ref": "#/rules@11"
+                  },
+                  "arguments": []
+                }
+              },
+              {
+                "$type": "Keyword",
+                "value": ","
+              },
+              {
+                "$type": "Assignment",
+                "feature": "operands",
+                "operator": "+=",
+                "terminal": {
+                  "$type": "RuleCall",
+                  "rule": {
+                    "$ref": "#/rules@11"
+                  },
+                  "arguments": []
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "entry": false,
+      "fragment": false,
+      "parameters": []
+    },
+    {
+      "$type": "ParserRule",
+      "name": "OPERATOR0",
       "dataType": "string",
       "definition": {
         "$type": "Alternatives",
         "elements": [
+          {
+            "$type": "Keyword",
+            "value": "NOP"
+          },
+          {
+            "$type": "Keyword",
+            "value": "OUT"
+          },
           {
             "$type": "Keyword",
             "value": "INT"
@@ -432,6 +575,47 @@ export const MinasmModelGrammar = (): Grammar => loadedMinasmModelGrammar ?? (lo
           },
           {
             "$type": "Keyword",
+            "value": "NOT"
+          },
+          {
+            "$type": "Keyword",
+            "value": "NEG"
+          },
+          {
+            "$type": "Keyword",
+            "value": "RTS"
+          },
+          {
+            "$type": "Keyword",
+            "value": "PHS"
+          },
+          {
+            "$type": "Keyword",
+            "value": "PLS"
+          },
+          {
+            "$type": "Keyword",
+            "value": "INC"
+          },
+          {
+            "$type": "Keyword",
+            "value": "DEC"
+          }
+        ]
+      },
+      "entry": false,
+      "fragment": false,
+      "parameters": []
+    },
+    {
+      "$type": "ParserRule",
+      "name": "OPERATOR1",
+      "dataType": "string",
+      "definition": {
+        "$type": "Alternatives",
+        "elements": [
+          {
+            "$type": "Keyword",
             "value": "LLZ"
           },
           {
@@ -496,10 +680,6 @@ export const MinasmModelGrammar = (): Grammar => loadedMinasmModelGrammar ?? (lo
           },
           {
             "$type": "Keyword",
-            "value": "NOT"
-          },
-          {
-            "$type": "Keyword",
             "value": "NOZ"
           },
           {
@@ -521,10 +701,6 @@ export const MinasmModelGrammar = (): Grammar => loadedMinasmModelGrammar ?? (lo
           {
             "$type": "Keyword",
             "value": "NOL"
-          },
-          {
-            "$type": "Keyword",
-            "value": "NEG"
           },
           {
             "$type": "Keyword",
@@ -724,18 +900,6 @@ export const MinasmModelGrammar = (): Grammar => loadedMinasmModelGrammar ?? (lo
           },
           {
             "$type": "Keyword",
-            "value": "RTS"
-          },
-          {
-            "$type": "Keyword",
-            "value": "PHS"
-          },
-          {
-            "$type": "Keyword",
-            "value": "PLS"
-          },
-          {
-            "$type": "Keyword",
             "value": "LDS"
           },
           {
@@ -744,23 +908,11 @@ export const MinasmModelGrammar = (): Grammar => loadedMinasmModelGrammar ?? (lo
           },
           {
             "$type": "Keyword",
-            "value": "RDB"
-          },
-          {
-            "$type": "Keyword",
             "value": "RDR"
           },
           {
             "$type": "Keyword",
             "value": "RAP"
-          },
-          {
-            "$type": "Keyword",
-            "value": "RZP"
-          },
-          {
-            "$type": "Keyword",
-            "value": "WDB"
           },
           {
             "$type": "Keyword",
@@ -796,14 +948,6 @@ export const MinasmModelGrammar = (): Grammar => loadedMinasmModelGrammar ?? (lo
           },
           {
             "$type": "Keyword",
-            "value": "LZP"
-          },
-          {
-            "$type": "Keyword",
-            "value": "LZB"
-          },
-          {
-            "$type": "Keyword",
             "value": "STZ"
           },
           {
@@ -817,58 +961,6 @@ export const MinasmModelGrammar = (): Grammar => loadedMinasmModelGrammar ?? (lo
           {
             "$type": "Keyword",
             "value": "STR"
-          },
-          {
-            "$type": "Keyword",
-            "value": "SZP"
-          },
-          {
-            "$type": "Keyword",
-            "value": "MIZ"
-          },
-          {
-            "$type": "Keyword",
-            "value": "MIB"
-          },
-          {
-            "$type": "Keyword",
-            "value": "MIT"
-          },
-          {
-            "$type": "Keyword",
-            "value": "MIR"
-          },
-          {
-            "$type": "Keyword",
-            "value": "MIV"
-          },
-          {
-            "$type": "Keyword",
-            "value": "MIW"
-          },
-          {
-            "$type": "Keyword",
-            "value": "MZZ"
-          },
-          {
-            "$type": "Keyword",
-            "value": "MZB"
-          },
-          {
-            "$type": "Keyword",
-            "value": "MBZ"
-          },
-          {
-            "$type": "Keyword",
-            "value": "MBB"
-          },
-          {
-            "$type": "Keyword",
-            "value": "MVV"
-          },
-          {
-            "$type": "Keyword",
-            "value": "MWV"
           },
           {
             "$type": "Keyword",
@@ -896,10 +988,6 @@ export const MinasmModelGrammar = (): Grammar => loadedMinasmModelGrammar ?? (lo
           },
           {
             "$type": "Keyword",
-            "value": "INC"
-          },
-          {
-            "$type": "Keyword",
             "value": "INZ"
           },
           {
@@ -921,10 +1009,6 @@ export const MinasmModelGrammar = (): Grammar => loadedMinasmModelGrammar ?? (lo
           {
             "$type": "Keyword",
             "value": "INL"
-          },
-          {
-            "$type": "Keyword",
-            "value": "DEC"
           },
           {
             "$type": "Keyword",
@@ -1001,6 +1085,219 @@ export const MinasmModelGrammar = (): Grammar => loadedMinasmModelGrammar ?? (lo
           {
             "$type": "Keyword",
             "value": "ADL"
+          },
+          {
+            "$type": "Keyword",
+            "value": "SUI"
+          },
+          {
+            "$type": "Keyword",
+            "value": "SUZ"
+          },
+          {
+            "$type": "Keyword",
+            "value": "SUB"
+          },
+          {
+            "$type": "Keyword",
+            "value": "SUT"
+          },
+          {
+            "$type": "Keyword",
+            "value": "SUR"
+          },
+          {
+            "$type": "Keyword",
+            "value": "SU.Z"
+          },
+          {
+            "$type": "Keyword",
+            "value": "SU.B"
+          },
+          {
+            "$type": "Keyword",
+            "value": "SU.T"
+          },
+          {
+            "$type": "Keyword",
+            "value": "SU.R"
+          },
+          {
+            "$type": "Keyword",
+            "value": "SUV"
+          },
+          {
+            "$type": "Keyword",
+            "value": "SUW"
+          },
+          {
+            "$type": "Keyword",
+            "value": "SUQ"
+          },
+          {
+            "$type": "Keyword",
+            "value": "SUL"
+          },
+          {
+            "$type": "Keyword",
+            "value": "CPI"
+          },
+          {
+            "$type": "Keyword",
+            "value": "CPZ"
+          },
+          {
+            "$type": "Keyword",
+            "value": "CPB"
+          },
+          {
+            "$type": "Keyword",
+            "value": "CPT"
+          },
+          {
+            "$type": "Keyword",
+            "value": "CPR"
+          },
+          {
+            "$type": "Keyword",
+            "value": "ACI"
+          },
+          {
+            "$type": "Keyword",
+            "value": "ACZ"
+          },
+          {
+            "$type": "Keyword",
+            "value": "ACB"
+          },
+          {
+            "$type": "Keyword",
+            "value": "AC.Z"
+          },
+          {
+            "$type": "Keyword",
+            "value": "AC.B"
+          },
+          {
+            "$type": "Keyword",
+            "value": "ACV"
+          },
+          {
+            "$type": "Keyword",
+            "value": "ACW"
+          },
+          {
+            "$type": "Keyword",
+            "value": "SCI"
+          },
+          {
+            "$type": "Keyword",
+            "value": "SCZ"
+          },
+          {
+            "$type": "Keyword",
+            "value": "SCB"
+          },
+          {
+            "$type": "Keyword",
+            "value": "SC.Z"
+          },
+          {
+            "$type": "Keyword",
+            "value": "SC.B"
+          },
+          {
+            "$type": "Keyword",
+            "value": "SCV"
+          },
+          {
+            "$type": "Keyword",
+            "value": "SCW"
+          }
+        ]
+      },
+      "entry": false,
+      "fragment": false,
+      "parameters": []
+    },
+    {
+      "$type": "ParserRule",
+      "name": "OPERATOR2",
+      "dataType": "string",
+      "definition": {
+        "$type": "Alternatives",
+        "elements": [
+          {
+            "$type": "Keyword",
+            "value": "RDB"
+          },
+          {
+            "$type": "Keyword",
+            "value": "RZP"
+          },
+          {
+            "$type": "Keyword",
+            "value": "WDB"
+          },
+          {
+            "$type": "Keyword",
+            "value": "LZP"
+          },
+          {
+            "$type": "Keyword",
+            "value": "LZB"
+          },
+          {
+            "$type": "Keyword",
+            "value": "SZP"
+          },
+          {
+            "$type": "Keyword",
+            "value": "MIZ"
+          },
+          {
+            "$type": "Keyword",
+            "value": "MIB"
+          },
+          {
+            "$type": "Keyword",
+            "value": "MIT"
+          },
+          {
+            "$type": "Keyword",
+            "value": "MIR"
+          },
+          {
+            "$type": "Keyword",
+            "value": "MIV"
+          },
+          {
+            "$type": "Keyword",
+            "value": "MIW"
+          },
+          {
+            "$type": "Keyword",
+            "value": "MZZ"
+          },
+          {
+            "$type": "Keyword",
+            "value": "MZB"
+          },
+          {
+            "$type": "Keyword",
+            "value": "MBZ"
+          },
+          {
+            "$type": "Keyword",
+            "value": "MBB"
+          },
+          {
+            "$type": "Keyword",
+            "value": "MVV"
+          },
+          {
+            "$type": "Keyword",
+            "value": "MWV"
           },
           {
             "$type": "Keyword",
@@ -1084,58 +1381,6 @@ export const MinasmModelGrammar = (): Grammar => loadedMinasmModelGrammar ?? (lo
           },
           {
             "$type": "Keyword",
-            "value": "SUI"
-          },
-          {
-            "$type": "Keyword",
-            "value": "SUZ"
-          },
-          {
-            "$type": "Keyword",
-            "value": "SUB"
-          },
-          {
-            "$type": "Keyword",
-            "value": "SUT"
-          },
-          {
-            "$type": "Keyword",
-            "value": "SUR"
-          },
-          {
-            "$type": "Keyword",
-            "value": "SU.Z"
-          },
-          {
-            "$type": "Keyword",
-            "value": "SU.B"
-          },
-          {
-            "$type": "Keyword",
-            "value": "SU.T"
-          },
-          {
-            "$type": "Keyword",
-            "value": "SU.R"
-          },
-          {
-            "$type": "Keyword",
-            "value": "SUV"
-          },
-          {
-            "$type": "Keyword",
-            "value": "SUW"
-          },
-          {
-            "$type": "Keyword",
-            "value": "SUQ"
-          },
-          {
-            "$type": "Keyword",
-            "value": "SUL"
-          },
-          {
-            "$type": "Keyword",
             "value": "SIZ"
           },
           {
@@ -1216,26 +1461,6 @@ export const MinasmModelGrammar = (): Grammar => loadedMinasmModelGrammar ?? (lo
           },
           {
             "$type": "Keyword",
-            "value": "CPI"
-          },
-          {
-            "$type": "Keyword",
-            "value": "CPZ"
-          },
-          {
-            "$type": "Keyword",
-            "value": "CPB"
-          },
-          {
-            "$type": "Keyword",
-            "value": "CPT"
-          },
-          {
-            "$type": "Keyword",
-            "value": "CPR"
-          },
-          {
-            "$type": "Keyword",
             "value": "CIZ"
           },
           {
@@ -1265,62 +1490,6 @@ export const MinasmModelGrammar = (): Grammar => loadedMinasmModelGrammar ?? (lo
           {
             "$type": "Keyword",
             "value": "CBB"
-          },
-          {
-            "$type": "Keyword",
-            "value": "ACI"
-          },
-          {
-            "$type": "Keyword",
-            "value": "ACZ"
-          },
-          {
-            "$type": "Keyword",
-            "value": "ACB"
-          },
-          {
-            "$type": "Keyword",
-            "value": "AC.Z"
-          },
-          {
-            "$type": "Keyword",
-            "value": "AC.B"
-          },
-          {
-            "$type": "Keyword",
-            "value": "ACV"
-          },
-          {
-            "$type": "Keyword",
-            "value": "ACW"
-          },
-          {
-            "$type": "Keyword",
-            "value": "SCI"
-          },
-          {
-            "$type": "Keyword",
-            "value": "SCZ"
-          },
-          {
-            "$type": "Keyword",
-            "value": "SCB"
-          },
-          {
-            "$type": "Keyword",
-            "value": "SC.Z"
-          },
-          {
-            "$type": "Keyword",
-            "value": "SC.B"
-          },
-          {
-            "$type": "Keyword",
-            "value": "SCV"
-          },
-          {
-            "$type": "Keyword",
-            "value": "SCW"
           }
         ]
       },
@@ -1330,30 +1499,25 @@ export const MinasmModelGrammar = (): Grammar => loadedMinasmModelGrammar ?? (lo
     },
     {
       "$type": "ParserRule",
+      "name": "OPERATOR3",
+      "dataType": "string",
+      "definition": {
+        "$type": "Keyword",
+        "value": "RZP"
+      },
+      "entry": false,
+      "fragment": false,
+      "parameters": []
+    },
+    {
+      "$type": "ParserRule",
       "name": "Operand",
       "definition": {
-        "$type": "Alternatives",
-        "elements": [
-          {
-            "$type": "RuleCall",
-            "rule": {
-              "$ref": "#/rules@8"
-            },
-            "arguments": []
-          },
-          {
-            "$type": "Assignment",
-            "feature": "string",
-            "operator": "=",
-            "terminal": {
-              "$type": "RuleCall",
-              "rule": {
-                "$ref": "#/rules@15"
-              },
-              "arguments": []
-            }
-          }
-        ]
+        "$type": "RuleCall",
+        "rule": {
+          "$ref": "#/rules@12"
+        },
+        "arguments": []
       },
       "entry": false,
       "fragment": false,
@@ -1365,7 +1529,7 @@ export const MinasmModelGrammar = (): Grammar => loadedMinasmModelGrammar ?? (lo
       "definition": {
         "$type": "RuleCall",
         "rule": {
-          "$ref": "#/rules@9"
+          "$ref": "#/rules@13"
         },
         "arguments": []
       },
@@ -1386,7 +1550,7 @@ export const MinasmModelGrammar = (): Grammar => loadedMinasmModelGrammar ?? (lo
           {
             "$type": "RuleCall",
             "rule": {
-              "$ref": "#/rules@10"
+              "$ref": "#/rules@14"
             },
             "arguments": []
           },
@@ -1427,7 +1591,7 @@ export const MinasmModelGrammar = (): Grammar => loadedMinasmModelGrammar ?? (lo
                 "terminal": {
                   "$type": "RuleCall",
                   "rule": {
-                    "$ref": "#/rules@10"
+                    "$ref": "#/rules@14"
                   },
                   "arguments": []
                 }
@@ -1454,9 +1618,106 @@ export const MinasmModelGrammar = (): Grammar => loadedMinasmModelGrammar ?? (lo
           {
             "$type": "RuleCall",
             "rule": {
-              "$ref": "#/rules@11"
+              "$ref": "#/rules@18"
             },
             "arguments": []
+          },
+          {
+            "$type": "RuleCall",
+            "rule": {
+              "$ref": "#/rules@19"
+            },
+            "arguments": []
+          },
+          {
+            "$type": "RuleCall",
+            "rule": {
+              "$ref": "#/rules@15"
+            },
+            "arguments": []
+          },
+          {
+            "$type": "RuleCall",
+            "rule": {
+              "$ref": "#/rules@16"
+            },
+            "arguments": []
+          },
+          {
+            "$type": "RuleCall",
+            "rule": {
+              "$ref": "#/rules@17"
+            },
+            "arguments": []
+          }
+        ]
+      },
+      "entry": false,
+      "fragment": false,
+      "parameters": []
+    },
+    {
+      "$type": "ParserRule",
+      "name": "CharLiteral",
+      "definition": {
+        "$type": "Assignment",
+        "feature": "value",
+        "operator": "=",
+        "terminal": {
+          "$type": "RuleCall",
+          "rule": {
+            "$ref": "#/rules@24"
+          },
+          "arguments": []
+        }
+      },
+      "entry": false,
+      "fragment": false,
+      "parameters": []
+    },
+    {
+      "$type": "ParserRule",
+      "name": "StringLiteral",
+      "definition": {
+        "$type": "Assignment",
+        "feature": "value",
+        "operator": "=",
+        "terminal": {
+          "$type": "RuleCall",
+          "rule": {
+            "$ref": "#/rules@25"
+          },
+          "arguments": []
+        }
+      },
+      "entry": false,
+      "fragment": false,
+      "parameters": []
+    },
+    {
+      "$type": "ParserRule",
+      "name": "LabelReference",
+      "definition": {
+        "$type": "Group",
+        "elements": [
+          {
+            "$type": "Assignment",
+            "feature": "byteSelector",
+            "operator": "=",
+            "terminal": {
+              "$type": "Alternatives",
+              "elements": [
+                {
+                  "$type": "Keyword",
+                  "value": "<"
+                },
+                {
+                  "$type": "Keyword",
+                  "value": ">"
+                }
+              ]
+            },
+            "cardinality": "?"
           },
           {
             "$type": "Assignment",
@@ -1465,12 +1726,12 @@ export const MinasmModelGrammar = (): Grammar => loadedMinasmModelGrammar ?? (lo
             "terminal": {
               "$type": "CrossReference",
               "type": {
-                "$ref": "#/rules@3"
+                "$ref": "#/rules@5"
               },
               "terminal": {
                 "$type": "RuleCall",
                 "rule": {
-                  "$ref": "#/rules@16"
+                  "$ref": "#/rules@26"
                 },
                 "arguments": []
               },
@@ -1486,7 +1747,7 @@ export const MinasmModelGrammar = (): Grammar => loadedMinasmModelGrammar ?? (lo
     },
     {
       "$type": "ParserRule",
-      "name": "NumberLit",
+      "name": "ByteLiteral",
       "definition": {
         "$type": "Assignment",
         "feature": "value",
@@ -1497,14 +1758,14 @@ export const MinasmModelGrammar = (): Grammar => loadedMinasmModelGrammar ?? (lo
             {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@12"
+                "$ref": "#/rules@21"
               },
               "arguments": []
             },
             {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@13"
+                "$ref": "#/rules@22"
               },
               "arguments": []
             }
@@ -1516,11 +1777,49 @@ export const MinasmModelGrammar = (): Grammar => loadedMinasmModelGrammar ?? (lo
       "parameters": []
     },
     {
+      "$type": "ParserRule",
+      "name": "WordLiteral",
+      "definition": {
+        "$type": "Assignment",
+        "feature": "value",
+        "operator": "=",
+        "terminal": {
+          "$type": "RuleCall",
+          "rule": {
+            "$ref": "#/rules@20"
+          },
+          "arguments": []
+        }
+      },
+      "entry": false,
+      "fragment": false,
+      "parameters": []
+    },
+    {
       "$type": "TerminalRule",
-      "name": "HEX",
+      "name": "HEX16",
+      "type": {
+        "$type": "ReturnType",
+        "name": "number"
+      },
       "definition": {
         "$type": "RegexToken",
-        "regex": "/0x[0-9A-Fa-f]+/",
+        "regex": "/0x[0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f]/",
+        "parenthesized": false
+      },
+      "fragment": false,
+      "hidden": false
+    },
+    {
+      "$type": "TerminalRule",
+      "name": "HEX8",
+      "type": {
+        "$type": "ReturnType",
+        "name": "number"
+      },
+      "definition": {
+        "$type": "RegexToken",
+        "regex": "/0x[0-9A-Fa-f][0-9A-Fa-f]/",
         "parenthesized": false
       },
       "fragment": false,
@@ -1529,6 +1828,10 @@ export const MinasmModelGrammar = (): Grammar => loadedMinasmModelGrammar ?? (lo
     {
       "$type": "TerminalRule",
       "name": "DECI",
+      "type": {
+        "$type": "ReturnType",
+        "name": "number"
+      },
       "definition": {
         "$type": "RegexToken",
         "regex": "/[0-9]+/",
@@ -1543,6 +1846,17 @@ export const MinasmModelGrammar = (): Grammar => loadedMinasmModelGrammar ?? (lo
       "definition": {
         "$type": "RegexToken",
         "regex": "/;[^\\\\n]*/",
+        "parenthesized": false
+      },
+      "fragment": false,
+      "hidden": false
+    },
+    {
+      "$type": "TerminalRule",
+      "name": "CHAR",
+      "definition": {
+        "$type": "RegexToken",
+        "regex": "/'([^'\\\\\\\\]|\\\\\\\\.)'/",
         "parenthesized": false
       },
       "fragment": false,

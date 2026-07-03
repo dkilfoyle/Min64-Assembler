@@ -15,6 +15,7 @@ import {
 import { MinasmGeneratedSharedModule, MinasmModelGeneratedModule } from "./generated/module.js";
 import { MinasmValidator, registerValidationChecks } from "./minasm-validator.js";
 import { MinasmScopeComputation } from "./minasm-scope.js";
+import { MinasmConverter } from "./minasm-value.js";
 
 /**
  * Declaration of custom services - add your own service classes here.
@@ -42,6 +43,10 @@ const MinasmModule: Module<MinasmServices, PartialLangiumServices & MinasmAddedS
   },
   references: {
     ScopeComputation: (services) => new MinasmScopeComputation(services),
+  },
+  parser: {
+    // override the default value converter
+    ValueConverter: (services) => new MinasmConverter(),
   },
 };
 
