@@ -6,7 +6,7 @@ import { ConsoleLogger } from "@codingame/monaco-vscode-log-service-override";
 import { createMinasmMonacoConfig, loadMinasmWorkerRegular } from "./minasm/config/minasmConfig";
 import "./App.css";
 
-import sourceCode from "./asm/mandel.asm?raw";
+import sourceCode from "../minimal/asm/invaders.asm?raw";
 
 const worker = loadMinasmWorkerRegular();
 const reader = new BrowserMessageReader(worker);

@@ -289,9 +289,9 @@ export type MinasmKeywordNames =
 export type MinasmTokenNames = MinasmTerminalNames | MinasmKeywordNames;
 
 export interface BinaryExpression extends langium.AstNode {
-    readonly $container: BinaryExpression | Instruction;
+    readonly $container: BinaryExpression | Instruction | UnaryExpression;
     readonly $type: 'BinaryExpression';
-    left: Expression;
+    left: Expression | MenmonicLiteral;
     operator: '+' | '-';
     right: Expression;
 }
@@ -307,23 +307,18 @@ export function isBinaryExpression(item: unknown): item is BinaryExpression {
     return reflection.isInstance(item, BinaryExpression.$type);
 }
 
-export interface ByteLiteral extends langium.AstNode {
-    readonly $container: BinaryExpression | Data | Instruction;
-    readonly $type: 'ByteLiteral';
-    value: number;
-}
+export type ByteExpression = CharLiteral | Imm8Literal;
 
-export const ByteLiteral = {
-    $type: 'ByteLiteral',
-    value: 'value'
+export const ByteExpression = {
+    $type: 'ByteExpression'
 } as const;
 
-export function isByteLiteral(item: unknown): item is ByteLiteral {
-    return reflection.isInstance(item, ByteLiteral.$type);
+export function isByteExpression(item: unknown): item is ByteExpression {
+    return reflection.isInstance(item, ByteExpression.$type);
 }
 
 export interface CharLiteral extends langium.AstNode {
-    readonly $container: BinaryExpression | Data | Instruction;
+    readonly $container: BinaryExpression | Data | Instruction | UnaryExpression;
     readonly $type: 'CharLiteral';
     value: string;
 }
@@ -352,7 +347,7 @@ export function isData(item: unknown): item is Data {
     return reflection.isInstance(item, Data.$type);
 }
 
-export type DataItem = ByteLiteral | CharLiteral | StringLiteral | WordLiteral;
+export type DataItem = CharLiteral | Imm16Literal | Imm8Literal | StringLiteral;
 
 export const DataItem = {
     $type: 'DataItem'
@@ -402,7 +397,7 @@ export function isEntry(item: unknown): item is Entry {
     return reflection.isInstance(item, Entry.$type);
 }
 
-export type Expression = BinaryExpression | ByteLiteral | CharLiteral | LabelReference | StringLiteral | WordLiteral;
+export type Expression = BinaryExpression | ByteExpression | MenmonicLiteral | UnaryExpression | WordExpression;
 
 export const Expression = {
     $type: 'Expression'
@@ -410,6 +405,40 @@ export const Expression = {
 
 export function isExpression(item: unknown): item is Expression {
     return reflection.isInstance(item, Expression.$type);
+}
+
+export interface Imm16Literal extends langium.AstNode {
+    readonly $container: BinaryExpression | Data | Instruction | UnaryExpression;
+    readonly $type: 'Imm16Literal';
+    neg: boolean;
+    value: number;
+}
+
+export const Imm16Literal = {
+    $type: 'Imm16Literal',
+    neg: 'neg',
+    value: 'value'
+} as const;
+
+export function isImm16Literal(item: unknown): item is Imm16Literal {
+    return reflection.isInstance(item, Imm16Literal.$type);
+}
+
+export interface Imm8Literal extends langium.AstNode {
+    readonly $container: BinaryExpression | Data | Instruction | UnaryExpression;
+    readonly $type: 'Imm8Literal';
+    neg: boolean;
+    value: number;
+}
+
+export const Imm8Literal = {
+    $type: 'Imm8Literal',
+    neg: 'neg',
+    value: 'value'
+} as const;
+
+export function isImm8Literal(item: unknown): item is Imm8Literal {
+    return reflection.isInstance(item, Imm8Literal.$type);
 }
 
 export interface Instruction extends langium.AstNode {
@@ -445,20 +474,33 @@ export function isLabel(item: unknown): item is Label {
 }
 
 export interface LabelReference extends langium.AstNode {
-    readonly $container: BinaryExpression | Instruction;
+    readonly $container: BinaryExpression | Instruction | UnaryExpression;
     readonly $type: 'LabelReference';
-    byteSelector?: '<' | '>';
     label: langium.Reference<Label>;
 }
 
 export const LabelReference = {
     $type: 'LabelReference',
-    byteSelector: 'byteSelector',
     label: 'label'
 } as const;
 
 export function isLabelReference(item: unknown): item is LabelReference {
     return reflection.isInstance(item, LabelReference.$type);
+}
+
+export interface MenmonicLiteral extends langium.AstNode {
+    readonly $container: BinaryExpression | Instruction | UnaryExpression;
+    readonly $type: 'MenmonicLiteral';
+    value: OPERATOR0 | OPERATOR1 | OPERATOR2 | OPERATOR3;
+}
+
+export const MenmonicLiteral = {
+    $type: 'MenmonicLiteral',
+    value: 'value'
+} as const;
+
+export function isMenmonicLiteral(item: unknown): item is MenmonicLiteral {
+    return reflection.isInstance(item, MenmonicLiteral.$type);
 }
 
 export type Operand = Expression;
@@ -511,7 +553,7 @@ export function isProgram(item: unknown): item is Program {
 }
 
 export interface StringLiteral extends langium.AstNode {
-    readonly $container: BinaryExpression | Data | Instruction;
+    readonly $container: Data;
     readonly $type: 'StringLiteral';
     value: string;
 }
@@ -525,37 +567,53 @@ export function isStringLiteral(item: unknown): item is StringLiteral {
     return reflection.isInstance(item, StringLiteral.$type);
 }
 
-export interface WordLiteral extends langium.AstNode {
-    readonly $container: BinaryExpression | Data | Instruction;
-    readonly $type: 'WordLiteral';
-    value: number;
+export interface UnaryExpression extends langium.AstNode {
+    readonly $container: BinaryExpression | Instruction | UnaryExpression;
+    readonly $type: 'UnaryExpression';
+    expr: Expression;
+    operator: '<' | '>';
 }
 
-export const WordLiteral = {
-    $type: 'WordLiteral',
-    value: 'value'
+export const UnaryExpression = {
+    $type: 'UnaryExpression',
+    expr: 'expr',
+    operator: 'operator'
 } as const;
 
-export function isWordLiteral(item: unknown): item is WordLiteral {
-    return reflection.isInstance(item, WordLiteral.$type);
+export function isUnaryExpression(item: unknown): item is UnaryExpression {
+    return reflection.isInstance(item, UnaryExpression.$type);
+}
+
+export type WordExpression = Imm16Literal | LabelReference;
+
+export const WordExpression = {
+    $type: 'WordExpression'
+} as const;
+
+export function isWordExpression(item: unknown): item is WordExpression {
+    return reflection.isInstance(item, WordExpression.$type);
 }
 
 export type MinasmAstType = {
     BinaryExpression: BinaryExpression
-    ByteLiteral: ByteLiteral
+    ByteExpression: ByteExpression
     CharLiteral: CharLiteral
     Data: Data
     DataItem: DataItem
     Directive: Directive
     Entry: Entry
     Expression: Expression
+    Imm16Literal: Imm16Literal
+    Imm8Literal: Imm8Literal
     Instruction: Instruction
     Label: Label
     LabelReference: LabelReference
+    MenmonicLiteral: MenmonicLiteral
     Operand: Operand
     Program: Program
     StringLiteral: StringLiteral
-    WordLiteral: WordLiteral
+    UnaryExpression: UnaryExpression
+    WordExpression: WordExpression
 }
 
 export class MinasmAstReflection extends langium.AbstractAstReflection {
@@ -575,14 +633,11 @@ export class MinasmAstReflection extends langium.AbstractAstReflection {
             },
             superTypes: [Expression.$type]
         },
-        ByteLiteral: {
-            name: ByteLiteral.$type,
+        ByteExpression: {
+            name: ByteExpression.$type,
             properties: {
-                value: {
-                    name: ByteLiteral.value
-                }
             },
-            superTypes: [DataItem.$type, Expression.$type]
+            superTypes: [Expression.$type]
         },
         CharLiteral: {
             name: CharLiteral.$type,
@@ -591,7 +646,7 @@ export class MinasmAstReflection extends langium.AbstractAstReflection {
                     name: CharLiteral.value
                 }
             },
-            superTypes: [DataItem.$type, Expression.$type]
+            superTypes: [ByteExpression.$type, DataItem.$type]
         },
         Data: {
             name: Data.$type,
@@ -654,6 +709,34 @@ export class MinasmAstReflection extends langium.AbstractAstReflection {
             },
             superTypes: [Operand.$type]
         },
+        Imm16Literal: {
+            name: Imm16Literal.$type,
+            properties: {
+                neg: {
+                    name: Imm16Literal.neg,
+                    defaultValue: false,
+                    optional: true
+                },
+                value: {
+                    name: Imm16Literal.value
+                }
+            },
+            superTypes: [DataItem.$type, WordExpression.$type]
+        },
+        Imm8Literal: {
+            name: Imm8Literal.$type,
+            properties: {
+                neg: {
+                    name: Imm8Literal.neg,
+                    defaultValue: false,
+                    optional: true
+                },
+                value: {
+                    name: Imm8Literal.value
+                }
+            },
+            superTypes: [ByteExpression.$type, DataItem.$type]
+        },
         Instruction: {
             name: Instruction.$type,
             properties: {
@@ -680,13 +763,18 @@ export class MinasmAstReflection extends langium.AbstractAstReflection {
         LabelReference: {
             name: LabelReference.$type,
             properties: {
-                byteSelector: {
-                    name: LabelReference.byteSelector,
-                    optional: true
-                },
                 label: {
                     name: LabelReference.label,
                     referenceType: Label.$type
+                }
+            },
+            superTypes: [WordExpression.$type]
+        },
+        MenmonicLiteral: {
+            name: MenmonicLiteral.$type,
+            properties: {
+                value: {
+                    name: MenmonicLiteral.value
                 }
             },
             superTypes: [Expression.$type]
@@ -715,16 +803,25 @@ export class MinasmAstReflection extends langium.AbstractAstReflection {
                     name: StringLiteral.value
                 }
             },
-            superTypes: [DataItem.$type, Expression.$type]
+            superTypes: [DataItem.$type]
         },
-        WordLiteral: {
-            name: WordLiteral.$type,
+        UnaryExpression: {
+            name: UnaryExpression.$type,
             properties: {
-                value: {
-                    name: WordLiteral.value
+                expr: {
+                    name: UnaryExpression.expr
+                },
+                operator: {
+                    name: UnaryExpression.operator
                 }
             },
-            superTypes: [DataItem.$type, Expression.$type]
+            superTypes: [Expression.$type]
+        },
+        WordExpression: {
+            name: WordExpression.$type,
+            properties: {
+            },
+            superTypes: [Expression.$type]
         }
     } as const satisfies langium.AstMetaData
 }

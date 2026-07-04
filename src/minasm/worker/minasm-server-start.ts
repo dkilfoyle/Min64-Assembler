@@ -37,9 +37,12 @@ export const start = async (port: MessagePort | DedicatedWorkerGlobalScope, name
     for (const document of documents) {
       if (isProgram(document.parseResult.value)) {
         console.log("On build phase", document.parseResult.value.entries);
-        assembler.assemble(document.parseResult.value);
-        console.log(assembler.hex.toString());
-        console.log(Array.from(assembler.labels.entries()).map(([k, v]) => `${k} -> ${v.toString(16)}`));
+        if (document.diagnostics?.length == 0) {
+          console.log("No diagnostics, assembling...");
+          assembler.assemble(document.parseResult.value);
+          console.log(assembler.hex.toString());
+          console.log(Array.from(assembler.labels.entries()).map(([k, v]) => `${k} -> ${v.toString(16)}`));
+        }
       }
     }
   });

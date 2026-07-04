@@ -13,13 +13,13 @@ Entry:
 
 Directive:
   dir=("#emit"|"#mute"|"#page") |
-    dir="#org" address=HEX16;
+  (dir="#org" address=HEX16);
 
 Data:
-  items+=DataItem ("," items+=DataItem)*;
+  items+=DataItem ("," items+=DataItem)* ","?;
 
 DataItem:
-  ByteLiteral | WordLiteral | CharLiteral | StringLiteral;
+  Imm8Literal | Imm16Literal | CharLiteral | StringLiteral;
 
 Label:
   name=ID ":";
@@ -29,8 +29,6 @@ Instruction:
   op=OPERATOR1 operands+=Operand |
   op=OPERATOR2 operands+=Operand "," operands+=Operand |
   op=OPERATOR3 operands+=Operand "," operands+=Operand "," operands+=Operand;
-
-
 
 OPERATOR0 returns string:
   "NOP"|"OUT"|"INT"|"INK"|"WIN"|"SEC"|"CLC"|"LL0"|"LL1"|"LL2"|"LL3"|"LL4"|"LL5"|"LL6"|"LL7"|"RL0"|"RL1"|
@@ -64,29 +62,40 @@ Expression:
   Addition;
 
 Addition infers Expression:
-  Primary ({infer BinaryExpression.left=current} operator=("+"|"-") right=Primary)*;
+  (MenmonicLiteral {infer BinaryExpression.left=current} operator=("+"|"-") right=Primary) |
+  (Primary ({infer BinaryExpression.left=current} operator=("+"|"-") right=Primary)*);
 
 Primary infers Expression:
-  ByteLiteral | 
-  WordLiteral | 
-  CharLiteral | 
-  StringLiteral |
-  LabelReference;
+  ByteExpression | 
+  WordExpression | 
+  UnaryExpression;
+
+MenmonicLiteral:
+  value=(OPERATOR0 | OPERATOR1 | OPERATOR2 | OPERATOR3);
+
+ByteExpression:
+  Imm8Literal | CharLiteral;
+
+WordExpression:
+  Imm16Literal | LabelReference;
+
+UnaryExpression:
+  operator=("<"|">") expr=Expression;
 
 CharLiteral:
   value=CHAR;
 
+LabelReference:
+  label=[Label:ID];
+
+Imm8Literal:
+  neg?="-"? value=(HEX8 | DECI);
+
+Imm16Literal:
+  neg?="-"? value=HEX16;
+
 StringLiteral:
   value=STRING;
-
-LabelReference:
-  byteSelector=("<"|">")? label=[Label:ID];
-
-ByteLiteral:
-  value=(HEX8 | DECI);
-
-WordLiteral:
-  value=HEX16;
 
 terminal HEX16 returns number: /0x[0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f]/;
 terminal HEX8 returns number: /0x[0-9A-Fa-f][0-9A-Fa-f]/;

@@ -1,11 +1,17 @@
 import {
   Data,
+  Expression,
   isBinaryExpression,
-  isByteLiteral,
+  isByteExpression,
   isCharLiteral,
+  isExpression,
+  isImm16Literal,
+  isImm8Literal,
   isLabelReference,
+  isMenmonicLiteral,
   isStringLiteral,
-  isWordLiteral,
+  isUnaryExpression,
+  isWordExpression,
   type Directive,
   type Instruction,
   type Operand,
@@ -22,10 +28,10 @@ class IntelHex {
   public records: Array<IRecord> = [];
   public buffer: Array<number> = [];
   public address = 0;
-  reset() {
+  reset(initialAddress: number) {
     this.records = [];
     this.buffer = [];
-    this.address = 0;
+    this.address = initialAddress;
   }
   setAddress(addr: number) {
     if (addr < 0 || addr > 0xffff) throw Error("Address must be between 0 and 0xffff");
@@ -63,6 +69,7 @@ class IntelHex {
       hex += checksum.toString(16).padStart(2, "0");
       hex += "\n";
     }
+    hex += ":00000001FF\n";
     return hex.toUpperCase();
   }
 }
@@ -73,13 +80,13 @@ class Assembler {
   public isEmit = true;
   labels: Map<string, number> = new Map();
   hex: IntelHex = new IntelHex();
+  locations: Map<number, { offset?: number; length?: number }> = new Map();
 
   reset() {
     this.mc = 0x2000;
     this.pc = 0x2000;
     this.isEmit = true;
     this.labels.clear();
-    this.hex.reset();
   }
 
   emit(bytes: Uint8Array) {
@@ -101,7 +108,7 @@ class Assembler {
     // First pass: process directives and instructions to set up memory and program counter
     for (const entry of ast.entries) {
       if (entry.directive) {
-        this.processDirective(entry.directive);
+        this.processDirective(entry.directive, 1);
       } else if (entry.instruction) {
         advance(this.calculateInstructionSize(entry.instruction));
       } else if (entry.data) {
@@ -115,10 +122,11 @@ class Assembler {
     this.mc = 0x2000;
     this.pc = 0x2000;
     this.isEmit = true;
+    this.hex.reset(0x2000);
 
     for (const entry of ast.entries) {
       if (entry.directive) {
-        this.processDirective(entry.directive);
+        this.processDirective(entry.directive, 2);
       } else if (entry.instruction) {
         this.emitInstruction(entry.instruction);
       } else if (entry.data) {
@@ -130,7 +138,16 @@ class Assembler {
     return new Uint8Array(0);
   }
 
-  processDirective(dir: Directive): void {
+  processDirective(dir: Directive, pass = 1): void {
+    const setAddress = (addr: number) => {
+      if (addr < 0 || addr > 0xffff) throw Error("Address must be between 0 and 0xffff");
+      this.pc = addr;
+      if (this.isEmit) {
+        this.mc = this.pc;
+        if (pass === 2) this.hex.setAddress(this.mc);
+      }
+    };
+
     switch (dir.dir) {
       case "#emit":
         this.isEmit = true;
@@ -139,15 +156,11 @@ class Assembler {
         this.isEmit = false;
         break;
       case "#page":
-        this.mc = (this.mc + 0x100) & 0xff00;
+        setAddress((this.pc + 0xff) & 0xff00);
         break;
       case "#org":
         if (dir.address !== undefined) {
-          this.pc = dir.address;
-          if (this.isEmit) {
-            this.mc = this.pc;
-            this.hex.setAddress(this.mc);
-          }
+          setAddress(dir.address);
         } else throw Error("#org directive needs address");
     }
   }
@@ -177,27 +190,33 @@ class Assembler {
   calculateDataSize(data: Data): number {
     let size = 0;
     for (const item of data.items) {
-      if (isByteLiteral(item)) size += 1;
-      else if (isWordLiteral(item)) size += 2;
-      else if (isCharLiteral(item)) size += 1;
-      else if (isStringLiteral(item)) size += item.value.length;
-      else throw new Error(`Unknown data item type: ${item}`);
+      if (isExpression(item)) size += this.calculateExpressionSize(item);
+      if (isStringLiteral(item)) size += item.value.length;
     }
     return size;
   }
 
+  calculateExpressionSize(expr: Expression): number {
+    if (isBinaryExpression(expr)) return Math.max(this.calculateExpressionSize(expr.left) + this.calculateExpressionSize(expr.right));
+    else if (isUnaryExpression(expr)) return expr.operator == "-" ? this.calculateExpressionSize(expr.expr) : 1;
+    else if (isByteExpression(expr)) return 1;
+    else if (isWordExpression(expr)) return 2;
+    else throw new Error(`Unknown data item type: ${expr}`);
+  }
+
   emitData(data: Data): void {
     for (const item of data.items) {
-      if (isByteLiteral(item)) this.emit(new Uint8Array([item.value & 0xff]));
-      else if (isWordLiteral(item)) this.emit(new Uint8Array([item.value & 0xff, (item.value >> 8) & 0xff]));
-      else if (isCharLiteral(item)) this.emit(new Uint8Array([item.value.charCodeAt(0) & 0xff]));
-      else if (isStringLiteral(item)) {
-        const bytes: number[] = [];
-        for (let i = 0; i < item.value.length; i++) {
-          bytes.push(item.value.charCodeAt(i) & 0xff);
-        }
-        this.emit(new Uint8Array(bytes));
-      } else throw new Error(`Unknown data item type: ${item}`);
+      if (isStringLiteral(item)) {
+        this.emit(new Uint8Array(item.value.split("").map((c) => c.charCodeAt(0) & 0xff)));
+      } else if (isExpression(item)) {
+        const value = this.processExpression(item);
+        const size = this.calculateExpressionSize(item);
+        if (size === 1) {
+          this.emit(new Uint8Array([value & 0xff]));
+        } else if (size === 2) {
+          this.emit(new Uint8Array([value & 0xff, (value >> 8) & 0xff]));
+        } else throw new Error(`Unknown expression size: ${size}`);
+      } else throw Error(`Unknown data item type: ${item}`);
     }
   }
 
@@ -205,6 +224,7 @@ class Assembler {
     const info = instructionInfo[instr.op];
     const bytes = [info.opcode];
     instr.operands.forEach((operand, i) => bytes.push(...this.processOperand(operand, i == 0 ? info.args & 0x0f : (info.args & 0xf0) >> 4)));
+    this.locations.set(this.pc, { offset: instr.$cstNode?.offset, length: instr.$cstNode?.length });
     this.emit(new Uint8Array(bytes));
   }
 
@@ -236,18 +256,6 @@ class Assembler {
   }
 
   processExpression(expr: Operand): number {
-    if (isByteLiteral(expr)) return expr.value;
-    else if (isWordLiteral(expr)) return expr.value;
-    else if (isCharLiteral(expr)) return expr.value.charCodeAt(0);
-    else if (isLabelReference(expr)) {
-      const labelName = expr.label.ref?.name;
-      if (!labelName) throw new Error("Label reference has no name");
-      const address = this.labels.get(labelName);
-      if (address === undefined) throw new Error(`Undefined label: ${labelName}`);
-      if (expr.byteSelector === "<") return address & 0xff;
-      else if (expr.byteSelector === ">") return (address >> 8) & 0xff;
-      else return address;
-    }
     if (isBinaryExpression(expr)) {
       // Handle binary expressions (e.g., label + offset)
       const left = this.processExpression(expr.left);
@@ -258,8 +266,32 @@ class Assembler {
         case "-":
           return left - right;
         default:
-          throw new Error(`Unknown binary operator: ${expr.operator}`);
+          throw new Error(`Unknown binary operator: ${expr}`);
       }
+    } else if (isUnaryExpression(expr)) {
+      const value = this.processExpression(expr.expr);
+      switch (expr.operator) {
+        case "<":
+          return value & 0xff;
+        case ">":
+          return (value >> 8) & 0xff;
+        default:
+          throw new Error(`Unknown unary operator: ${expr}`);
+      }
+    } else if (isCharLiteral(expr)) {
+      return expr.value.charCodeAt(0);
+    } else if (isImm8Literal(expr)) {
+      return expr.neg ? -expr.value : expr.value;
+    } else if (isImm16Literal(expr)) {
+      return expr.neg ? -expr.value : expr.value;
+    } else if (isMenmonicLiteral(expr)) {
+      return instructionInfo[expr.value].opcode;
+    } else if (isLabelReference(expr)) {
+      const labelName = expr.label.ref?.name;
+      if (!labelName) throw new Error("Label reference has no name");
+      const address = this.labels.get(labelName);
+      if (address === undefined) throw new Error(`Undefined label: ${labelName}`);
+      return address;
     } else throw new Error(`Unknown expression type: ${expr}`);
   }
 }
