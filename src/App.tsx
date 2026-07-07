@@ -6,7 +6,10 @@ import { ConsoleLogger } from "@codingame/monaco-vscode-log-service-override";
 import { createMinasmMonacoConfig, loadMinasmWorkerRegular } from "./minasm/config/minasmConfig";
 import "./App.css";
 
-import sourceCode from "../minimal/asm/invaders.asm?raw";
+import sourceCode from "../minimal/asm/mandel.asm?raw";
+// const sourceCode = `
+// SetTable:  "\\"
+// `;
 
 const worker = loadMinasmWorkerRegular();
 const reader = new BrowserMessageReader(worker);
@@ -22,7 +25,7 @@ type Status = "loading" | "ready" | "error";
 const monacoConfig = createMinasmMonacoConfig({
   languageServerId: "react",
   codeContent: {
-    text: sourceCode,
+    text: sourceCode.replaceAll(`"\\"`, `"\\\\"`),
     uri: "/workspace/example.minasm",
   },
   worker,

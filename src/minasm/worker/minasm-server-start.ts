@@ -63,6 +63,8 @@ export const start = async (port: MessagePort | DedicatedWorkerGlobalScope, name
 const buildDoc = (doc: LangiumDocument) => {
   if (isProgram(doc.parseResult.value) && doc.diagnostics?.length == 0) {
     console.log("No diagnostics, assembling...");
+    console.log(doc.parseResult.value.entries);
+    console.log("assembling....");
     assembler.assemble(doc.parseResult.value);
     console.log(assembler.hex.toString());
     console.log(Array.from(assembler.labels.entries()).map(([k, v]) => `${k} -> ${v.toString(16)}`));

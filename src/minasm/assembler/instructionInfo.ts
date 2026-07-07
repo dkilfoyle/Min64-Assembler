@@ -519,6 +519,8 @@ const helps = [
   "Set bank register to 0xff (FLASH OFF) after boot-up",
 ];
 
+// argument info: bits0-3: argtype1, bits 4-7: argtype2
+// types: 0=none, 1=expect byte, 2=zero page, 3=expect word, 4=fast jump
 const argss = [
   0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
   0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x03, 0x02, 0x03, 0x02, 0x03, 0x02, 0x03, 0x02, 0x03, 0x02, 0x03, 0x02, 0x03,
@@ -539,7 +541,9 @@ interface IInstructionInfo {
   hex: string;
   instr: string;
   help: string;
-  args: number;
+  argType: number[];
+  argSize: number[];
+  totalSize: number;
 }
 
 export const instructionInfo = Array(255)
@@ -549,8 +553,24 @@ export const instructionInfo = Array(255)
     const hex = i.toString(16).toUpperCase().padStart(2, "0");
     const instr = mens[i];
     const help = helps[i];
-    const args = argss[i];
-    acc[instr] = { opcode, hex, instr, help, args };
+    let argType: number[] = [];
+    let argSize: number[] = [];
+    let x = argss[i] & 0x0f;
+    if (x != 0) {
+      argType.push(x);
+      argSize.push(x == 3 ? 2 : 1);
+    }
+    x = (argss[i] & 0xf0) >> 4;
+    if (x != 0) {
+      argType.push(x);
+      argSize.push(x == 3 ? 2 : 1);
+    }
+    if (instr == "RZP") {
+      argType.push(1);
+      argSize.push(1);
+    }
+    const totalSize = 1 + argSize.reduce((size, cur) => (size += cur), 0);
+    acc[instr] = { opcode, hex, instr, help, argType, argSize, totalSize };
     return acc;
   }, {});
 

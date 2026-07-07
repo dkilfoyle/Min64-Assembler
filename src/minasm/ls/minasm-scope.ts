@@ -1,30 +1,28 @@
-import type { AstNode, AstNodeDescription, LangiumDocument, Scope } from "langium";
-import { DefaultScopeComputation, DefaultScopeProvider, MultiMap } from "langium";
-import { type MinasmServices } from "./minasm-module.js";
-import { type Program } from "./generated/ast.js";
+// import type { AstNode, AstNodeDescription, LangiumDocument, Scope } from "langium";
+// import { DefaultScopeComputation, DefaultScopeProvider, MultiMap } from "langium";
+// import { type MinasmServices } from "./minasm-module.js";
+// import { isLabel, type Program } from "./generated/ast.js";
 
-export class MinasmScopeComputation extends DefaultScopeComputation {
-  constructor(services: MinasmServices) {
-    super(services);
-  }
+// export class MinasmScopeComputation extends DefaultScopeComputation {
+//   constructor(services: MinasmServices) {
+//     super(services);
+//   }
 
-  // protected override addLocalSymbol(node: AstNode, document: LangiumDocument, symbols: MultiMap<AstNode, AstNodeDescription>): void {
-  //   const container = node.$container?.$container;
-  //   if (container) {
-  //     const name = this.nameProvider.getName(node);
-  //     if (name) {
-  //       symbols.add(container, this.descriptions.createDescription(node, name, document));
-  //     }
-  //   }
-  // }
+//   override async collectExportedSymbols(document: LangiumDocument): Promise<AstNodeDescription[]> {
+//     // export all labels to global scope
+//     const descriptions: AstNodeDescription[] = [];
+//     const model = document.parseResult.value as Program;
+//     model.entries.forEach((entry) => {
+//       if (isLabel(entry)) descriptions.push(this.descriptions.createDescription(entry, entry.name));
+//     });
+//     return descriptions;
+//   }
+// }
 
-  override async collectExportedSymbols(document: LangiumDocument): Promise<AstNodeDescription[]> {
-    // export all labels to global scope
-    const descriptions: AstNodeDescription[] = [];
-    const model = document.parseResult.value as Program;
-    model.entries.forEach((entry) => {
-      if (entry.label) descriptions.push(this.descriptions.createDescription(entry.label!, entry.label!.name));
-    });
-    return descriptions;
-  }
-}
+// Not needed if Label is sibling of Data
+// eg
+// Entry:
+//   Label | Data;
+// don't use
+// Entry:
+//  label=Label | data=Data;

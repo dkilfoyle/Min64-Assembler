@@ -4,8 +4,11 @@ import { GrammarAST } from "langium";
 export class MinasmConverter extends DefaultValueConverter {
   protected override runConverter(rule: GrammarAST.AbstractRule, input: string, cstNode: CstNode): ValueType {
     // Intercept your custom CHAR terminal rule
-    if (rule.name === "CHAR") {
-      return input.slice(1, -1); // Remove the surrounding single quotes
+    // if (rule.name === "CHAR") {
+    //   return input.slice(1, -1); // Remove the surrounding single quotes
+    // }
+    if (rule.name == "LABELID") {
+      return input.slice(0, -1);
     }
 
     // Fall back to default behavior for INT, STRING, ID, etc.
