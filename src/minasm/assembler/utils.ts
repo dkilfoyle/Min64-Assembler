@@ -3,7 +3,6 @@ import {
   isBinaryExpression,
   isUnaryExpression,
   isMenmonicLiteral,
-  Instruction,
   isStringLiteral,
   Data,
   isAddress,
@@ -11,21 +10,14 @@ import {
   isImmediateWordLiteral,
 } from "../ls/generated/ast";
 
-export const getExpressionSize = (expr: Expression, isLSB: boolean): number => {
-  if (isBinaryExpression(expr)) return Math.max(getExpressionSize(expr.left, isLSB), getExpressionSize(expr.right, isLSB));
+export const getExpressionSize = (expr: Expression): number => {
+  if (isBinaryExpression(expr)) return Math.max(getExpressionSize(expr.left), getExpressionSize(expr.right));
   else if (isUnaryExpression(expr)) return 1;
   else if (isMenmonicLiteral(expr)) return 1;
   else if (isImmediateByteLiteral(expr)) return 1;
-  else if (isImmediateWordLiteral(expr)) return isLSB ? 1 : 2;
-  else if (isAddress(expr)) return isLSB ? 1 : 2;
+  else if (isImmediateWordLiteral(expr)) return 2;
+  else if (isAddress(expr))
+    return 2; // LabelReference | StarLiteral
   else if (isStringLiteral(expr)) return expr.value.length;
   else throw new Error(`Unknown data item type: ${expr}`);
-};
-
-export const getDataSize = (data: Data, isLSB = false): number => {
-  let size = 0;
-  for (const expr of data.items) {
-    size += getExpressionSize(expr, isLSB);
-  }
-  return size;
 };

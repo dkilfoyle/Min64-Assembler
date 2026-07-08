@@ -19,7 +19,7 @@ import {
   type Program,
 } from "../ls/generated/ast";
 import { instructionInfo } from "./instructionInfo";
-import { getExpressionSize } from "./utils";
+import { getDataSize, getExpressionSize } from "./utils";
 
 interface IRecord {
   bytes: Uint8Array;
@@ -113,16 +113,15 @@ class Assembler {
   public isEmit = true;
   labels: Map<string, number> = new Map();
   hex: IntelHex = new IntelHex();
-  curInstr: Instruction | null = null;
   locations: Map<number, { offset?: number; length?: number }> = new Map();
+  savedExpressions: { expr: Expression; pc: number; mc: number; isLSB: boolean }[] = [];
 
-  reset(pass: 1 | 2) {
+  reset() {
     this.mc = 0x2000;
     this.pc = 0x2000;
     this.isEmit = true;
-    this.curInstr = null;
-    if (pass == 2) this.hex.reset(0x2000);
-    if (pass == 1) this.labels.clear();
+    this.labels.clear();
+    this.savedExpressions = [];
   }
 
   emitByte(x: number) {
@@ -141,41 +140,92 @@ class Assembler {
     this.pc += 2;
   }
 
-  advanceBytes(x: number) {
-    if (this.isEmit) {
-      this.mc += x;
-    }
-    this.pc += x;
-  }
-
   assemble(ast: Program) {
-    this.reset(FIRST_PASS);
+    this.reset();
 
     // First pass: process directives and instructions to set up memory and program counter
-    for (const entry of ast.entries) {
-      if (isDirective(entry)) this.processDirective(entry);
-      else if (isLabel(entry)) this.processLabel(entry);
-      else if (isInstruction(entry)) this.processInstruction(entry);
-      else if (isData(entry)) {
-        if (this.curInstr) this.processArgs(entry);
-        else this.processData(entry);
-      }
+    let i = 0;
+    while (i < ast.entries.length) {
+      const entry = ast.entries[i];
+      if (isDirective(entry)) {
+        this.processDirective(entry);
+        i++;
+      } else if (isInstruction(entry)) {
+        i = this.processInstruction(ast, entry, i);
+      } else if (isLabel(entry)) {
+        this.processLabel(entry);
+        i++;
+      } else if (isData(entry)) {
+        this.processData(entry);
+        i++;
+      } else i++;
     }
 
-    // dump label calculated in first pass
+    this.hex.flush();
+
     (Array.from(this.labels).map(([lbl, addr]) => console.log(`0x${addr.toString(16).padStart(4, "0")} ${lbl}`)), this.hex.debug());
 
-    this.reset(SECOND_PASS);
-
-    // Second pass: processExpressions and emit bytes
-    for (const entry of ast.entries) {
-      if (isDirective(entry)) this.processDirective(entry);
-      else if (isInstruction(entry)) this.emitInstruction(entry);
-      else if (isData(entry)) {
-        if (this.curInstr) this.emitArgs(entry);
-        else this.emitData(entry);
-      }
+    // Second pass: recalculate address expressions and replace value in hex record
+    for (const expr of this.savedExpressions) {
+      this.mc = expr.mc;
+      this.pc = expr.pc;
+      const result = this.processExpression(expr.expr, expr.expr, expr.isLSB, SECOND_PASS);
+      if (expr.isLSB) this.hex.replaceValue(this.mc, result.result & 0xff, 1);
+      else this.hex.replaceValue(this.mc, result.result, result.size);
     }
+  }
+
+  processInstruction(ast: Program, instr: Instruction, i: number) {
+    const info = instructionInfo[instr.op];
+    this.emitByte(info.opcode);
+
+    // this.locations.set(this.pc, { offset: instr.$cstNode?.offset, length: instr.$cstNode?.length });
+
+    if (info.argType.length == 0) {
+      return i + 1;
+    } // 0 argument instruction
+
+    // skip past any intervening labels or comments to the arguments (Data)
+    while (!isData(ast.entries[++i])) {
+      const nextEntry = ast.entries[i];
+      if (isDirective(nextEntry)) throw Error(`Entry ${i}: Unexpected directive between instruction and it's arguments`);
+      if (isLabel(nextEntry)) this.labels.set(nextEntry.name, this.pc);
+    }
+
+    // found the instruction arguments (Data) - consume them according to expected size
+    const data = ast.entries[i] as Data;
+    let dataIndex = 0;
+    for (let argIndex = 0; argIndex < info.argType.length; argIndex++) {
+      const expectedArgType = info.argType[argIndex];
+      const expectedArgSize = info.argSize[argIndex];
+      const isLSB = expectedArgType == 2 || expectedArgType == 4;
+      const curDataItem = data.items[dataIndex++];
+      const curDataResult = this.processExpression(curDataItem, curDataItem, isLSB, FIRST_PASS);
+
+      if (expectedArgSize == 1) {
+        if (isLSB) {
+          // curDataResult should be an address of word size
+          if (curDataResult.size != 2) throw Error("isLSB and didn't get word");
+          this.emitByte(curDataResult.result & 0xff);
+        } else {
+          if (curDataResult.size != 1) throw Error("expecting byte but got word and not isLSB");
+          this.emitByte(curDataResult.result);
+        }
+      } else if (expectedArgSize == 2) {
+        if (curDataResult.size == 1) {
+          const nextDataItem = data.items[dataIndex++];
+          const nextDataResult = this.processExpression(nextDataItem, nextDataItem, isLSB, FIRST_PASS);
+          if (nextDataResult.size !== 1) throw Error("expectedArgSize is 2 and should have received two consecutive bytes");
+          this.emitByte(curDataResult.result);
+          this.emitByte(nextDataResult.result);
+        } else if (curDataResult.size == 2) {
+          this.emitWord(curDataResult.result);
+        } else throw Error("Unknown curDataResult.size");
+      } else throw Error("invalid expected arg size");
+    }
+
+    if (dataIndex != data.items.length) throw Error(`Entry ${i}: More data items than expected arguments`);
+    return i + 1;
   }
 
   processDirective(dir: Directive): void {
@@ -205,101 +255,13 @@ class Assembler {
     }
   }
 
-  processLabel(label: Label) {
-    this.labels.set(label.name, this.pc);
-  }
-
-  processInstruction(instr: Instruction) {
-    const info = instructionInfo[instr.op];
-    this.advanceBytes(1);
-    if (info.argSize.length) this.curInstr = instr; // the next Data will be arguments for this instruction
-  }
-
-  processArgs(data: Data) {
-    // found the instruction arguments (Data) - check match expected and consume
-    const info = instructionInfo[this.curInstr!.op];
-    let size = 0;
-    let dataIndex = 0;
-    for (let argIndex = 0; argIndex < info.argType.length; argIndex++) {
-      const expectedArgType = info.argType[argIndex];
-      const expectedArgSize = info.argSize[argIndex];
-      const isLSB = expectedArgType == 2 || expectedArgType == 4;
-      const curDataItem = data.items[dataIndex++];
-      const curDataSize = getExpressionSize(curDataItem);
-
-      if (expectedArgSize == 1) {
-        if (isLSB) {
-          // curDataItem should be an address of word size
-          if (curDataSize != 2) throw Error("isLSB and didn't get word");
-          size += 1;
-        } else {
-          if (curDataSize != 1) throw Error("expecting byte but got word and not isLSB");
-          size += 1;
-        }
-      } else if (expectedArgSize == 2) {
-        if (curDataSize == 1) {
-          const nextDataItem = data.items[dataIndex++];
-          const nextDataSize = getExpressionSize(nextDataItem);
-          if (nextDataSize !== 1) throw Error("expectedArgSize is 2 and should have received two consecutive bytes");
-          size += 2; // 2 consecutive bytes
-        } else if (curDataSize == 2) {
-          size += 2;
-        } else throw Error("Unknown curDataResult.size");
-      } else throw Error("invalid expected arg size");
-    }
-
-    if (dataIndex != data.items.length) throw Error(`More data items than expected arguments`);
-    if (size + 1 != info.totalSize) throw Error("Data does not match expected argument size");
-    this.advanceBytes(size);
-    this.curInstr = null;
-  }
-
-  processData(data: Data) {
-    let size = 0;
-    for (const item of data.items) {
-      size += getExpressionSize(item);
-    }
-    this.advanceBytes(size);
-  }
-
-  emitInstruction(instr: Instruction) {
-    const info = instructionInfo[instr.op];
-    this.emitByte(info.opcode);
-    this.curInstr = instr;
-  }
-
-  emitArgs(data: Data) {
-    // found the instruction arguments (Data) - emit them applying LSB where expected
-    const info = instructionInfo[this.curInstr!.op];
-    let dataIndex = 0;
-    for (let argIndex = 0; argIndex < info.argType.length; argIndex++) {
-      const expectedArgSize = info.argSize[argIndex];
-      const curDataItem = data.items[dataIndex++];
-      const curDataResult = this.calculateExpression(curDataItem);
-
-      if (expectedArgSize == 1) {
-        this.emitByte(curDataResult.result & 0xff);
-      } else if (expectedArgSize == 2) {
-        if (curDataResult.size == 1) {
-          const nextDataItem = data.items[dataIndex++];
-          const nextDataResult = this.calculateExpression(nextDataItem);
-          this.emitByte(curDataResult.result);
-          this.emitByte(nextDataResult.result);
-        } else if (curDataResult.size == 2) {
-          this.emitWord(curDataResult.result);
-        }
-      }
-    }
-    this.curInstr = null;
-  }
-
-  emitData(data: Data): void {
+  processData(data: Data): void {
     for (const item of data.items) {
       if (isStringLiteral(item) && item.value.length > 1) {
         // "....."
         item.value.split("").forEach((x) => this.emitByte(x.charCodeAt(0)));
       } else {
-        const curDataResult = this.calculateExpression(item);
+        const curDataResult = this.processExpression(item, item, FIRST_PASS);
         if (curDataResult.size == 1) this.emitByte(curDataResult.result);
         else if (curDataResult.size == 2) this.emitWord(curDataResult.result);
         else throw Error("Unknown data result size");
@@ -307,11 +269,15 @@ class Assembler {
     }
   }
 
-  calculateExpression(expr: Expression): { result: number; size: number } {
+  processLabel(label: Label) {
+    this.labels.set(label.name, this.pc);
+  }
+
+  processExpression(expr: Expression, parentExpr: Expression, isLSB: boolean, pass: number): { result: number; size: number } {
     if (isBinaryExpression(expr)) {
       // Handle binary expressions (e.g., label + offset)
-      const left = this.calculateExpression(expr.left);
-      const right = this.calculateExpression(expr.right);
+      const left = this.processExpression(expr.left, parentExpr, isLSB, pass);
+      const right = this.processExpression(expr.right, parentExpr, isLSB, pass);
       let x: number;
       switch (expr.operator) {
         case "+":
@@ -325,7 +291,7 @@ class Assembler {
       }
       return { result: x, size: Math.max(left.size, right.size) };
     } else if (isUnaryExpression(expr)) {
-      let x = this.calculateExpression(expr.expr).result;
+      let x = this.processExpression(expr.expr, parentExpr, isLSB, pass).result;
       if (expr.operator == "<") return { result: x & 0xff, size: 1 };
       else return { result: (x >> 8) & 0xff, size: 1 };
     } else if (isStringLiteral(expr)) {
@@ -338,11 +304,24 @@ class Assembler {
     } else if (isMenmonicLiteral(expr)) {
       return { result: instructionInfo[expr.value].opcode, size: 1 };
     } else if (isLabelReference(expr)) {
-      const labelName = expr.label.ref?.name;
-      if (!labelName) throw new Error("Label reference has no name");
-      const address = this.labels.get(labelName);
-      if (address === undefined) throw new Error(`Undefined label: ${labelName}`);
-      return { result: address, size: 2 };
+      if (pass == 1) {
+        // label values have not been determined yet
+        // return a dummy value 0xffff
+        // save the parent expr, pc, mc so that it can be recalculated in pass 2
+        this.savedExpressions.push({
+          expr: parentExpr,
+          pc: this.pc,
+          mc: this.mc,
+          isLSB,
+        });
+        return { result: 0xffff, size: 2 };
+      } else {
+        const labelName = expr.label.ref?.name;
+        if (!labelName) throw new Error("Label reference has no name");
+        const address = this.labels.get(labelName);
+        if (address === undefined) throw new Error(`Undefined label: ${labelName}`);
+        return { result: address, size: 2 };
+      }
     } else if (isStarLiteral(expr)) {
       return { result: this.pc, size: 2 };
     } else throw new Error(`Unknown expression type: ${expr}`);
