@@ -566,8 +566,8 @@ export const instructionInfo = Array(255)
       argSize.push(x == 3 ? 2 : 1);
     }
     if (instr == "RZP") {
-      argType.push(1);
-      argSize.push(1);
+      argType = [2, 1, 1];
+      argSize = [1, 1, 1];
     }
     const totalSize = 1 + argSize.reduce((size, cur) => (size += cur), 0);
     acc[instr] = { opcode, hex, instr, help, argType, argSize, totalSize };

@@ -6,7 +6,7 @@ import { ConsoleLogger } from "@codingame/monaco-vscode-log-service-override";
 import { createMinasmMonacoConfig, loadMinasmWorkerRegular } from "./minasm/config/minasmConfig";
 import "./App.css";
 
-import sourceCode from "../minimal/asm/mandel.asm?raw";
+import sourceCode from "../minimal/asm/os.asm?raw";
 // const sourceCode = `
 // SetTable:  "\\"
 // `;

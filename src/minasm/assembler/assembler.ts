@@ -228,13 +228,10 @@ class Assembler {
       const curDataSize = getExpressionSize(curDataItem);
 
       if (expectedArgSize == 1) {
-        if (isLSB) {
-          // curDataItem should be an address of word size
-          if (curDataSize != 2) throw Error("isLSB and didn't get word");
+        if (curDataSize == 1 || isLSB) {
           size += 1;
         } else {
-          if (curDataSize != 1) throw Error("expecting byte but got word and not isLSB");
-          size += 1;
+          throw Error("expecting byte but got word and not isLSB");
         }
       } else if (expectedArgSize == 2) {
         if (curDataSize == 1) {
@@ -265,7 +262,7 @@ class Assembler {
   emitInstruction(instr: Instruction) {
     const info = instructionInfo[instr.op];
     this.emitByte(info.opcode);
-    this.curInstr = instr;
+    if (info.argType.length) this.curInstr = instr;
   }
 
   emitArgs(data: Data) {
@@ -344,7 +341,7 @@ class Assembler {
       if (address === undefined) throw new Error(`Undefined label: ${labelName}`);
       return { result: address, size: 2 };
     } else if (isStarLiteral(expr)) {
-      return { result: this.pc, size: 2 };
+      return { result: this.mc, size: 2 };
     } else throw new Error(`Unknown expression type: ${expr}`);
   }
 }
