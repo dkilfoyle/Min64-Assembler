@@ -231,7 +231,7 @@ class Assembler {
         if (curDataSize == 1 || isLSB) {
           size += 1;
         } else {
-          throw Error("expecting byte but got word and not isLSB");
+          throw Error(`Invalid args for entry ${data.$containerIndex}`);
         }
       } else if (expectedArgSize == 2) {
         if (curDataSize == 1) {
@@ -241,12 +241,12 @@ class Assembler {
           size += 2; // 2 consecutive bytes
         } else if (curDataSize == 2) {
           size += 2;
-        } else throw Error("Unknown curDataResult.size");
-      } else throw Error("invalid expected arg size");
+        } else throw Error(`Invalid data item size ${curDataSize} at entry ${data.$containerIndex}`);
+      }
     }
 
     if (dataIndex != data.items.length) throw Error(`More data items than expected arguments`);
-    if (size + 1 != info.totalSize) throw Error("Data does not match expected argument size");
+    if (size != info.totalSize) throw Error("Data does not match expected argument size");
     this.advanceBytes(size);
     this.curInstr = null;
   }

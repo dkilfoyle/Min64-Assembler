@@ -19,5 +19,22 @@ export const getExpressionSize = (expr: Expression): number => {
   else if (isAddress(expr))
     return 2; // LabelReference | StarLiteral
   else if (isStringLiteral(expr)) return expr.value.length;
-  else throw new Error(`Unknown data item type: ${expr}`);
+  else return 0;
+};
+
+export const getArgTypes = (argTypes: number[]) => {
+  return argTypes
+    .map((a) => {
+      switch (a) {
+        case 1:
+          return "byte";
+        case 2:
+          return "zero-page";
+        case 3:
+          return "word";
+        case 4:
+          return "fast-jump";
+      }
+    })
+    .join(",");
 };

@@ -569,7 +569,7 @@ export const instructionInfo = Array(255)
       argType = [2, 1, 1];
       argSize = [1, 1, 1];
     }
-    const totalSize = 1 + argSize.reduce((size, cur) => (size += cur), 0);
+    const totalSize = argSize.reduce((size, cur) => (size += cur), 0);
     acc[instr] = { opcode, hex, instr, help, argType, argSize, totalSize };
     return acc;
   }, {});
