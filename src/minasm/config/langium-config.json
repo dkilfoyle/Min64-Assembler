@@ -5,7 +5,7 @@
     {
       "id": "minasm",
       "grammar": "../ls/minasm.langium",
-      "fileExtensions": [".minasm"]
+      "fileExtensions": [".masm"]
     }
   ]
 }

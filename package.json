@@ -8,7 +8,8 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "langium:minasm": "langium generate -f src/minasm/config/langium-config.json"
+    "langium:minasm": "langium generate -f src/minasm/config/langium-config.json",
+    "langium:minmin": "langium generate -f src/minmin/config/langium-config.json"
   },
   "dependencies": {
     "@typefox/monaco-editor-react": "^7.7.0",

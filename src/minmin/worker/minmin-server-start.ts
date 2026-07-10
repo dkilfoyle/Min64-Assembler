@@ -8,8 +8,7 @@
 import { DocumentState, EmptyFileSystem, type AstNode, type LangiumDocument } from "langium";
 import { startLanguageServer } from "langium/lsp";
 import { BrowserMessageReader, BrowserMessageWriter, createConnection } from "vscode-languageserver/browser";
-import { createMinasmServices } from "../ls/minasm-module.js";
-import { assembler } from "../assembler/assembler.js";
+import { createMinminServices } from "../ls/minmin-module.js";
 import { isProgram } from "../ls/generated/ast.js";
 
 let messageReader: BrowserMessageReader | undefined;
@@ -31,7 +30,7 @@ export const start = async (port: MessagePort | DedicatedWorkerGlobalScope, name
   const connection = createConnection(messageReader, messageWriter);
 
   // Inject the shared services and language-specific services
-  const { shared } = await createMinasmServices({ connection, ...EmptyFileSystem });
+  const { shared } = await createMinminServices({ connection, ...EmptyFileSystem });
 
   // Start the language server with the shared services
   startLanguageServer(shared);
@@ -61,13 +60,9 @@ export const start = async (port: MessagePort | DedicatedWorkerGlobalScope, name
 };
 
 const buildDoc = (doc: LangiumDocument) => {
-  console.log("builddoc");
+  console.log("minim builddoc: ", doc);
   if (isProgram(doc.parseResult.value) && doc.diagnostics?.length == 0) {
     console.log("No diagnostics, assembling...");
-    console.log(doc.parseResult.value.entries);
-    console.log("assembling....");
-    assembler.assemble(doc.parseResult.value);
-    console.log(assembler.hex.toString());
-    console.log(Array.from(assembler.labels.entries()).map(([k, v]) => `${k} -> ${v.toString(16)}`));
+    console.log(doc.parseResult.value.elements);
   }
 };

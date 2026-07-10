@@ -1,0 +1,14 @@
+{
+  "projectName": "Minmin",
+  "out": "../ls/generated",
+  "languages": [
+    {
+      "id": "minmin",
+      "grammar": "../ls/minmin.langium",
+      "fileExtensions": [".min"],
+      "textMate": {
+        "out": "../syntaxes/minmin.tmLanguage.json"
+      }
+    }
+  ]
+}

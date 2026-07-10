@@ -4,44 +4,64 @@ import { BrowserMessageReader, BrowserMessageWriter } from "vscode-languageclien
 import { LogLevel } from "@codingame/monaco-vscode-api";
 import { ConsoleLogger } from "@codingame/monaco-vscode-log-service-override";
 import { createMinasmMonacoConfig, loadMinasmWorkerRegular } from "./minasm/config/minasmConfig";
+import { createMinminMonacoConfig, loadMinminWorkerRegular } from "./minmin/config/minminConfig";
 import "./App.css";
+import type { EditorApp } from "monaco-languageclient/editorApp";
+import type { LanguageClientManager } from "monaco-languageclient/lcwrapper";
+import { createMonacoApiConfig } from "./MonacoApiConfig";
 
-// import sourceCode from "../minimal/asm/os.asm?raw";
-const sourceCode = `
+// import masmCode from "../minimal/asm/os.asm?raw";
+const masmCode = `
 ; hello
 MIW 10, 0xff
 `;
 
-const worker = loadMinasmWorkerRegular();
-const reader = new BrowserMessageReader(worker);
-const writer = new BrowserMessageWriter(worker);
+const minCode = `
+a=10 # hello
+`;
+
+// const reader = new BrowserMessageReader(minAsmWorker);
+// const writer = new BrowserMessageWriter(minAsmWorker);
+// reader.listen((message) => {
+//   logger.info("Received message from worker:", message);
+// });
+
 const logger = new ConsoleLogger(LogLevel.Off);
-reader.listen((message) => {
-  logger.info("Received message from worker:", message);
-});
 
 // ── Component ─────────────────────────────────────────────────────────────────
 type Status = "loading" | "ready" | "error";
 
-const monacoConfig = createMinasmMonacoConfig({
-  languageServerId: "react",
+const minAsmMonacoConfig = createMinasmMonacoConfig({
+  languageServerId: "react-masm",
   codeContent: {
-    text: sourceCode.replaceAll(`"\\"`, `"\\\\"`),
-    uri: "/workspace/example.minasm",
+    text: masmCode.replaceAll(`"\\"`, `"\\\\"`),
+    uri: "/workspace/example.masm",
   },
-  worker,
-  messageTransports: { reader, writer },
+  worker: loadMinasmWorkerRegular(),
+  // messageTransports: { reader, writer },
 });
+
+const minMinMonacoConfig = createMinminMonacoConfig({
+  languageServerId: "react-min",
+  codeContent: {
+    text: minCode,
+    uri: "/workspace/example.min",
+  },
+  worker: loadMinminWorkerRegular(),
+  // messageTransports: { reader, writer },
+});
+
+const vscodeApiConfig = createMonacoApiConfig([minAsmMonacoConfig.extensionConfig, minMinMonacoConfig.extensionConfig]);
 
 export default function App() {
   const [status, setStatus] = useState<Status>("loading");
   const [errorMsg, setErrorMsg] = useState("");
 
-  const handleEditorStartDone = useCallback(() => {
+  const handleEditorStartDone = useCallback((editorApp?: EditorApp) => {
     setStatus("ready");
   }, []);
 
-  const handleLCStartDone = useCallback(() => {
+  const handleLCStartDone = useCallback((lcsManager: LanguageClientManager) => {
     setStatus("ready");
   }, []);
 
@@ -65,15 +85,26 @@ export default function App() {
       </header>
 
       <main className="ide-main">
-        <MonacoEditorReactComp
-          style={{ height: "100%", width: "100%" }}
-          vscodeApiConfig={monacoConfig.vscodeApiConfig}
-          editorAppConfig={monacoConfig.editorAppConfig}
-          languageClientConfig={monacoConfig.languageClientConfig}
-          onEditorStartDone={handleEditorStartDone}
-          onLanguageClientsStartDone={handleLCStartDone}
-          onError={handleError}
-        />
+        <div style={{ display: "flex", height: "100%" }}>
+          <MonacoEditorReactComp
+            style={{ height: "100%", width: "100%" }}
+            vscodeApiConfig={vscodeApiConfig}
+            editorAppConfig={minMinMonacoConfig.editorAppConfig}
+            languageClientConfig={minMinMonacoConfig.languageClientConfig}
+            onEditorStartDone={handleEditorStartDone}
+            onLanguageClientsStartDone={handleLCStartDone}
+            onError={handleError}
+          />
+          <MonacoEditorReactComp
+            style={{ height: "100%", width: "100%" }}
+            vscodeApiConfig={vscodeApiConfig}
+            editorAppConfig={minAsmMonacoConfig.editorAppConfig}
+            languageClientConfig={minAsmMonacoConfig.languageClientConfig}
+            onEditorStartDone={handleEditorStartDone}
+            onLanguageClientsStartDone={handleLCStartDone}
+            onError={handleError}
+          />
+        </div>
       </main>
     </div>
   );

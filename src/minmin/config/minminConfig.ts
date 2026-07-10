@@ -10,17 +10,17 @@ import { configureDefaultWorkerFactory } from "monaco-languageclient/workerFacto
 import type { CodeContent, EditorAppConfig } from "monaco-languageclient/editorApp";
 
 // cannot be imported with assert as json contains comments
-import minasmLanguageConfig from "./language-config.json?raw";
-import minasmTextmate from "../syntaxes/minasm.tmLanguage.json?raw";
+import minminLanguageConfig from "./language-config.json?raw";
+import minminTextmate from "../syntaxes/minmin.tmLanguage.json?raw";
 
-export const loadMinasmWorkerRegular = () => {
-  return new Worker(new URL("../worker/minasm-server.ts", import.meta.url), {
+export const loadMinminWorkerRegular = () => {
+  return new Worker(new URL("../worker/minmin-server.ts", import.meta.url), {
     type: "module",
-    name: "Minasm Server Regular",
+    name: "Minmin Server Regular",
   });
 };
 
-export const createMinasmMonacoConfig = (params: {
+export const createMinminMonacoConfig = (params: {
   languageServerId: string;
   codeContent: CodeContent;
   worker: Worker;
@@ -28,13 +28,13 @@ export const createMinasmMonacoConfig = (params: {
   messageTransports?: MessageTransports;
 }): { extensionConfig: ExtensionConfig; languageClientConfig: LanguageClientConfig; editorAppConfig: EditorAppConfig } => {
   const extensionFilesOrContents = new Map<string, string | URL>();
-  extensionFilesOrContents.set(`/${params.languageServerId}-minasm-configuration.json`, minasmLanguageConfig);
-  extensionFilesOrContents.set(`/${params.languageServerId}-minasm-grammar.json`, minasmTextmate);
+  extensionFilesOrContents.set(`/${params.languageServerId}-minmin-configuration.json`, minminLanguageConfig);
+  extensionFilesOrContents.set(`/${params.languageServerId}-minmin-grammar.json`, minminTextmate);
 
   const languageClientConfig: LanguageClientConfig = {
-    languageId: "minasm",
+    languageId: "minmin",
     clientOptions: {
-      documentSelector: ["minasm"],
+      documentSelector: ["minmin"],
     },
     connection: {
       options: {
@@ -47,9 +47,10 @@ export const createMinasmMonacoConfig = (params: {
     logLevel: LogLevel.Off,
   };
 
+  // this will be injected into shared vscodeApiConfig
   const extensionConfig: ExtensionConfig = {
     config: {
-      name: "minasm-example",
+      name: "minmin-example",
       publisher: "DK",
       version: "1.0.0",
       engines: {
@@ -58,17 +59,17 @@ export const createMinasmMonacoConfig = (params: {
       contributes: {
         languages: [
           {
-            id: "minasm",
-            extensions: [".masm"],
-            aliases: ["minasm", "Minasm"],
-            configuration: `./${params.languageServerId}-minasm-configuration.json`,
+            id: "minmin",
+            extensions: [".min"],
+            aliases: ["minmin", "Minmin"],
+            configuration: `./${params.languageServerId}-minmin-configuration.json`,
           },
         ],
         grammars: [
           {
-            language: "minasm",
-            scopeName: "source.masm",
-            path: `./${params.languageServerId}-minasm-grammar.json`,
+            language: "minmin",
+            scopeName: "source.minmin",
+            path: `./${params.languageServerId}-minmin-grammar.json`,
           },
         ],
       },
