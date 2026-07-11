@@ -60,7 +60,7 @@ export const start = async (port: MessagePort | DedicatedWorkerGlobalScope, name
 };
 
 const buildDoc = (doc: LangiumDocument) => {
-  console.log("minim builddoc: ", doc);
+  console.log("minim builddoc: ", doc.parseResult.value.elements);
   if (isProgram(doc.parseResult.value) && doc.diagnostics?.length == 0) {
     console.log("No diagnostics, assembling...");
     console.log(doc.parseResult.value.elements);

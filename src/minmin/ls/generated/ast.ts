@@ -15,7 +15,7 @@ export const MinminTerminals = {
     HEXNUMBER: /0x[0-9A-Fa-f]+/,
     DECIMALNUMBER: /[0-9]+/,
     STRING: /"(\\.|[^"])*"|'(\\.|[^'])*'/,
-    ID: /[a-zA-Z_][a-zA-Z0-9_]*/,
+    ID: /[a-zA-Z][a-zA-Z0-9]*/,
 };
 
 export type MinminTerminalNames = keyof typeof MinminTerminals;
@@ -61,28 +61,10 @@ export type MinminKeywordNames =
     | "return"
     | "use"
     | "while"
-    | "xor";
+    | "xor"
+    | "|";
 
 export type MinminTokenNames = MinminTerminalNames | MinminKeywordNames;
-
-export interface ArgumentDeclaration extends langium.AstNode {
-    readonly $container: Def | SimpleLine;
-    readonly $type: 'ArgumentDeclaration';
-    and: boolean;
-    name: string;
-    type: 'char' | 'int';
-}
-
-export const ArgumentDeclaration = {
-    $type: 'ArgumentDeclaration',
-    and: 'and',
-    name: 'name',
-    type: 'type'
-} as const;
-
-export function isArgumentDeclaration(item: unknown): item is ArgumentDeclaration {
-    return reflection.isInstance(item, ArgumentDeclaration.$type);
-}
 
 export interface ArrayIndex extends langium.AstNode {
     readonly $container: VariableAssignment | VariableCalcAssignment;
@@ -100,10 +82,10 @@ export function isArrayIndex(item: unknown): item is ArrayIndex {
 }
 
 export interface BinaryExpression extends langium.AstNode {
-    readonly $container: ArrayIndex | BinaryExpression | CompoundExpression | If | VariableDeclaration;
+    readonly $container: ArrayIndex | BinaryExpression | CompoundExpression | ElIf | If | VariableDeclaration | VariableReference | While;
     readonly $type: 'BinaryExpression';
     left: Expression;
-    operator: '!=' | '*' | '+' | '-' | '/' | '<' | '<<' | '<=' | '=' | '==' | '>' | '>=' | '>>' | 'and' | 'or' | 'xor';
+    operator: '!=' | '*' | '+' | '-' | '/' | '<' | '<<' | '<=' | '==' | '>' | '>=' | '>>' | 'and' | 'or' | 'xor';
     right: Expression;
 }
 
@@ -118,37 +100,50 @@ export function isBinaryExpression(item: unknown): item is BinaryExpression {
     return reflection.isInstance(item, BinaryExpression.$type);
 }
 
+export interface Block extends langium.AstNode {
+    readonly $type: 'Block';
+    elements: Array<Element>;
+}
+
+export const Block = {
+    $type: 'Block',
+    elements: 'elements'
+} as const;
+
+export function isBlock(item: unknown): item is Block {
+    return reflection.isInstance(item, Block.$type);
+}
+
 export type BreakStatement = 'break';
 
 export function isBreakStatement(item: unknown): item is BreakStatement {
     return item === 'break';
 }
 
-export type CallStatement = NumberLiteral;
+export interface CallStatement extends langium.AstNode {
+    readonly $container: Block | Def | ElIf | If | Program | While;
+    readonly $type: 'CallStatement';
+    address: NumberLiteral;
+}
 
 export const CallStatement = {
-    $type: 'CallStatement'
+    $type: 'CallStatement',
+    address: 'address'
 } as const;
 
 export function isCallStatement(item: unknown): item is CallStatement {
     return reflection.isInstance(item, CallStatement.$type);
 }
 
-export interface CompoundExpression extends FunctionCall, VariableAssignment, VariableDeclaration {
-    readonly $container: SimpleLine;
+export interface CompoundExpression extends langium.AstNode {
+    readonly $container: FunctionCall | PrintStatement | ReturnStatement | VariableAssignment | VariableDeclaration;
     readonly $type: 'CompoundExpression';
     exprs: Array<Expression>;
 }
 
 export const CompoundExpression = {
     $type: 'CompoundExpression',
-    expr: 'expr',
-    exprs: 'exprs',
-    functionName: 'functionName',
-    id: 'id',
-    index: 'index',
-    name: 'name',
-    type: 'type'
+    exprs: 'exprs'
 } as const;
 
 export function isCompoundExpression(item: unknown): item is CompoundExpression {
@@ -156,25 +151,25 @@ export function isCompoundExpression(item: unknown): item is CompoundExpression 
 }
 
 export interface Def extends langium.AstNode {
-    readonly $container: Def | ElIf | If | Program | While;
+    readonly $container: Block | Def | ElIf | If | Program | While;
     readonly $type: 'Def';
-    argDefs: Array<NamedElement>;
-    block: Array<Element>;
+    body: Array<Element | SimpleStatement>;
     name: string;
+    params: Array<NamedElement>;
 }
 
 export const Def = {
     $type: 'Def',
-    argDefs: 'argDefs',
-    block: 'block',
-    name: 'name'
+    body: 'body',
+    name: 'name',
+    params: 'params'
 } as const;
 
 export function isDef(item: unknown): item is Def {
     return reflection.isInstance(item, Def.$type);
 }
 
-export type Element = Def | If | SimpleLine | Use | While;
+export type Element = Def | If | SimpleStatement | Use | While;
 
 export const Element = {
     $type: 'Element'
@@ -187,11 +182,13 @@ export function isElement(item: unknown): item is Element {
 export interface ElIf extends langium.AstNode {
     readonly $container: If;
     readonly $type: 'ElIf';
-    elifBlock: Array<Element>;
+    condition: Expression;
+    elifBlock: Array<Element | SimpleStatement>;
 }
 
 export const ElIf = {
     $type: 'ElIf',
+    condition: 'condition',
     elifBlock: 'elifBlock'
 } as const;
 
@@ -199,7 +196,7 @@ export function isElIf(item: unknown): item is ElIf {
     return reflection.isInstance(item, ElIf.$type);
 }
 
-export type Expression = BinaryExpression | FunctionCall | NumberLiteral | StringLiteral | UnaryExpression;
+export type Expression = BinaryExpression | FunctionCall | NumberLiteral | StringLiteral | UnaryExpression | VariableReference;
 
 export const Expression = {
     $type: 'Expression'
@@ -210,13 +207,15 @@ export function isExpression(item: unknown): item is Expression {
 }
 
 export interface FunctionCall extends langium.AstNode {
-    readonly $container: ArrayIndex | BinaryExpression | CompoundExpression | If | SimpleLine | VariableDeclaration;
-    readonly $type: 'CompoundExpression' | 'FunctionCall';
+    readonly $container: ArrayIndex | BinaryExpression | Block | CompoundExpression | Def | ElIf | If | Program | VariableDeclaration | VariableReference | While;
+    readonly $type: 'FunctionCall';
+    args: Array<CompoundExpression>;
     functionName: langium.Reference<Def>;
 }
 
 export const FunctionCall = {
     $type: 'FunctionCall',
+    args: 'args',
     functionName: 'functionName'
 } as const;
 
@@ -225,12 +224,12 @@ export function isFunctionCall(item: unknown): item is FunctionCall {
 }
 
 export interface If extends langium.AstNode {
-    readonly $container: Def | ElIf | If | Program | While;
+    readonly $container: Block | Def | ElIf | If | Program | While;
     readonly $type: 'If';
     condition: Expression;
     elifs: Array<ElIf>;
-    elseBlock: Array<Element>;
-    thenBlock: Array<Element>;
+    elseBlock: Array<Element | SimpleStatement>;
+    thenBlock: Array<Element | SimpleStatement>;
 }
 
 export const If = {
@@ -245,7 +244,7 @@ export function isIf(item: unknown): item is If {
     return reflection.isInstance(item, If.$type);
 }
 
-export type NamedElement = ArgumentDeclaration | VariableDeclaration;
+export type NamedElement = ParameterDeclaration | VariableDeclaration;
 
 export const NamedElement = {
     $type: 'NamedElement'
@@ -256,7 +255,7 @@ export function isNamedElement(item: unknown): item is NamedElement {
 }
 
 export interface NumberLiteral extends VariableCalcAssignment {
-    readonly $container: ArrayIndex | BinaryExpression | CompoundExpression | If | SimpleLine | VariableDeclaration;
+    readonly $container: ArrayIndex | BinaryExpression | CallStatement | CompoundExpression | ElIf | If | VariableDeclaration | VariableReference | While;
     readonly $type: 'NumberLiteral';
     value: number;
 }
@@ -273,10 +272,34 @@ export function isNumberLiteral(item: unknown): item is NumberLiteral {
     return reflection.isInstance(item, NumberLiteral.$type);
 }
 
-export type PrintStatement = CompoundExpression;
+export interface ParameterDeclaration extends langium.AstNode {
+    readonly $container: Block | Def | ElIf | If | Program | While;
+    readonly $type: 'ParameterDeclaration';
+    and: boolean;
+    name: string;
+    type: 'char' | 'int';
+}
+
+export const ParameterDeclaration = {
+    $type: 'ParameterDeclaration',
+    and: 'and',
+    name: 'name',
+    type: 'type'
+} as const;
+
+export function isParameterDeclaration(item: unknown): item is ParameterDeclaration {
+    return reflection.isInstance(item, ParameterDeclaration.$type);
+}
+
+export interface PrintStatement extends langium.AstNode {
+    readonly $container: Block | Def | ElIf | If | Program | While;
+    readonly $type: 'PrintStatement';
+    args: Array<CompoundExpression>;
+}
 
 export const PrintStatement = {
-    $type: 'PrintStatement'
+    $type: 'PrintStatement',
+    args: 'args'
 } as const;
 
 export function isPrintStatement(item: unknown): item is PrintStatement {
@@ -297,29 +320,19 @@ export function isProgram(item: unknown): item is Program {
     return reflection.isInstance(item, Program.$type);
 }
 
-export type ReturnStatement = CompoundExpression;
+export interface ReturnStatement extends langium.AstNode {
+    readonly $container: Block | Def | ElIf | If | Program | While;
+    readonly $type: 'ReturnStatement';
+    expr: CompoundExpression;
+}
 
 export const ReturnStatement = {
-    $type: 'ReturnStatement'
+    $type: 'ReturnStatement',
+    expr: 'expr'
 } as const;
 
 export function isReturnStatement(item: unknown): item is ReturnStatement {
     return reflection.isInstance(item, ReturnStatement.$type);
-}
-
-export interface SimpleLine extends langium.AstNode {
-    readonly $container: Def | ElIf | If | Program | While;
-    readonly $type: 'SimpleLine';
-    statements: Array<SimpleStatement>;
-}
-
-export const SimpleLine = {
-    $type: 'SimpleLine',
-    statements: 'statements'
-} as const;
-
-export function isSimpleLine(item: unknown): item is SimpleLine {
-    return reflection.isInstance(item, SimpleLine.$type);
 }
 
 export type SimpleStatement = CallStatement | FunctionCall | NamedElement | PrintStatement | ReturnStatement | VariableAssignment | VariableCalcAssignment;
@@ -333,7 +346,7 @@ export function isSimpleStatement(item: unknown): item is SimpleStatement {
 }
 
 export interface StringLiteral extends langium.AstNode {
-    readonly $container: ArrayIndex | BinaryExpression | CompoundExpression | Def | ElIf | If | Program | VariableDeclaration | While;
+    readonly $container: ArrayIndex | BinaryExpression | CompoundExpression | ElIf | If | VariableDeclaration | VariableReference | While;
     readonly $type: 'StringLiteral';
     value: string;
 }
@@ -348,8 +361,8 @@ export function isStringLiteral(item: unknown): item is StringLiteral {
 }
 
 export interface UnaryExpression extends langium.AstNode {
-    readonly $container: ArrayIndex | BinaryExpression | CompoundExpression | If | VariableDeclaration;
-    readonly $type: 'BinaryExpression' | 'CompoundExpression' | 'Expression' | 'FunctionCall' | 'NumberLiteral' | 'StringLiteral' | 'UnaryExpression';
+    readonly $container: ArrayIndex | BinaryExpression | CompoundExpression | ElIf | If | VariableDeclaration | VariableReference | While;
+    readonly $type: 'BinaryExpression' | 'Expression' | 'FunctionCall' | 'NumberLiteral' | 'StringLiteral' | 'UnaryExpression' | 'VariableReference';
     operator: '-' | 'not';
 }
 
@@ -362,10 +375,15 @@ export function isUnaryExpression(item: unknown): item is UnaryExpression {
     return reflection.isInstance(item, UnaryExpression.$type);
 }
 
-export type Use = StringLiteral;
+export interface Use extends langium.AstNode {
+    readonly $container: Block | Def | ElIf | If | Program | While;
+    readonly $type: 'Use';
+    lib: string;
+}
 
 export const Use = {
-    $type: 'Use'
+    $type: 'Use',
+    lib: 'lib'
 } as const;
 
 export function isUse(item: unknown): item is Use {
@@ -373,14 +391,16 @@ export function isUse(item: unknown): item is Use {
 }
 
 export interface VariableAssignment extends langium.AstNode {
-    readonly $container: SimpleLine;
-    readonly $type: 'CompoundExpression' | 'VariableAssignment';
-    id: langium.Reference<NamedElement>;
+    readonly $container: Block | Def | ElIf | If | Program | While;
+    readonly $type: 'VariableAssignment';
+    assignExpr?: CompoundExpression;
+    id?: langium.Reference<NamedElement>;
     index?: ArrayIndex;
 }
 
 export const VariableAssignment = {
     $type: 'VariableAssignment',
+    assignExpr: 'assignExpr',
     id: 'id',
     index: 'index'
 } as const;
@@ -390,7 +410,7 @@ export function isVariableAssignment(item: unknown): item is VariableAssignment 
 }
 
 export interface VariableCalcAssignment extends langium.AstNode {
-    readonly $container: ArrayIndex | BinaryExpression | CompoundExpression | If | SimpleLine | VariableDeclaration;
+    readonly $container: ArrayIndex | BinaryExpression | Block | CallStatement | CompoundExpression | Def | ElIf | If | Program | VariableDeclaration | VariableReference | While;
     readonly $type: 'NumberLiteral' | 'VariableCalcAssignment';
     id: langium.Reference<NamedElement>;
     index?: ArrayIndex;
@@ -409,16 +429,18 @@ export function isVariableCalcAssignment(item: unknown): item is VariableCalcAss
 }
 
 export interface VariableDeclaration extends langium.AstNode {
-    readonly $container: Def | SimpleLine;
-    readonly $type: 'CompoundExpression' | 'VariableDeclaration';
-    expr?: Expression;
+    readonly $container: Block | Def | ElIf | If | Program | While;
+    readonly $type: 'VariableDeclaration';
+    assignExpr?: CompoundExpression;
+    atexpr?: Expression;
     name: string;
     type: 'char' | 'int';
 }
 
 export const VariableDeclaration = {
     $type: 'VariableDeclaration',
-    expr: 'expr',
+    assignExpr: 'assignExpr',
+    atexpr: 'atexpr',
     name: 'name',
     type: 'type'
 } as const;
@@ -427,15 +449,38 @@ export function isVariableDeclaration(item: unknown): item is VariableDeclaratio
     return reflection.isInstance(item, VariableDeclaration.$type);
 }
 
+export interface VariableReference extends langium.AstNode {
+    readonly $container: ArrayIndex | BinaryExpression | CompoundExpression | ElIf | If | VariableDeclaration | VariableReference | While;
+    readonly $type: 'VariableReference';
+    expr?: Expression;
+    id: langium.Reference<NamedElement>;
+    isAddress: boolean;
+    pipeExpression?: Expression;
+}
+
+export const VariableReference = {
+    $type: 'VariableReference',
+    expr: 'expr',
+    id: 'id',
+    isAddress: 'isAddress',
+    pipeExpression: 'pipeExpression'
+} as const;
+
+export function isVariableReference(item: unknown): item is VariableReference {
+    return reflection.isInstance(item, VariableReference.$type);
+}
+
 export interface While extends langium.AstNode {
-    readonly $container: Def | ElIf | If | Program | While;
-    readonly $type: 'BinaryExpression' | 'CompoundExpression' | 'Expression' | 'FunctionCall' | 'NumberLiteral' | 'StringLiteral' | 'UnaryExpression' | 'While';
-    block: Array<Element>;
+    readonly $container: Block | Def | ElIf | If | Program | While;
+    readonly $type: 'While';
+    condition: Expression;
+    loop: Array<Element | SimpleStatement>;
 }
 
 export const While = {
     $type: 'While',
-    block: 'block'
+    condition: 'condition',
+    loop: 'loop'
 } as const;
 
 export function isWhile(item: unknown): item is While {
@@ -443,9 +488,9 @@ export function isWhile(item: unknown): item is While {
 }
 
 export type MinminAstType = {
-    ArgumentDeclaration: ArgumentDeclaration
     ArrayIndex: ArrayIndex
     BinaryExpression: BinaryExpression
+    Block: Block
     CallStatement: CallStatement
     CompoundExpression: CompoundExpression
     Def: Def
@@ -456,10 +501,10 @@ export type MinminAstType = {
     If: If
     NamedElement: NamedElement
     NumberLiteral: NumberLiteral
+    ParameterDeclaration: ParameterDeclaration
     PrintStatement: PrintStatement
     Program: Program
     ReturnStatement: ReturnStatement
-    SimpleLine: SimpleLine
     SimpleStatement: SimpleStatement
     StringLiteral: StringLiteral
     UnaryExpression: UnaryExpression
@@ -467,27 +512,12 @@ export type MinminAstType = {
     VariableAssignment: VariableAssignment
     VariableCalcAssignment: VariableCalcAssignment
     VariableDeclaration: VariableDeclaration
+    VariableReference: VariableReference
     While: While
 }
 
 export class MinminAstReflection extends langium.AbstractAstReflection {
     override readonly types = {
-        ArgumentDeclaration: {
-            name: ArgumentDeclaration.$type,
-            properties: {
-                and: {
-                    name: ArgumentDeclaration.and,
-                    defaultValue: false
-                },
-                name: {
-                    name: ArgumentDeclaration.name
-                },
-                type: {
-                    name: ArgumentDeclaration.type
-                }
-            },
-            superTypes: [NamedElement.$type]
-        },
         ArrayIndex: {
             name: ArrayIndex.$type,
             properties: {
@@ -512,58 +542,49 @@ export class MinminAstReflection extends langium.AbstractAstReflection {
             },
             superTypes: [Expression.$type]
         },
+        Block: {
+            name: Block.$type,
+            properties: {
+                elements: {
+                    name: Block.elements,
+                    defaultValue: []
+                }
+            },
+            superTypes: []
+        },
         CallStatement: {
             name: CallStatement.$type,
             properties: {
+                address: {
+                    name: CallStatement.address
+                }
             },
             superTypes: [SimpleStatement.$type]
         },
         CompoundExpression: {
             name: CompoundExpression.$type,
             properties: {
-                expr: {
-                    name: CompoundExpression.expr,
-                    optional: true
-                },
                 exprs: {
                     name: CompoundExpression.exprs,
                     defaultValue: []
-                },
-                functionName: {
-                    name: CompoundExpression.functionName,
-                    referenceType: Def.$type
-                },
-                id: {
-                    name: CompoundExpression.id,
-                    referenceType: NamedElement.$type
-                },
-                index: {
-                    name: CompoundExpression.index,
-                    optional: true
-                },
-                name: {
-                    name: CompoundExpression.name
-                },
-                type: {
-                    name: CompoundExpression.type
                 }
             },
-            superTypes: [VariableDeclaration.$type, VariableAssignment.$type, FunctionCall.$type, PrintStatement.$type, ReturnStatement.$type]
+            superTypes: []
         },
         Def: {
             name: Def.$type,
             properties: {
-                argDefs: {
-                    name: Def.argDefs,
-                    defaultValue: [],
-                    optional: true
-                },
-                block: {
-                    name: Def.block,
+                body: {
+                    name: Def.body,
                     defaultValue: []
                 },
                 name: {
                     name: Def.name
+                },
+                params: {
+                    name: Def.params,
+                    defaultValue: [],
+                    optional: true
                 }
             },
             superTypes: [Element.$type]
@@ -571,6 +592,9 @@ export class MinminAstReflection extends langium.AbstractAstReflection {
         ElIf: {
             name: ElIf.$type,
             properties: {
+                condition: {
+                    name: ElIf.condition
+                },
                 elifBlock: {
                     name: ElIf.elifBlock,
                     defaultValue: []
@@ -588,11 +612,16 @@ export class MinminAstReflection extends langium.AbstractAstReflection {
             name: Expression.$type,
             properties: {
             },
-            superTypes: [UnaryExpression.$type, While.$type]
+            superTypes: [UnaryExpression.$type]
         },
         FunctionCall: {
             name: FunctionCall.$type,
             properties: {
+                args: {
+                    name: FunctionCall.args,
+                    defaultValue: [],
+                    optional: true
+                },
                 functionName: {
                     name: FunctionCall.functionName,
                     referenceType: Def.$type
@@ -647,11 +676,32 @@ export class MinminAstReflection extends langium.AbstractAstReflection {
                     name: NumberLiteral.value
                 }
             },
-            superTypes: [VariableCalcAssignment.$type, CallStatement.$type, Expression.$type]
+            superTypes: [VariableCalcAssignment.$type, Expression.$type]
+        },
+        ParameterDeclaration: {
+            name: ParameterDeclaration.$type,
+            properties: {
+                and: {
+                    name: ParameterDeclaration.and,
+                    defaultValue: false,
+                    optional: true
+                },
+                name: {
+                    name: ParameterDeclaration.name
+                },
+                type: {
+                    name: ParameterDeclaration.type
+                }
+            },
+            superTypes: [NamedElement.$type]
         },
         PrintStatement: {
             name: PrintStatement.$type,
             properties: {
+                args: {
+                    name: PrintStatement.args,
+                    defaultValue: []
+                }
             },
             superTypes: [SimpleStatement.$type]
         },
@@ -669,24 +719,17 @@ export class MinminAstReflection extends langium.AbstractAstReflection {
         ReturnStatement: {
             name: ReturnStatement.$type,
             properties: {
-            },
-            superTypes: [SimpleStatement.$type]
-        },
-        SimpleLine: {
-            name: SimpleLine.$type,
-            properties: {
-                statements: {
-                    name: SimpleLine.statements,
-                    defaultValue: []
+                expr: {
+                    name: ReturnStatement.expr
                 }
             },
-            superTypes: [Element.$type]
+            superTypes: [SimpleStatement.$type]
         },
         SimpleStatement: {
             name: SimpleStatement.$type,
             properties: {
             },
-            superTypes: []
+            superTypes: [Element.$type]
         },
         StringLiteral: {
             name: StringLiteral.$type,
@@ -695,7 +738,7 @@ export class MinminAstReflection extends langium.AbstractAstReflection {
                     name: StringLiteral.value
                 }
             },
-            superTypes: [Expression.$type, Use.$type]
+            superTypes: [Expression.$type]
         },
         UnaryExpression: {
             name: UnaryExpression.$type,
@@ -709,15 +752,23 @@ export class MinminAstReflection extends langium.AbstractAstReflection {
         Use: {
             name: Use.$type,
             properties: {
+                lib: {
+                    name: Use.lib
+                }
             },
             superTypes: [Element.$type]
         },
         VariableAssignment: {
             name: VariableAssignment.$type,
             properties: {
+                assignExpr: {
+                    name: VariableAssignment.assignExpr,
+                    optional: true
+                },
                 id: {
                     name: VariableAssignment.id,
-                    referenceType: NamedElement.$type
+                    referenceType: NamedElement.$type,
+                    optional: true
                 },
                 index: {
                     name: VariableAssignment.index,
@@ -746,8 +797,12 @@ export class MinminAstReflection extends langium.AbstractAstReflection {
         VariableDeclaration: {
             name: VariableDeclaration.$type,
             properties: {
-                expr: {
-                    name: VariableDeclaration.expr,
+                assignExpr: {
+                    name: VariableDeclaration.assignExpr,
+                    optional: true
+                },
+                atexpr: {
+                    name: VariableDeclaration.atexpr,
                     optional: true
                 },
                 name: {
@@ -759,11 +814,37 @@ export class MinminAstReflection extends langium.AbstractAstReflection {
             },
             superTypes: [NamedElement.$type]
         },
+        VariableReference: {
+            name: VariableReference.$type,
+            properties: {
+                expr: {
+                    name: VariableReference.expr,
+                    optional: true
+                },
+                id: {
+                    name: VariableReference.id,
+                    referenceType: NamedElement.$type
+                },
+                isAddress: {
+                    name: VariableReference.isAddress,
+                    defaultValue: false,
+                    optional: true
+                },
+                pipeExpression: {
+                    name: VariableReference.pipeExpression,
+                    optional: true
+                }
+            },
+            superTypes: [Expression.$type]
+        },
         While: {
             name: While.$type,
             properties: {
-                block: {
-                    name: While.block,
+                condition: {
+                    name: While.condition
+                },
+                loop: {
+                    name: While.loop,
                     defaultValue: []
                 }
             },
