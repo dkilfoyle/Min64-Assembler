@@ -16,7 +16,7 @@ const masmCode = `
 MIW 10, 0xff
 `;
 
-import minCode from "./minmin/examples/blocks.min?raw";
+import minCode from "./minmin/examples/dots.min?raw";
 
 // const reader = new BrowserMessageReader(minAsmWorker);
 // const writer = new BrowserMessageWriter(minAsmWorker);

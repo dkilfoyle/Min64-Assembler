@@ -41,7 +41,7 @@ export const MinminModelGrammar = (): Grammar => loadedMinminModelGrammar ?? (lo
           {
             "$type": "RuleCall",
             "rule": {
-              "$ref": "#/rules@9"
+              "$ref": "#/rules@10"
             },
             "arguments": []
           },
@@ -55,7 +55,7 @@ export const MinminModelGrammar = (): Grammar => loadedMinminModelGrammar ?? (lo
               {
                 "$type": "RuleCall",
                 "rule": {
-                  "$ref": "#/rules@9"
+                  "$ref": "#/rules@10"
                 },
                 "arguments": []
               }
@@ -64,7 +64,7 @@ export const MinminModelGrammar = (): Grammar => loadedMinminModelGrammar ?? (lo
           {
             "$type": "RuleCall",
             "rule": {
-              "$ref": "#/rules@3"
+              "$ref": "#/rules@2"
             },
             "arguments": []
           },
@@ -85,46 +85,7 @@ export const MinminModelGrammar = (): Grammar => loadedMinminModelGrammar ?? (lo
           {
             "$type": "RuleCall",
             "rule": {
-              "$ref": "#/rules@8"
-            },
-            "arguments": []
-          }
-        ]
-      },
-      "entry": false,
-      "fragment": false,
-      "parameters": []
-    },
-    {
-      "$type": "ParserRule",
-      "name": "Block",
-      "definition": {
-        "$type": "Group",
-        "elements": [
-          {
-            "$type": "RuleCall",
-            "rule": {
-              "$ref": "#/rules@30"
-            },
-            "arguments": []
-          },
-          {
-            "$type": "Assignment",
-            "feature": "elements",
-            "operator": "+=",
-            "terminal": {
-              "$type": "RuleCall",
-              "rule": {
-                "$ref": "#/rules@1"
-              },
-              "arguments": []
-            },
-            "cardinality": "+"
-          },
-          {
-            "$type": "RuleCall",
-            "rule": {
-              "$ref": "#/rules@31"
+              "$ref": "#/rules@9"
             },
             "arguments": []
           }
@@ -151,7 +112,7 @@ export const MinminModelGrammar = (): Grammar => loadedMinminModelGrammar ?? (lo
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@19"
+                "$ref": "#/rules@20"
               },
               "arguments": []
             }
@@ -161,53 +122,11 @@ export const MinminModelGrammar = (): Grammar => loadedMinminModelGrammar ?? (lo
             "value": ":"
           },
           {
-            "$type": "Alternatives",
-            "elements": [
-              {
-                "$type": "Assignment",
-                "feature": "thenBlock",
-                "operator": "+=",
-                "terminal": {
-                  "$type": "RuleCall",
-                  "rule": {
-                    "$ref": "#/rules@9"
-                  },
-                  "arguments": []
-                }
-              },
-              {
-                "$type": "Group",
-                "elements": [
-                  {
-                    "$type": "RuleCall",
-                    "rule": {
-                      "$ref": "#/rules@30"
-                    },
-                    "arguments": []
-                  },
-                  {
-                    "$type": "Assignment",
-                    "feature": "thenBlock",
-                    "operator": "+=",
-                    "terminal": {
-                      "$type": "RuleCall",
-                      "rule": {
-                        "$ref": "#/rules@1"
-                      },
-                      "arguments": []
-                    },
-                    "cardinality": "+"
-                  },
-                  {
-                    "$type": "RuleCall",
-                    "rule": {
-                      "$ref": "#/rules@31"
-                    },
-                    "arguments": []
-                  }
-                ]
-              }
-            ]
+            "$type": "RuleCall",
+            "rule": {
+              "$ref": "#/rules@7"
+            },
+            "arguments": []
           },
           {
             "$type": "Assignment",
@@ -216,73 +135,23 @@ export const MinminModelGrammar = (): Grammar => loadedMinminModelGrammar ?? (lo
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@4"
+                "$ref": "#/rules@3"
               },
               "arguments": []
             },
             "cardinality": "*"
           },
           {
-            "$type": "Group",
-            "elements": [
-              {
-                "$type": "Keyword",
-                "value": "else"
+            "$type": "Assignment",
+            "feature": "elseBlock",
+            "operator": "=",
+            "terminal": {
+              "$type": "RuleCall",
+              "rule": {
+                "$ref": "#/rules@4"
               },
-              {
-                "$type": "Keyword",
-                "value": ":"
-              },
-              {
-                "$type": "Alternatives",
-                "elements": [
-                  {
-                    "$type": "Assignment",
-                    "feature": "elseBlock",
-                    "operator": "+=",
-                    "terminal": {
-                      "$type": "RuleCall",
-                      "rule": {
-                        "$ref": "#/rules@9"
-                      },
-                      "arguments": []
-                    }
-                  },
-                  {
-                    "$type": "Group",
-                    "elements": [
-                      {
-                        "$type": "RuleCall",
-                        "rule": {
-                          "$ref": "#/rules@30"
-                        },
-                        "arguments": []
-                      },
-                      {
-                        "$type": "Assignment",
-                        "feature": "elseBlock",
-                        "operator": "+=",
-                        "terminal": {
-                          "$type": "RuleCall",
-                          "rule": {
-                            "$ref": "#/rules@1"
-                          },
-                          "arguments": []
-                        },
-                        "cardinality": "+"
-                      },
-                      {
-                        "$type": "RuleCall",
-                        "rule": {
-                          "$ref": "#/rules@31"
-                        },
-                        "arguments": []
-                      }
-                    ]
-                  }
-                ]
-              }
-            ],
+              "arguments": []
+            },
             "cardinality": "?"
           }
         ]
@@ -308,7 +177,7 @@ export const MinminModelGrammar = (): Grammar => loadedMinminModelGrammar ?? (lo
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@19"
+                "$ref": "#/rules@20"
               },
               "arguments": []
             }
@@ -318,53 +187,38 @@ export const MinminModelGrammar = (): Grammar => loadedMinminModelGrammar ?? (lo
             "value": ":"
           },
           {
-            "$type": "Alternatives",
-            "elements": [
-              {
-                "$type": "Assignment",
-                "feature": "elifBlock",
-                "operator": "+=",
-                "terminal": {
-                  "$type": "RuleCall",
-                  "rule": {
-                    "$ref": "#/rules@9"
-                  },
-                  "arguments": []
-                }
-              },
-              {
-                "$type": "Group",
-                "elements": [
-                  {
-                    "$type": "RuleCall",
-                    "rule": {
-                      "$ref": "#/rules@30"
-                    },
-                    "arguments": []
-                  },
-                  {
-                    "$type": "Assignment",
-                    "feature": "elifBlock",
-                    "operator": "+=",
-                    "terminal": {
-                      "$type": "RuleCall",
-                      "rule": {
-                        "$ref": "#/rules@1"
-                      },
-                      "arguments": []
-                    },
-                    "cardinality": "+"
-                  },
-                  {
-                    "$type": "RuleCall",
-                    "rule": {
-                      "$ref": "#/rules@31"
-                    },
-                    "arguments": []
-                  }
-                ]
-              }
-            ]
+            "$type": "RuleCall",
+            "rule": {
+              "$ref": "#/rules@7"
+            },
+            "arguments": []
+          }
+        ]
+      },
+      "entry": false,
+      "fragment": false,
+      "parameters": []
+    },
+    {
+      "$type": "ParserRule",
+      "name": "Else",
+      "definition": {
+        "$type": "Group",
+        "elements": [
+          {
+            "$type": "Keyword",
+            "value": "else"
+          },
+          {
+            "$type": "Keyword",
+            "value": ":"
+          },
+          {
+            "$type": "RuleCall",
+            "rule": {
+              "$ref": "#/rules@7"
+            },
+            "arguments": []
           }
         ]
       },
@@ -389,7 +243,7 @@ export const MinminModelGrammar = (): Grammar => loadedMinminModelGrammar ?? (lo
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@19"
+                "$ref": "#/rules@20"
               },
               "arguments": []
             }
@@ -399,53 +253,11 @@ export const MinminModelGrammar = (): Grammar => loadedMinminModelGrammar ?? (lo
             "value": ":"
           },
           {
-            "$type": "Alternatives",
-            "elements": [
-              {
-                "$type": "Assignment",
-                "feature": "loop",
-                "operator": "+=",
-                "terminal": {
-                  "$type": "RuleCall",
-                  "rule": {
-                    "$ref": "#/rules@9"
-                  },
-                  "arguments": []
-                }
-              },
-              {
-                "$type": "Group",
-                "elements": [
-                  {
-                    "$type": "RuleCall",
-                    "rule": {
-                      "$ref": "#/rules@30"
-                    },
-                    "arguments": []
-                  },
-                  {
-                    "$type": "Assignment",
-                    "feature": "loop",
-                    "operator": "+=",
-                    "terminal": {
-                      "$type": "RuleCall",
-                      "rule": {
-                        "$ref": "#/rules@1"
-                      },
-                      "arguments": []
-                    },
-                    "cardinality": "+"
-                  },
-                  {
-                    "$type": "RuleCall",
-                    "rule": {
-                      "$ref": "#/rules@31"
-                    },
-                    "arguments": []
-                  }
-                ]
-              }
-            ]
+            "$type": "RuleCall",
+            "rule": {
+              "$ref": "#/rules@7"
+            },
+            "arguments": []
           }
         ]
       },
@@ -470,7 +282,7 @@ export const MinminModelGrammar = (): Grammar => loadedMinminModelGrammar ?? (lo
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@38"
+                "$ref": "#/rules@40"
               },
               "arguments": []
             }
@@ -489,7 +301,7 @@ export const MinminModelGrammar = (): Grammar => loadedMinminModelGrammar ?? (lo
                 "terminal": {
                   "$type": "RuleCall",
                   "rule": {
-                    "$ref": "#/rules@7"
+                    "$ref": "#/rules@8"
                   },
                   "arguments": []
                 }
@@ -508,7 +320,7 @@ export const MinminModelGrammar = (): Grammar => loadedMinminModelGrammar ?? (lo
                     "terminal": {
                       "$type": "RuleCall",
                       "rule": {
-                        "$ref": "#/rules@7"
+                        "$ref": "#/rules@8"
                       },
                       "arguments": []
                     }
@@ -528,16 +340,36 @@ export const MinminModelGrammar = (): Grammar => loadedMinminModelGrammar ?? (lo
             "value": ":"
           },
           {
-            "$type": "Alternatives",
+            "$type": "RuleCall",
+            "rule": {
+              "$ref": "#/rules@7"
+            },
+            "arguments": []
+          }
+        ]
+      },
+      "entry": false,
+      "fragment": false,
+      "parameters": []
+    },
+    {
+      "$type": "ParserRule",
+      "fragment": true,
+      "name": "Block",
+      "definition": {
+        "$type": "Alternatives",
+        "elements": [
+          {
+            "$type": "Group",
             "elements": [
               {
                 "$type": "Assignment",
-                "feature": "body",
+                "feature": "block",
                 "operator": "+=",
                 "terminal": {
                   "$type": "RuleCall",
                   "rule": {
-                    "$ref": "#/rules@9"
+                    "$ref": "#/rules@10"
                   },
                   "arguments": []
                 }
@@ -546,40 +378,61 @@ export const MinminModelGrammar = (): Grammar => loadedMinminModelGrammar ?? (lo
                 "$type": "Group",
                 "elements": [
                   {
-                    "$type": "RuleCall",
-                    "rule": {
-                      "$ref": "#/rules@30"
-                    },
-                    "arguments": []
+                    "$type": "Keyword",
+                    "value": ";"
                   },
                   {
                     "$type": "Assignment",
-                    "feature": "body",
+                    "feature": "block",
                     "operator": "+=",
                     "terminal": {
                       "$type": "RuleCall",
                       "rule": {
-                        "$ref": "#/rules@1"
+                        "$ref": "#/rules@10"
                       },
                       "arguments": []
-                    },
-                    "cardinality": "+"
-                  },
-                  {
-                    "$type": "RuleCall",
-                    "rule": {
-                      "$ref": "#/rules@31"
-                    },
-                    "arguments": []
+                    }
                   }
-                ]
+                ],
+                "cardinality": "*"
+              }
+            ]
+          },
+          {
+            "$type": "Group",
+            "elements": [
+              {
+                "$type": "RuleCall",
+                "rule": {
+                  "$ref": "#/rules@32"
+                },
+                "arguments": []
+              },
+              {
+                "$type": "Assignment",
+                "feature": "block",
+                "operator": "+=",
+                "terminal": {
+                  "$type": "RuleCall",
+                  "rule": {
+                    "$ref": "#/rules@1"
+                  },
+                  "arguments": []
+                },
+                "cardinality": "+"
+              },
+              {
+                "$type": "RuleCall",
+                "rule": {
+                  "$ref": "#/rules@33"
+                },
+                "arguments": []
               }
             ]
           }
         ]
       },
       "entry": false,
-      "fragment": false,
       "parameters": []
     },
     {
@@ -633,7 +486,7 @@ export const MinminModelGrammar = (): Grammar => loadedMinminModelGrammar ?? (lo
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@38"
+                "$ref": "#/rules@40"
               },
               "arguments": []
             }
@@ -661,7 +514,7 @@ export const MinminModelGrammar = (): Grammar => loadedMinminModelGrammar ?? (lo
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@37"
+                "$ref": "#/rules@39"
               },
               "arguments": []
             }
@@ -681,13 +534,6 @@ export const MinminModelGrammar = (): Grammar => loadedMinminModelGrammar ?? (lo
           {
             "$type": "RuleCall",
             "rule": {
-              "$ref": "#/rules@10"
-            },
-            "arguments": []
-          },
-          {
-            "$type": "RuleCall",
-            "rule": {
               "$ref": "#/rules@11"
             },
             "arguments": []
@@ -702,14 +548,14 @@ export const MinminModelGrammar = (): Grammar => loadedMinminModelGrammar ?? (lo
           {
             "$type": "RuleCall",
             "rule": {
-              "$ref": "#/rules@26"
+              "$ref": "#/rules@13"
             },
             "arguments": []
           },
           {
             "$type": "RuleCall",
             "rule": {
-              "$ref": "#/rules@13"
+              "$ref": "#/rules@27"
             },
             "arguments": []
           },
@@ -731,6 +577,13 @@ export const MinminModelGrammar = (): Grammar => loadedMinminModelGrammar ?? (lo
             "$type": "RuleCall",
             "rule": {
               "$ref": "#/rules@16"
+            },
+            "arguments": []
+          },
+          {
+            "$type": "RuleCall",
+            "rule": {
+              "$ref": "#/rules@17"
             },
             "arguments": []
           }
@@ -781,7 +634,7 @@ export const MinminModelGrammar = (): Grammar => loadedMinminModelGrammar ?? (lo
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@38"
+                "$ref": "#/rules@40"
               },
               "arguments": []
             }
@@ -800,7 +653,7 @@ export const MinminModelGrammar = (): Grammar => loadedMinminModelGrammar ?? (lo
                 "terminal": {
                   "$type": "RuleCall",
                   "rule": {
-                    "$ref": "#/rules@19"
+                    "$ref": "#/rules@20"
                   },
                   "arguments": []
                 }
@@ -822,7 +675,7 @@ export const MinminModelGrammar = (): Grammar => loadedMinminModelGrammar ?? (lo
                 "terminal": {
                   "$type": "RuleCall",
                   "rule": {
-                    "$ref": "#/rules@18"
+                    "$ref": "#/rules@19"
                   },
                   "arguments": []
                 }
@@ -861,7 +714,7 @@ export const MinminModelGrammar = (): Grammar => loadedMinminModelGrammar ?? (lo
               "terminal": {
                 "$type": "RuleCall",
                 "rule": {
-                  "$ref": "#/rules@38"
+                  "$ref": "#/rules@40"
                 },
                 "arguments": []
               },
@@ -876,7 +729,7 @@ export const MinminModelGrammar = (): Grammar => loadedMinminModelGrammar ?? (lo
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@17"
+                "$ref": "#/rules@18"
               },
               "arguments": []
             },
@@ -893,7 +746,7 @@ export const MinminModelGrammar = (): Grammar => loadedMinminModelGrammar ?? (lo
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@18"
+                "$ref": "#/rules@19"
               },
               "arguments": []
             }
@@ -922,7 +775,7 @@ export const MinminModelGrammar = (): Grammar => loadedMinminModelGrammar ?? (lo
               "terminal": {
                 "$type": "RuleCall",
                 "rule": {
-                  "$ref": "#/rules@38"
+                  "$ref": "#/rules@40"
                 },
                 "arguments": []
               },
@@ -937,7 +790,7 @@ export const MinminModelGrammar = (): Grammar => loadedMinminModelGrammar ?? (lo
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@17"
+                "$ref": "#/rules@18"
               },
               "arguments": []
             },
@@ -964,7 +817,7 @@ export const MinminModelGrammar = (): Grammar => loadedMinminModelGrammar ?? (lo
           {
             "$type": "RuleCall",
             "rule": {
-              "$ref": "#/rules@27"
+              "$ref": "#/rules@28"
             },
             "arguments": []
           }
@@ -991,7 +844,7 @@ export const MinminModelGrammar = (): Grammar => loadedMinminModelGrammar ?? (lo
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@18"
+                "$ref": "#/rules@19"
               },
               "arguments": []
             }
@@ -1031,7 +884,7 @@ export const MinminModelGrammar = (): Grammar => loadedMinminModelGrammar ?? (lo
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@27"
+                "$ref": "#/rules@28"
               },
               "arguments": []
             }
@@ -1063,7 +916,7 @@ export const MinminModelGrammar = (): Grammar => loadedMinminModelGrammar ?? (lo
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@18"
+                "$ref": "#/rules@19"
               },
               "arguments": []
             }
@@ -1082,7 +935,7 @@ export const MinminModelGrammar = (): Grammar => loadedMinminModelGrammar ?? (lo
                 "terminal": {
                   "$type": "RuleCall",
                   "rule": {
-                    "$ref": "#/rules@18"
+                    "$ref": "#/rules@19"
                   },
                   "arguments": []
                 }
@@ -1117,7 +970,7 @@ export const MinminModelGrammar = (): Grammar => loadedMinminModelGrammar ?? (lo
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@19"
+                "$ref": "#/rules@20"
               },
               "arguments": []
             }
@@ -1145,7 +998,7 @@ export const MinminModelGrammar = (): Grammar => loadedMinminModelGrammar ?? (lo
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@19"
+                "$ref": "#/rules@20"
               },
               "arguments": []
             }
@@ -1164,7 +1017,7 @@ export const MinminModelGrammar = (): Grammar => loadedMinminModelGrammar ?? (lo
                 "terminal": {
                   "$type": "RuleCall",
                   "rule": {
-                    "$ref": "#/rules@19"
+                    "$ref": "#/rules@20"
                   },
                   "arguments": []
                 }
@@ -1184,7 +1037,7 @@ export const MinminModelGrammar = (): Grammar => loadedMinminModelGrammar ?? (lo
       "definition": {
         "$type": "RuleCall",
         "rule": {
-          "$ref": "#/rules@20"
+          "$ref": "#/rules@21"
         },
         "arguments": []
       },
@@ -1205,7 +1058,7 @@ export const MinminModelGrammar = (): Grammar => loadedMinminModelGrammar ?? (lo
           {
             "$type": "RuleCall",
             "rule": {
-              "$ref": "#/rules@21"
+              "$ref": "#/rules@22"
             },
             "arguments": []
           },
@@ -1246,7 +1099,7 @@ export const MinminModelGrammar = (): Grammar => loadedMinminModelGrammar ?? (lo
                 "terminal": {
                   "$type": "RuleCall",
                   "rule": {
-                    "$ref": "#/rules@21"
+                    "$ref": "#/rules@22"
                   },
                   "arguments": []
                 }
@@ -1273,7 +1126,7 @@ export const MinminModelGrammar = (): Grammar => loadedMinminModelGrammar ?? (lo
           {
             "$type": "RuleCall",
             "rule": {
-              "$ref": "#/rules@22"
+              "$ref": "#/rules@23"
             },
             "arguments": []
           },
@@ -1314,7 +1167,7 @@ export const MinminModelGrammar = (): Grammar => loadedMinminModelGrammar ?? (lo
                 "terminal": {
                   "$type": "RuleCall",
                   "rule": {
-                    "$ref": "#/rules@22"
+                    "$ref": "#/rules@23"
                   },
                   "arguments": []
                 }
@@ -1341,7 +1194,7 @@ export const MinminModelGrammar = (): Grammar => loadedMinminModelGrammar ?? (lo
           {
             "$type": "RuleCall",
             "rule": {
-              "$ref": "#/rules@23"
+              "$ref": "#/rules@24"
             },
             "arguments": []
           },
@@ -1394,7 +1247,7 @@ export const MinminModelGrammar = (): Grammar => loadedMinminModelGrammar ?? (lo
                 "terminal": {
                   "$type": "RuleCall",
                   "rule": {
-                    "$ref": "#/rules@23"
+                    "$ref": "#/rules@24"
                   },
                   "arguments": []
                 }
@@ -1421,7 +1274,7 @@ export const MinminModelGrammar = (): Grammar => loadedMinminModelGrammar ?? (lo
           {
             "$type": "RuleCall",
             "rule": {
-              "$ref": "#/rules@24"
+              "$ref": "#/rules@25"
             },
             "arguments": []
           },
@@ -1478,7 +1331,7 @@ export const MinminModelGrammar = (): Grammar => loadedMinminModelGrammar ?? (lo
                 "terminal": {
                   "$type": "RuleCall",
                   "rule": {
-                    "$ref": "#/rules@24"
+                    "$ref": "#/rules@25"
                   },
                   "arguments": []
                 }
@@ -1512,7 +1365,7 @@ export const MinminModelGrammar = (): Grammar => loadedMinminModelGrammar ?? (lo
               {
                 "$type": "RuleCall",
                 "rule": {
-                  "$ref": "#/rules@19"
+                  "$ref": "#/rules@20"
                 },
                 "arguments": []
               },
@@ -1525,21 +1378,7 @@ export const MinminModelGrammar = (): Grammar => loadedMinminModelGrammar ?? (lo
           {
             "$type": "RuleCall",
             "rule": {
-              "$ref": "#/rules@25"
-            },
-            "arguments": []
-          },
-          {
-            "$type": "RuleCall",
-            "rule": {
-              "$ref": "#/rules@28"
-            },
-            "arguments": []
-          },
-          {
-            "$type": "RuleCall",
-            "rule": {
-              "$ref": "#/rules@27"
+              "$ref": "#/rules@26"
             },
             "arguments": []
           },
@@ -1553,7 +1392,21 @@ export const MinminModelGrammar = (): Grammar => loadedMinminModelGrammar ?? (lo
           {
             "$type": "RuleCall",
             "rule": {
-              "$ref": "#/rules@26"
+              "$ref": "#/rules@28"
+            },
+            "arguments": []
+          },
+          {
+            "$type": "RuleCall",
+            "rule": {
+              "$ref": "#/rules@30"
+            },
+            "arguments": []
+          },
+          {
+            "$type": "RuleCall",
+            "rule": {
+              "$ref": "#/rules@27"
             },
             "arguments": []
           }
@@ -1590,7 +1443,7 @@ export const MinminModelGrammar = (): Grammar => loadedMinminModelGrammar ?? (lo
           {
             "$type": "RuleCall",
             "rule": {
-              "$ref": "#/rules@19"
+              "$ref": "#/rules@20"
             },
             "arguments": []
           }
@@ -1618,7 +1471,7 @@ export const MinminModelGrammar = (): Grammar => loadedMinminModelGrammar ?? (lo
               "terminal": {
                 "$type": "RuleCall",
                 "rule": {
-                  "$ref": "#/rules@38"
+                  "$ref": "#/rules@40"
                 },
                 "arguments": []
               },
@@ -1640,7 +1493,7 @@ export const MinminModelGrammar = (): Grammar => loadedMinminModelGrammar ?? (lo
                 "terminal": {
                   "$type": "RuleCall",
                   "rule": {
-                    "$ref": "#/rules@18"
+                    "$ref": "#/rules@19"
                   },
                   "arguments": []
                 }
@@ -1659,7 +1512,7 @@ export const MinminModelGrammar = (): Grammar => loadedMinminModelGrammar ?? (lo
                     "terminal": {
                       "$type": "RuleCall",
                       "rule": {
-                        "$ref": "#/rules@18"
+                        "$ref": "#/rules@19"
                       },
                       "arguments": []
                     }
@@ -1693,14 +1546,14 @@ export const MinminModelGrammar = (): Grammar => loadedMinminModelGrammar ?? (lo
             {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@35"
+                "$ref": "#/rules@37"
               },
               "arguments": []
             },
             {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@36"
+                "$ref": "#/rules@38"
               },
               "arguments": []
             }
@@ -1721,7 +1574,7 @@ export const MinminModelGrammar = (): Grammar => loadedMinminModelGrammar ?? (lo
         "terminal": {
           "$type": "RuleCall",
           "rule": {
-            "$ref": "#/rules@37"
+            "$ref": "#/rules@39"
           },
           "arguments": []
         }
@@ -1758,7 +1611,7 @@ export const MinminModelGrammar = (): Grammar => loadedMinminModelGrammar ?? (lo
               "terminal": {
                 "$type": "RuleCall",
                 "rule": {
-                  "$ref": "#/rules@38"
+                  "$ref": "#/rules@40"
                 },
                 "arguments": []
               },
@@ -1767,52 +1620,72 @@ export const MinminModelGrammar = (): Grammar => loadedMinminModelGrammar ?? (lo
             }
           },
           {
+            "$type": "Assignment",
+            "feature": "index",
+            "operator": "=",
+            "terminal": {
+              "$type": "RuleCall",
+              "rule": {
+                "$ref": "#/rules@31"
+              },
+              "arguments": []
+            },
+            "cardinality": "?"
+          }
+        ]
+      },
+      "entry": false,
+      "fragment": false,
+      "parameters": []
+    },
+    {
+      "$type": "ParserRule",
+      "name": "RangeIndex",
+      "definition": {
+        "$type": "Group",
+        "elements": [
+          {
+            "$type": "Keyword",
+            "value": "["
+          },
+          {
+            "$type": "Assignment",
+            "feature": "startExpr",
+            "operator": "=",
+            "terminal": {
+              "$type": "RuleCall",
+              "rule": {
+                "$ref": "#/rules@20"
+              },
+              "arguments": []
+            },
+            "cardinality": "?"
+          },
+          {
             "$type": "Group",
             "elements": [
               {
                 "$type": "Keyword",
-                "value": "["
+                "value": "|"
               },
               {
                 "$type": "Assignment",
-                "feature": "expr",
+                "feature": "endExpr",
                 "operator": "=",
                 "terminal": {
                   "$type": "RuleCall",
                   "rule": {
-                    "$ref": "#/rules@19"
+                    "$ref": "#/rules@20"
                   },
                   "arguments": []
                 }
-              },
-              {
-                "$type": "Group",
-                "elements": [
-                  {
-                    "$type": "Keyword",
-                    "value": "|"
-                  },
-                  {
-                    "$type": "Assignment",
-                    "feature": "pipeExpression",
-                    "operator": "=",
-                    "terminal": {
-                      "$type": "RuleCall",
-                      "rule": {
-                        "$ref": "#/rules@19"
-                      },
-                      "arguments": []
-                    }
-                  }
-                ],
-                "cardinality": "?"
-              },
-              {
-                "$type": "Keyword",
-                "value": "]"
               }
             ],
             "cardinality": "?"
+          },
+          {
+            "$type": "Keyword",
+            "value": "]"
           }
         ]
       },
@@ -1944,13 +1817,13 @@ export const MinminModelGrammar = (): Grammar => loadedMinminModelGrammar ?? (lo
           {
             "$type": "SimpleType",
             "typeRef": {
-              "$ref": "#/rules@7/definition/elements@0/inferredType"
+              "$ref": "#/rules@8/definition/elements@0/inferredType"
             }
           },
           {
             "$type": "SimpleType",
             "typeRef": {
-              "$ref": "#/rules@10/definition/elements@0/inferredType"
+              "$ref": "#/rules@11/definition/elements@0/inferredType"
             }
           }
         ]

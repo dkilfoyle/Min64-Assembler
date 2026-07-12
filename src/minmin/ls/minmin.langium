@@ -11,46 +11,44 @@ Element:
   Def | 
   Use;
 
-Block:
-  INDENT elements+=Element+
-  DEDENT;
-
+// If:
+//   'if' condition=Expression ':' 
+//     (thenBlock+=SimpleStatement | (
+//       INDENT thenBlock+=Element+
+//       DEDENT)
+//     )
+//     (elifs+=ElIf*)
+//     ('else' ':'
+//        (elseBlock+=SimpleStatement | (
+//          INDENT elseBlock+=Element+
+//          DEDENT)
+//        )
+//     )?;
 If:
-  'if' condition=Expression ':' 
-    (thenBlock+=SimpleStatement | (
-      INDENT thenBlock+=Element+
-      DEDENT)
-    )
+  'if' condition=Expression ':' Block
     (elifs+=ElIf*)
-    ('else' ':'
-       (elseBlock+=SimpleStatement | (
-         INDENT elseBlock+=Element+
-         DEDENT)
-       )
-    )?;
+    (elseBlock=Else)?;
 
 ElIf:
-  'elif' condition=Expression ':'
-    (elifBlock+=SimpleStatement | (
-      INDENT elifBlock+=Element+
-      DEDENT)
-    );
+  'elif' condition=Expression ':' Block;
+
+Else:
+  'else' ':' Block;
 
 While:
-  'while' condition=Expression ':'
-    (
-      loop+=SimpleStatement | (
-      INDENT loop+=Element+
-      DEDENT)
-    );
+  'while' condition=Expression ':' Block;
 
 Def:
-  'def' name=ID '(' (params+=ParameterDeclaration ("," params+=ParameterDeclaration)*)? ')' ':'
-    (
-      body+=SimpleStatement | (
-      INDENT body+=Element+
-      DEDENT)
-    );
+  'def' name=ID '(' (params+=ParameterDeclaration ("," params+=ParameterDeclaration)*)? ')' ':' Block;
+
+fragment Block:
+  (
+    block+=SimpleStatement (";" block+=SimpleStatement)* 
+  ) |
+  (
+    INDENT block+=Element+
+    DEDENT
+  );
 
 ParameterDeclaration returns NamedElement:
   {infer ParameterDeclaration} type=("char"|"int") and?="&"? name=ID;
@@ -135,7 +133,10 @@ StringLiteral:
   value=STRING;
 
 VariableReference:
-  isAddress?="&"? id=[NamedElement:ID] ("[" expr=Expression ("|" pipeExpression=Expression)? "]")?;
+  isAddress?="&"? id=[NamedElement:ID] index=RangeIndex?;
+
+RangeIndex:
+  "[" startExpr=Expression? ("|" endExpr=Expression)? "]";
 
 type NamedElement = ParameterDeclaration | VariableDeclaration;
 

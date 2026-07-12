@@ -16,6 +16,7 @@ import { MinminGeneratedSharedModule, MinminModelGeneratedModule } from "./gener
 import { MinminValidator, registerValidationChecks } from "./minmin-validator.js";
 // import { MinminScopeComputation } from "./minmin-scope.js";
 import { MinminConverter } from "./minmin-value.js";
+import { MinminWorkspaceManager } from "./minmin-workspace.js";
 
 /**
  * Declaration of custom services - add your own service classes here.
@@ -49,6 +50,9 @@ const MinminModule: Module<MinminServices, PartialLangiumServices & MinminAddedS
     ValueConverter: (services) => new MinminConverter(),
     TokenBuilder: () => new IndentationAwareTokenBuilder(),
     Lexer: (services) => new IndentationAwareLexer(services),
+  },
+  workspace: {
+    WorkspaceManager: (services) => new MinminWorkspaceManager(services),
   },
 };
 
