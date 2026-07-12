@@ -9,6 +9,7 @@ import {
   type LangiumServices,
   type LangiumSharedServices,
   type PartialLangiumServices,
+  type PartialLangiumSharedServices,
   createDefaultModule,
   createDefaultSharedModule,
 } from "langium/lsp";
@@ -51,6 +52,9 @@ const MinminModule: Module<MinminServices, PartialLangiumServices & MinminAddedS
     TokenBuilder: () => new IndentationAwareTokenBuilder(),
     Lexer: (services) => new IndentationAwareLexer(services),
   },
+};
+
+const MinminSharedModule: Module<LangiumSharedServices, PartialLangiumSharedServices> = {
   workspace: {
     WorkspaceManager: (services) => new MinminWorkspaceManager(services),
   },
@@ -76,7 +80,7 @@ export async function createMinminServices(context: DefaultSharedModuleContext):
   minmin: MinminServices;
 }> {
   console.log("createMinminServices");
-  const shared = inject(createDefaultSharedModule(context), MinminGeneratedSharedModule);
+  const shared = inject(createDefaultSharedModule(context), MinminGeneratedSharedModule, MinminSharedModule);
   const minmin = inject(createDefaultModule({ shared }), MinminModelGeneratedModule, MinminModule);
   shared.ServiceRegistry.register(minmin);
   registerValidationChecks(minmin);
