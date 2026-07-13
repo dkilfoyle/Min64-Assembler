@@ -67,7 +67,7 @@ export const createMinasmMonacoConfig = (params: {
         grammars: [
           {
             language: "minasm",
-            scopeName: "source.masm",
+            scopeName: "source.minasm",
             path: `./${params.languageServerId}-minasm-grammar.json`,
           },
         ],

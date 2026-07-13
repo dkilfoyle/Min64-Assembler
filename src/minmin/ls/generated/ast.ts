@@ -136,6 +136,16 @@ export function isCompoundExpression(item: unknown): item is CompoundExpression 
     return reflection.isInstance(item, CompoundExpression.$type);
 }
 
+export type ConstExpression = NumberLiteral | StringLiteral;
+
+export const ConstExpression = {
+    $type: 'ConstExpression'
+} as const;
+
+export function isConstExpression(item: unknown): item is ConstExpression {
+    return reflection.isInstance(item, ConstExpression.$type);
+}
+
 export interface Def extends langium.AstNode {
     readonly $container: Def | ElIf | Else | If | Program | While;
     readonly $type: 'Def';
@@ -197,7 +207,7 @@ export function isElse(item: unknown): item is Else {
     return reflection.isInstance(item, Else.$type);
 }
 
-export type Expression = BinaryExpression | FunctionCall | NumberLiteral | StringLiteral | UnaryExpression | VariableReference;
+export type Expression = BinaryExpression | ConstExpression | FunctionCall | UnaryExpression | VariableReference;
 
 export const Expression = {
     $type: 'Expression'
@@ -380,7 +390,7 @@ export function isStringLiteral(item: unknown): item is StringLiteral {
 
 export interface UnaryExpression extends langium.AstNode {
     readonly $container: ArrayIndex | BinaryExpression | CompoundExpression | ElIf | If | RangeIndex | VariableDeclaration | While;
-    readonly $type: 'BinaryExpression' | 'Expression' | 'FunctionCall' | 'NumberLiteral' | 'StringLiteral' | 'UnaryExpression' | 'VariableReference';
+    readonly $type: 'BinaryExpression' | 'ConstExpression' | 'Expression' | 'FunctionCall' | 'NumberLiteral' | 'StringLiteral' | 'UnaryExpression' | 'VariableReference';
     operator: '-' | 'not';
 }
 
@@ -508,6 +518,7 @@ export type MinminAstType = {
     BinaryExpression: BinaryExpression
     CallStatement: CallStatement
     CompoundExpression: CompoundExpression
+    ConstExpression: ConstExpression
     Def: Def
     ElIf: ElIf
     Element: Element
@@ -577,6 +588,12 @@ export class MinminAstReflection extends langium.AbstractAstReflection {
                 }
             },
             superTypes: []
+        },
+        ConstExpression: {
+            name: ConstExpression.$type,
+            properties: {
+            },
+            superTypes: [Expression.$type]
         },
         Def: {
             name: Def.$type,
@@ -692,7 +709,7 @@ export class MinminAstReflection extends langium.AbstractAstReflection {
                     name: NumberLiteral.value
                 }
             },
-            superTypes: [VariableCalcAssignment.$type, Expression.$type]
+            superTypes: [VariableCalcAssignment.$type, ConstExpression.$type]
         },
         ParameterDeclaration: {
             name: ParameterDeclaration.$type,
@@ -768,7 +785,7 @@ export class MinminAstReflection extends langium.AbstractAstReflection {
                     name: StringLiteral.value
                 }
             },
-            superTypes: [Expression.$type]
+            superTypes: [ConstExpression.$type]
         },
         UnaryExpression: {
             name: UnaryExpression.$type,

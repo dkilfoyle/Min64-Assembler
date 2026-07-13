@@ -1,466 +1,232 @@
-// To add if-else blocks, function definitions, and function calling to a single-register, 8-bit architecture like the Minimal 64x4, we must implement explicit calling conventions.
-// Because we have a 256-byte stack at 0xFFFF, we will use a Stack-Based Activation Record (Stack Frame) model:
+import type { AstNode } from "langium";
+import {
+  Expression,
+  isBinaryExpression,
+  isCallStatement,
+  isConstExpression,
+  isDef,
+  isExpression,
+  isFunctionCall,
+  isIf,
+  isNumberLiteral,
+  isPrintStatement,
+  isProgram,
+  isReturnStatement,
+  isStringLiteral,
+  isUnaryExpression,
+  isVariableAssignment,
+  isVariableReference,
+  isWhile,
+  PrintStatement,
+  type Program,
+} from "../ls/generated/ast";
+import { osAddr } from "./oslabels";
 
-//    1. Arguments are pushed onto the stack by the caller in reverse order.
-//    2. The Return Address is pushed to the stack automatically (or via code) when leaping to a function.
-//    3. Local Variables are dynamically allocated by pushing space onto the stack inside the function, or by assigning them local offsets. To keep this compiler straightforward and fast on 8-bit hardware, the compiler maps variables to dynamic Zero-Page offsets or local stack frames. For absolute maximum simplicity, this implementation assigns unique global Zero-Page tracking for localized execution, while function parameters are dynamically pulled directly from the stack frame via POP. [1, 2, 3, 4]
+const hex8 = (x: number) => `0x${x.toString(16).padStart(2, "0")}`;
+const hex16 = (x: number) => `0x${x.toString(16).padStart(4, "0")}`;
 
-// Here is the fully extended TypeScript implementation including if-else branching, function definitions with arguments, and function calls.
+class MinCompiler {
+  assembly: string[] = [];
+  zpMap = new Map<string, string>();
+  zpCursor = 0x50;
+  labelCounter = 0;
+  osUsed = new Set<string>();
 
-// Define tokens for our extended C-like language
-type TokenType =
-  | "KEYWORD"
-  | "IDENTIFIER"
-  | "NUMBER"
-  | "ASSIGN"
-  | "PLUS"
-  | "MINUS"
-  | "SEMI"
-  | "COMMA"
-  | "LBRACE"
-  | "RBRACE"
-  | "LPAREN"
-  | "RPAREN"
-  | "EOF";
-interface Token {
-  type: TokenType;
-  value: string;
-}
-// ==========================================// 1. LEXER// ==========================================
-class Lexer {
-  private source: string;
-  private cursor: number = 0;
-
-  constructor(source: string) {
-    this.source = source;
+  reset() {
+    this.osUsed = new Set();
+    this.zpMap = new Map();
+    this.assembly = [];
+    this.zpCursor = 0x50;
+    this.zpMap.set("z_BC", hex8(this.zpCursor));
+    this.zpMap.set("z_B", hex8(this.zpCursor++));
+    this.zpMap.set("z_C", hex8(this.zpCursor++));
+    this.zpMap.set("z_DE", hex8(this.zpCursor));
+    this.zpMap.set("z_D", hex8(this.zpCursor++));
+    this.zpMap.set("z_E", hex8(this.zpCursor++));
   }
 
-  public tokenize(): Token[] {
-    const tokens: Token[] = [];
-    while (this.cursor < this.source.length) {
-      const char = this.source[this.cursor];
-
-      if (/\s/.test(char)) {
-        this.cursor++;
-        continue;
-      }
-      if (char === ";") {
-        tokens.push({ type: "SEMI", value: ";" });
-        this.cursor++;
-        continue;
-      }
-      if (char === ",") {
-        tokens.push({ type: "COMMA", value: "," });
-        this.cursor++;
-        continue;
-      }
-      if (char === "=") {
-        tokens.push({ type: "ASSIGN", value: "=" });
-        this.cursor++;
-        continue;
-      }
-      if (char === "+") {
-        tokens.push({ type: "PLUS", value: "+" });
-        this.cursor++;
-        continue;
-      }
-      if (char === "-") {
-        tokens.push({ type: "MINUS", value: "-" });
-        this.cursor++;
-        continue;
-      }
-      if (char === "{") {
-        tokens.push({ type: "LBRACE", value: "{" });
-        this.cursor++;
-        continue;
-      }
-      if (char === "}") {
-        tokens.push({ type: "RBRACE", value: "}" });
-        this.cursor++;
-        continue;
-      }
-      if (char === "(") {
-        tokens.push({ type: "LPAREN", value: "(" });
-        this.cursor++;
-        continue;
-      }
-      if (char === ")") {
-        tokens.push({ type: "RPAREN", value: ")" });
-        this.cursor++;
-        continue;
-      }
-
-      if (/[0-9]/.test(char)) {
-        let num = "";
-        while (this.cursor < this.source.length && /[0-9]/.test(this.source[this.cursor])) {
-          num += this.source[this.cursor];
-          this.cursor++;
-        }
-        tokens.push({ type: "NUMBER", value: num });
-        continue;
-      }
-
-      if (/[a-zA-Z_]/.test(char)) {
-        let ident = "";
-        while (this.cursor < this.source.length && /[a-zA-Z0-9_]/.test(this.source[this.cursor])) {
-          ident += this.source[this.cursor];
-          this.cursor++;
-        }
-        const isKeyword = ["while", "if", "else", "int", "return"].includes(ident);
-        const type: TokenType = isKeyword ? "KEYWORD" : "IDENTIFIER";
-        tokens.push({ type, value: ident });
-        continue;
-      }
-
-      throw new Error(`Unexpected character: ${char}`);
+  addZpByte(name: string) {
+    if (!this.zpMap.has(name)) {
+      this.zpMap.set(name, hex8(this.zpCursor++));
     }
-    tokens.push({ type: "EOF", value: "" });
-    return tokens;
-  }
-}
-// ==========================================// 2. PARSER & AST NODES// ==========================================
-type ASTNode =
-  | { type: "Program"; body: ASTNode[] }
-  | { type: "VarDecl"; name: string; value: ASTNode }
-  | { type: "Assign"; name: string; value: ASTNode }
-  | { type: "BinaryExpr"; op: "+" | "-"; left: ASTNode; right: ASTNode }
-  | { type: "Identifier"; name: string }
-  | { type: "Literal"; value: number }
-  | { type: "WhileLoop"; condition: ASTNode; body: ASTNode[] }
-  | { type: "IfStatement"; condition: ASTNode; thenBranch: ASTNode[]; elseBranch: ASTNode[] | null }
-  | { type: "FunctionDecl"; name: string; params: string[]; body: ASTNode[] }
-  | { type: "ReturnStatement"; value: ASTNode }
-  | { type: "CallExpr"; name: string; args: ASTNode[] };
-
-class Parser {
-  private tokens: Token[];
-  private current: number = 0;
-
-  constructor(tokens: Token[]) {
-    this.tokens = tokens;
   }
 
-  private peek() {
-    return this.tokens[this.current];
-  }
-  private peekNext() {
-    return this.tokens[this.current + 1];
-  }
-
-  private consume(type: TokenType) {
-    const tok = this.peek();
-    if (tok.type !== type) throw new Error(`Expected token ${type}, got ${tok.type}`);
-    this.current++;
-    return tok;
+  addZpWord(name: string) {
+    if (!this.zpMap.has(name)) {
+      this.zpMap.set(name, hex16((this.zpCursor += 2)));
+    }
   }
 
-  public parse(): ASTNode {
-    const body: ASTNode[] = [];
-    while (this.peek().type !== "EOF") {
-      body.push(this.parseStatement());
-    }
-    return { type: "Program", body };
+  getZpByte(name: string): string {
+    this.addZpByte(name);
+    return this.zpMap.get(name)!;
   }
 
-  private parseStatement(): ASTNode {
-    const tok = this.peek();
-
-    // 1. Function Declaration or Variable Declaration
-    if (tok.type === "KEYWORD" && tok.value === "int") {
-      // Check if it's a function declaration lookahead: int main( ...
-      if (this.peekNext().type === "IDENTIFIER" && this.tokens[this.current + 2]?.type === "LPAREN") {
-        this.consume("KEYWORD"); // int
-        const name = this.consume("IDENTIFIER").value;
-        this.consume("LPAREN");
-        const params: string[] = [];
-        if (this.peek().type !== "RPAREN") {
-          this.consume("KEYWORD"); // int
-          params.push(this.consume("IDENTIFIER").value);
-          while (this.peek().type === "COMMA") {
-            this.consume("COMMA");
-            this.consume("KEYWORD"); // int
-            params.push(this.consume("IDENTIFIER").value);
-          }
-        }
-        this.consume("RPAREN");
-        this.consume("LBRACE");
-        const body: ASTNode[] = [];
-        while (this.peek().type !== "RBRACE") {
-          body.push(this.parseStatement());
-        }
-        this.consume("RBRACE");
-        return { type: "FunctionDecl", name, params, body };
-      } else {
-        // Standard Variable Declaration
-        this.consume("KEYWORD"); // int
-        const name = this.consume("IDENTIFIER").value;
-        this.consume("ASSIGN");
-        const value = this.parseExpression();
-        this.consume("SEMI");
-        return { type: "VarDecl", name, value };
-      }
-    }
-
-    // 2. Return Statement
-    if (tok.type === "KEYWORD" && tok.value === "return") {
-      this.consume("KEYWORD");
-      const value = this.parseExpression();
-      this.consume("SEMI");
-      return { type: "ReturnStatement", value };
-    }
-
-    // 3. If / Else Statement
-    if (tok.type === "KEYWORD" && tok.value === "if") {
-      this.consume("KEYWORD");
-      this.consume("LPAREN");
-      const condition = this.parseExpression();
-      this.consume("RPAREN");
-      this.consume("LBRACE");
-      const thenBranch: ASTNode[] = [];
-      while (this.peek().type !== "RBRACE") {
-        thenBranch.push(this.parseStatement());
-      }
-      this.consume("RBRACE");
-
-      let elseBranch: ASTNode[] | null = null;
-      if (this.peek().type === "KEYWORD" && this.peek().value === "else") {
-        this.consume("KEYWORD"); // else
-        this.consume("LBRACE");
-        elseBranch = [];
-        while (this.peek().type !== "RBRACE") {
-          elseBranch.push(this.parseStatement());
-        }
-        this.consume("RBRACE");
-      }
-      return { type: "IfStatement", condition, thenBranch, elseBranch };
-    }
-
-    // 4. While Loop
-    if (tok.type === "KEYWORD" && tok.value === "while") {
-      this.consume("KEYWORD");
-      this.consume("LPAREN");
-      const condition = this.parseExpression();
-      this.consume("RPAREN");
-      this.consume("LBRACE");
-      const body: ASTNode[] = [];
-      while (this.peek().type !== "RBRACE") {
-        body.push(this.parseStatement());
-      }
-      this.consume("RBRACE");
-      return { type: "WhileLoop", condition, body };
-    }
-
-    // 5. Assignment or Standalone Expression/Call
-    if (tok.type === "IDENTIFIER") {
-      if (this.peekNext().type === "ASSIGN") {
-        const name = this.consume("IDENTIFIER").value;
-        this.consume("ASSIGN");
-        const value = this.parseExpression();
-        this.consume("SEMI");
-        return { type: "Assign", name, value };
-      } else {
-        const expr = this.parseExpression();
-        this.consume("SEMI");
-        return expr;
-      }
-    }
-
-    throw new Error(`Unknown statement starting with value: "${tok.value}"`);
+  getZpWord(name: string): string {
+    this.addZpWord(name);
+    return this.zpMap.get(name)!;
   }
 
-  private parseExpression(): ASTNode {
-    let left = this.parsePrimary();
-    while (this.peek().type === "PLUS" || this.peek().type === "MINUS") {
-      const op = this.consume(this.peek().type).value as "+" | "-";
-      const right = this.parsePrimary();
-      left = { type: "BinaryExpr", op, left, right };
-    }
-    return left;
+  osCall(name: string) {
+    this.osUsed.add(name);
+    return name;
   }
 
-  private parsePrimary(): ASTNode {
-    const tok = this.peek();
-    if (tok.type === "NUMBER") {
-      this.consume("NUMBER");
-      return { type: "Literal", value: parseInt(tok.value, 10) };
-    }
-    if (tok.type === "IDENTIFIER") {
-      // Check if it's a function call expression: compute(x, y)
-      if (this.peekNext().type === "LPAREN") {
-        const name = this.consume("IDENTIFIER").value;
-        this.consume("LPAREN");
-        const args: ASTNode[] = [];
-        if (this.peek().type !== "RPAREN") {
-          args.push(this.parseExpression());
-          while (this.peek().type === "COMMA") {
-            this.consume("COMMA");
-            args.push(this.parseExpression());
-          }
-        }
-        this.consume("RPAREN");
-        return { type: "CallExpr", name, args };
-      } else {
-        this.consume("IDENTIFIER");
-
-        return { type: "Identifier", name: tok.value };
-      }
-    }
-    throw new Error(`Unexpected expression token: ${tok.value}`);
-  }
-}
-// ==========================================
-// 3. CODE GENERATOR (Targeting Minimal 64x4)
-// ==========================================
-class CodeGenerator {
-  private assembly: string[] = [];
-  private zeroPageMap = new Map<string, string>();
-  private zpCursor = 0x10;
-  private labelCounter = 0;
-  private getZpAddress(name: string): string {
-    if (!this.zeroPageMap.has(name)) {
-      this.zeroPageMap.set(name, hex);
-      this.zpCursor++;
-    }
-    return this.zeroPageMap.get(name)!;
-  }
-  private emit(instruction: string, comment: string = "") {
+  emit(instruction: string, comment: string = "") {
     this.assembly.push(comment ? `${instruction.padEnd(18)}; ${comment}` : instruction);
   }
-  public generate(node: ASTNode): string {
-    this.emit("; Code generated for Extended Minimal 64x4 Assembly");
-    this.emit("; Stack pointer at 0xFFFF, zero-page addressing configured\n");
-    // Jump over functions directly to start main execution loop
-    this.emit("JMP _INIT", "Jump straight to bootstrap init code");
-    this.compile(node);
-    this.emit("\n_INIT:", "System bootstrap initialization entry point");
-    this.emit("JSR fn_main", "Call main function loop execution");
-    this.emit("HALT", "Stop hardware processor execution loops");
+
+  generate(fname: string, program: Program): string {
+    this.reset();
+    this.emit(`; Code compiled from ${fname}`);
+    this.compile(program);
+    this.emit(`; MinOS`);
+    this.osUsed.forEach((o) => this.emit(`#org ${osAddr[o]} ${o}:`));
+
     return this.assembly.join("\n");
   }
-  private compile(node: ASTNode) {
-    switch (node.type) {
-      case "Program":
-        node.body.forEach((stmt) => this.compile(stmt));
-        break;
-      case "FunctionDecl":
-        this.emit(`\nfn_${node.name}:, Declaration entry for function "${node.name}"`);
-        // Pull parameters off the stack frame in reverse order they were pushed
-        // Store parameters into quick hardware Zero-Page locations allocated for this scope
-        for (let i = 0; i < node.params.length; i++) {
-          const paramName = `${node.name}_local_${node.params[i]}`;
-          const targetZp = this.getZpAddress(paramName);
-          this.emit("PLA", "Pull call parameter argument off stack");
+
+  compilePrint(print: PrintStatement) {
+    print.args.forEach((arg, i) => {
+      arg.exprs.forEach((expr, j) => {
+        if (isConstExpression(expr)) {
+          this.emit(`JSR ${this.osCall("_Print")} "${expr.value}", 0`, "_Print");
+        } else {
+          this.compileExpression(expr);
         }
-        node.body.forEach((stmt) => this.compile(stmt));
-        // Explicit backup fallback return sequence if execution flows off end of scope block
-        this.emit(`"RTS", Default return safety fallback path for ${node.name}`);
-        break;
-      case "CallExpr":
-        // Push standard execution arguments onto the stack frame backwards (Right-to-Left pattern)
-        for (let i = node.args.length - 1; i >= 0; i--) {
-          this.compile(node.args[i]); // Result ends up in Accumulator A
-          this.emit(`"PHA", Push frame call argument parameter index [${i}]`);
-        }
-        this.emit(`JSR fn_${node.name}, Jump to Subroutine function address 'fn_${node.name}'`);
-        // Result of function evaluation is preserved dynamically in Register A
-        break;
-      case "ReturnStatement":
-        this.compile(node.value); // Leaves return evaluation scalar payload in Register A
-        this.emit("RTS", "Return from function subroutine, output stored in A");
-        break;
-        [5];
-      case "VarDecl":
-      case "Assign":
-        this.compile(node.value);
-        const zpAddr = this.getZpAddress(node.name);
-        this.emit(`STZ ${zpAddr}, Store accumulator directly into variable mapping '${node.name}'`);
-        break;
-      case "Literal":
-        this.emit(`LDI ${node.value}, Load intermediate numerical integer literal value directly`);
-        break;
-      case "Identifier":
-        // Look up global tracking reference mappings or locally localized scope tags
-        // Check if a localized instance mapping configuration exists for tracking
-        let targetLookup = node.name;
-        // Basic scope lookup: check if it matches an active variable tracking footprint
-        for (const key of this.zeroPageMap.keys()) {
-          if (key.endsWith(`_local_${node.name}`)) {
-            targetLookup = key;
-            break;
-          }
-        }
-        const addr = this.getZpAddress(targetLookup);
-        this.emit(`LDZ ${addr}, Load tracking variable entry '${node.name}' out from Zero-Page`);
-        break;
-      case "BinaryExpr":
-        this.compile(node.right);
+      });
+    });
+  }
+
+  compileExpression(expr: Expression) {
+    switch (true) {
+      case isBinaryExpression(expr):
+        console.error(`${expr.$type} compilation not implemented`);
+        this.compileExpression(expr.right);
         this.emit("PHA", "Store right side operand expression onto hardware stack tracking");
-        this.compile(node.left);
-        if (node.op === "+") {
+        this.compileExpression(expr.left);
+        if (expr.operator === "+") {
           this.emit("ADD_STACK", "Add top stack workspace allocation variable to Accumulator A");
         } else {
           this.emit("SUB_STACK", "Subtract stack value element allocation directly away from Accumulator A");
         }
         break;
-        [6];
-      case "IfStatement": {
+      case isUnaryExpression(expr):
+        console.error(`${expr.$type} compilation not implemented`);
+        break;
+      case isNumberLiteral(expr):
+        console.error(`${expr.$type} compilation not implemented`);
+        this.emit(`LDI ${expr.value}, Load intermediate numerical integer literal value directly`);
+        break;
+      case isStringLiteral(expr):
+        console.error(`${expr.$type} compilation not implemented`);
+        // this.emit(`LDI ${expr.value}, Load intermediate numerical integer literal value directly`);
+        break;
+      case isVariableReference(expr):
+        console.error(`${expr.$type} compilation not implemented`);
+        // Look up global tracking reference mappings or locally localized scope tags
+        // Check if a localized instance mapping configuration exists for tracking
+        // let targetLookup = node.name;
+        // // Basic scope lookup: check if it matches an active variable tracking footprint
+        // for (const key of this.zeroPageMap.keys()) {
+        //   if (key.endsWith(`_local_${node.name}`)) {
+        //     targetLookup = key;
+        //     break;
+        //   }
+        // }
+        // const addr = this.getZpAddress(targetLookup);
+        // this.emit(`LDZ ${addr}, Load tracking variable entry '${node.name}' out from Zero-Page`);
+        break;
+      case isFunctionCall(expr):
+        console.error(`${expr.$type} compilation not implemented`);
+        break;
+      default:
+        throw Error("Unknown expr type ");
+    }
+  }
+
+  compile(node: AstNode) {
+    switch (true) {
+      case isProgram(node):
+        node.elements.forEach((stmt) => this.compile(stmt));
+        break;
+      case isPrintStatement(node):
+        this.compilePrint(node);
+        break;
+      case isDef(node):
+        console.error(`${node.$type} compilation not implemented`);
+        this.emit(`\nfn_${node.name}:, Declaration entry for function "${node.name}"`);
+        // Pull parameters off the stack frame in reverse order they were pushed
+        // Store parameters into quick hardware Zero-Page locations allocated for this scope
+        // for (let i = 0; i < node.params.length; i++) {
+        //   const paramName = `${node.name}_local_${node.params[i]}`;
+        //   const targetZp = this.getZpAddress(paramName);
+        //   this.emit("PLA", "Pull call parameter argument off stack");
+        // }
+        // node.body.forEach((stmt) => this.compile(stmt));
+        // // Explicit backup fallback return sequence if execution flows off end of scope block
+        // this.emit(`"RTS", Default return safety fallback path for ${node.name}`);
+        break;
+      case isCallStatement(node):
+        console.error(`${node.$type} compilation not implemented`);
+        // Push standard execution arguments onto the stack frame backwards (Right-to-Left pattern)
+        // for (let i = node.args.length - 1; i >= 0; i--) {
+        //   this.compile(node.args[i]); // Result ends up in Accumulator A
+        //   this.emit(`"PHA", Push frame call argument parameter index [${i}]`);
+        // }
+        // this.emit(`JSR fn_${node.name}, Jump to Subroutine function address 'fn_${node.name}'`);
+        // // Result of function evaluation is preserved dynamically in Register A
+        break;
+      case isReturnStatement(node):
+        console.error(`${node.$type} compilation not implemented`);
+        // this.compile(node.value); // Leaves return evaluation scalar payload in Register A
+        this.emit("RTS", "Return from function subroutine, output stored in A");
+        break;
+      case isVariableAssignment(node):
+        console.error(`${node.$type} compilation not implemented`);
+        // this.compile(node.value);
+        // const zpAddr = this.getZpAddress(node.name);
+        // this.emit(`STZ ${zpAddr}, Store accumulator directly into variable mapping '${node.name}'`);
+        break;
+      case isExpression(node):
+        console.error(`${node.$type} compilation not implemented`);
+        this.compileExpression(node);
+        break;
+      case isIf(node):
+        console.error(`${node.$type} compilation not implemented`);
         const labelId = this.labelCounter++;
         const elseLabel = `IF_ELSE_${labelId}`;
         const endLabel = `IF_END_${labelId}`;
-        this.compile(node.condition); // Leaves condition evaluation result check in register A
-        this.emit(`BRZ ${node.elseBranch ? elseLabel : endLabel}`, "Branch out if condition returns zero false value state evaluation");
-        node.thenBranch.forEach((stmt) => this.compile(stmt));
-        if (node.elseBranch) {
-          this.emit(`JMP ${endLabel}, "Skip past else execution sequence path"`);
-          this.emit(`${elseLabel}:`, "Else branch processing start block trace routing execution");
-          node.elseBranch.forEach((stmt) => this.compile(stmt));
-        }
-        this.emit(`${endLabel}:`, "Reconverging structural pipeline resolution marker frame");
+        // this.compile(node.condition); // Leaves condition evaluation result check in register A
+        // this.emit(`BRZ ${node.elseBranch ? elseLabel : endLabel}`, "Branch out if condition returns zero false value state evaluation");
+        // node.thenBranch.forEach((stmt) => this.compile(stmt));
+        // if (node.elseBranch) {
+        //   this.emit(`JMP ${endLabel}, "Skip past else execution sequence path"`);
+        //   this.emit(`${elseLabel}:`, "Else branch processing start block trace routing execution");
+        //   node.elseBranch.forEach((stmt) => this.compile(stmt));
+        // }
+        // this.emit(`${endLabel}:`, "Reconverging structural pipeline resolution marker frame");
+        break;
+      case isWhile(node): {
+        console.error(`${node.$type} compilation not implemented`);
+        // const labelId = this.labelCounter++;
+        // const startLabel = `WHILE_START_${labelId}`;
+        // const endLabel = `WHILE_END_${labelId}`;
+        // this.emit(`${startLabel}:`, "While processing condition check pipeline safety loops entry");
+        // this.compile(node.condition);
+        // this.emit(`BRZ ${endLabel}, "Break processing context bounds loop path checks"`);
+        // node.body.forEach((stmt) => this.compile(stmt));
+        // this.emit(`JMP ${startLabel}`, "Recurse check sequence conditions iteratively inside execution spaces");
+        // this.emit(`${endLabel}:`, "Resolution pipeline validation boundary processing terminal markers");
         break;
       }
-      case "WhileLoop": {
-        const labelId = this.labelCounter++;
-        const startLabel = `WHILE_START_${labelId}`;
-        const endLabel = `WHILE_END_${labelId}`;
-        this.emit(`${startLabel}:`, "While processing condition check pipeline safety loops entry");
-        this.compile(node.condition);
-        this.emit(`BRZ ${endLabel}, "Break processing context bounds loop path checks"`);
-        node.body.forEach((stmt) => this.compile(stmt));
-        this.emit(`JMP ${startLabel}`, "Recurse check sequence conditions iteratively inside execution spaces");
-        this.emit(`${endLabel}:`, "Resolution pipeline validation boundary processing terminal markers");
-        break;
-      }
+      default:
+        throw Error("Unknown compilation type " + node.$type);
     }
   }
 }
-// ==========================================
-// TEST EXECUTION RUNNER WITH IF-ELSE & FUNCS
-// ==========================================
-const sourceCode = `
-int addNumbers(int x, int y) {
-return x + y;
-}
-int main() {
-int target = 5;
-int output = 0;
-if (target) {
-output = addNumbers(target, 12);
-} else {
-output = 100;
-}
-}
-`;
-try {
-  const lexer = new Lexer(sourceCode);
-  const tokens = lexer.tokenize();
-  const parser = new Parser(tokens);
-  const ast = parser.parse();
-  const codegen = new CodeGenerator();
-  const assemblyOutput = codegen.generate(ast);
-  console.log(assemblyOutput);
-} catch (err: any) {
-  console.error("Compilation failed processing elements:", err.message);
-}
+
+export const minCompiler = new MinCompiler();
 
 // ### Architectural Updates Explained
 

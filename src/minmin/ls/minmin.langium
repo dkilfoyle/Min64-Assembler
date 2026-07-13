@@ -11,19 +11,6 @@ Element:
   Def | 
   Use;
 
-// If:
-//   'if' condition=Expression ':' 
-//     (thenBlock+=SimpleStatement | (
-//       INDENT thenBlock+=Element+
-//       DEDENT)
-//     )
-//     (elifs+=ElIf*)
-//     ('else' ':'
-//        (elseBlock+=SimpleStatement | (
-//          INDENT elseBlock+=Element+
-//          DEDENT)
-//        )
-//     )?;
 If:
   'if' condition=Expression ':' Block
     (elifs+=ElIf*)
@@ -115,8 +102,7 @@ Comparison infers Expression:
 Primary infers Expression:
   '(' Expression ')' |
     UnaryExpression |
-    StringLiteral |
-    NumberLiteral |
+    ConstExpression |
     VariableReference |
     FunctionCall;
 
@@ -125,6 +111,9 @@ UnaryExpression:
 
 FunctionCall:
   functionName=[Def:ID] '(' (args+=CompoundExpression ("," args+=CompoundExpression)*)? ')';
+
+ConstExpression:
+  NumberLiteral | StringLiteral;
 
 NumberLiteral:
   value=(HEXNUMBER|DECIMALNUMBER);

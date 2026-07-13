@@ -16,6 +16,7 @@ import { MinasmGeneratedSharedModule, MinasmModelGeneratedModule } from "./gener
 import { MinasmValidator, registerValidationChecks } from "./minasm-validator.js";
 // import { MinasmScopeComputation } from "./minasm-scope.js";
 import { MinasmConverter } from "./minasm-value.js";
+import { MinasmHoverProvider } from "./minasm-hover.js";
 
 /**
  * Declaration of custom services - add your own service classes here.
@@ -47,6 +48,9 @@ const MinasmModule: Module<MinasmServices, PartialLangiumServices & MinasmAddedS
   parser: {
     // override the default value converter
     ValueConverter: (services) => new MinasmConverter(),
+  },
+  lsp: {
+    HoverProvider: (services) => new MinasmHoverProvider(services),
   },
 };
 
