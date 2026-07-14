@@ -1,8 +1,10 @@
 import { LogLevel } from "@codingame/monaco-vscode-api";
-import type { ExtensionConfig, MonacoVscodeApiConfig } from "monaco-languageclient/vscodeApiWrapper";
+import type { MonacoVscodeApiConfig } from "monaco-languageclient/vscodeApiWrapper";
 import { configureDefaultWorkerFactory } from "monaco-languageclient/workerFactory";
+import { extensionConfig as minasmExtensionConfig } from "../minasm/config/extensionConfig";
+import { extensionConfig as minminExtensionConfig } from "../minmin/config/extensionConfig";
 
-export const createMonacoApiConfig = (extensions: ExtensionConfig[]): MonacoVscodeApiConfig => ({
+export const monacoApiConfig: MonacoVscodeApiConfig = {
   $type: "extended",
   viewsConfig: {
     $type: "EditorService",
@@ -22,5 +24,5 @@ export const createMonacoApiConfig = (extensions: ExtensionConfig[]): MonacoVsco
       "editor.experimental.asyncTokenization": true,
     }),
   },
-  extensions,
-});
+  extensions: [minasmExtensionConfig, minminExtensionConfig],
+};
