@@ -163,7 +163,7 @@ class Assembler {
     }
 
     // dump label calculated in first pass
-    (Array.from(this.labels).map(([lbl, addr]) => console.log(`0x${addr.toString(16).padStart(4, "0")} ${lbl}`)), this.hex.debug());
+    // (Array.from(this.labels).map(([lbl, addr]) => console.log(`0x${addr.toString(16).padStart(4, "0")} ${lbl}`)), this.hex.debug());
 
     this.reset(SECOND_PASS);
 

@@ -18,6 +18,6 @@ export class MinminWorkspaceManager extends DefaultWorkspaceManager {
   ): Promise<void> {
     await super.loadAdditionalDocuments(folders, collector);
     // Load our library using the `builtin` URI schema
-    collector(this.documentFactory.fromString(stdLib, URI.parse("builtin:///std.min")));
+    // collector(this.documentFactory.fromString(stdLib, URI.parse("builtin:///std.min")));
   }
 }

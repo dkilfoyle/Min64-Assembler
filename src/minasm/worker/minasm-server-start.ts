@@ -36,6 +36,18 @@ export const start = async (port: MessagePort | DedicatedWorkerGlobalScope, name
   // Start the language server with the shared services
   startLanguageServer(shared);
 
+  const buildDoc = (doc: LangiumDocument) => {
+    if (isProgram(doc.parseResult.value) && doc.diagnostics?.length == 0) {
+      console.log(`${doc.uri.toString()} AST`, doc.parseResult.value.entries);
+      assembler.assemble(doc.parseResult.value);
+      console.log("Assembler", assembler.hex.toString());
+      console.log(
+        "Labels",
+        Array.from(assembler.labels.entries()).map(([k, v]) => `${k} -> ${v.toString(16)}`),
+      );
+    }
+  };
+
   shared.workspace.DocumentBuilder.onBuildPhase(DocumentState.Validated, (documents, cancelToken) => {
     for (const doc of documents) {
       const uri = doc.uri.toString();
@@ -58,16 +70,4 @@ export const start = async (port: MessagePort | DedicatedWorkerGlobalScope, name
       buildTimers.set(uri, timer);
     }
   });
-};
-
-const buildDoc = (doc: LangiumDocument) => {
-  console.log("builddoc");
-  if (isProgram(doc.parseResult.value) && doc.diagnostics?.length == 0) {
-    console.log("No diagnostics, assembling...");
-    console.log(doc.parseResult.value.entries);
-    console.log("assembling....");
-    assembler.assemble(doc.parseResult.value);
-    console.log(assembler.hex.toString());
-    console.log(Array.from(assembler.labels.entries()).map(([k, v]) => `${k} -> ${v.toString(16)}`));
-  }
 };

@@ -73,15 +73,15 @@ class MinCompiler {
   }
 
   emit(instruction: string, comment: string = "") {
-    this.assembly.push(comment ? `${instruction.padEnd(18)}; ${comment}` : instruction);
+    this.assembly.push(comment ? `${instruction.padEnd(38)}; ${comment}` : instruction);
   }
 
   generate(fname: string, program: Program): string {
     this.reset();
-    this.emit(`; Code compiled from ${fname}`);
+    this.emit(`; Code compiled from ${fname}\n`);
     this.compile(program);
-    this.emit(`; MinOS`);
-    this.osUsed.forEach((o) => this.emit(`#org ${osAddr[o]} ${o}:`));
+    this.emit(`\n; MinOS`);
+    this.osUsed.forEach((o) => this.emit(`#org 0x${osAddr[o].toString(16).padStart(4, "0")} ${o}:`));
 
     return this.assembly.join("\n");
   }
@@ -90,7 +90,7 @@ class MinCompiler {
     print.args.forEach((arg, i) => {
       arg.exprs.forEach((expr, j) => {
         if (isConstExpression(expr)) {
-          this.emit(`JSR ${this.osCall("_Print")} "${expr.value}", 0`, "_Print");
+          this.emit(`JPS ${this.osCall("_Print")} "${expr.value}", 0`, "_Print");
         } else {
           this.compileExpression(expr);
         }

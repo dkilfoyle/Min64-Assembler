@@ -79,7 +79,6 @@ export async function createMinminServices(context: DefaultSharedModuleContext):
   shared: LangiumSharedServices;
   minmin: MinminServices;
 }> {
-  console.log("createMinminServices");
   const shared = inject(createDefaultSharedModule(context), MinminGeneratedSharedModule, MinminSharedModule);
   const minmin = inject(createDefaultModule({ shared }), MinminModelGeneratedModule, MinminModule);
   shared.ServiceRegistry.register(minmin);

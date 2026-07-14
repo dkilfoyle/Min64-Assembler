@@ -73,7 +73,6 @@ export async function createMinasmServices(context: DefaultSharedModuleContext):
   shared: LangiumSharedServices;
   minasm: MinasmServices;
 }> {
-  console.log("createMinasmServices");
   const shared = inject(createDefaultSharedModule(context), MinasmGeneratedSharedModule);
   const minasm = inject(createDefaultModule({ shared }), MinasmModelGeneratedModule, MinasmModule);
   shared.ServiceRegistry.register(minasm);

@@ -10,6 +10,7 @@ import { startLanguageServer } from "langium/lsp";
 import { BrowserMessageReader, BrowserMessageWriter, createConnection } from "vscode-languageserver/browser";
 import { createMinminServices } from "../ls/minmin-module.js";
 import { isProgram } from "../ls/generated/ast.js";
+import { minCompiler } from "../compiler/compiler.js";
 
 let messageReader: BrowserMessageReader | undefined;
 let messageWriter: BrowserMessageWriter | undefined;
@@ -35,6 +36,16 @@ export const start = async (port: MessagePort | DedicatedWorkerGlobalScope, name
   // Start the language server with the shared services
   startLanguageServer(shared);
 
+  const buildDoc = (doc: LangiumDocument) => {
+    if (isProgram(doc.parseResult.value)) {
+      console.log(`${doc.uri.toString()} AST`, doc.parseResult.value.elements);
+      if (doc.diagnostics?.length == 0) {
+        const asm = minCompiler.generate(doc.uri.toString(), doc.parseResult.value);
+        connection.sendNotification("server/onCompiled", { asm });
+      }
+    }
+  };
+
   shared.workspace.DocumentBuilder.onBuildPhase(DocumentState.Validated, (documents, cancelToken) => {
     for (const doc of documents) {
       const uri = doc.uri.toString();
@@ -57,14 +68,4 @@ export const start = async (port: MessagePort | DedicatedWorkerGlobalScope, name
       buildTimers.set(uri, timer);
     }
   });
-};
-
-const buildDoc = (doc: LangiumDocument) => {
-  if (isProgram(doc.parseResult.value)) {
-    console.log(doc.parseResult.value.elements);
-    if (doc.diagnostics?.length == 0) {
-      console.log("No errors, compiling...");
-      // console.log(doc.parseResult.value.elements);
-    }
-  }
 };

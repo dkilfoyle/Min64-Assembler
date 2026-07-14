@@ -1,19 +1,18 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { MonacoEditorReactComp } from "@typefox/monaco-editor-react";
-import type { EditorApp } from "monaco-languageclient/editorApp";
+import type { EditorApp, EditorAppConfig } from "monaco-languageclient/editorApp";
 import type { LanguageClientManager } from "monaco-languageclient/lcwrapper";
 
 import { monacoApiConfig } from "../monaco/MonacoApiConfig";
 import { languageClientConfig } from "./config/languageClientConfig";
-
-import minCode from "./examples/compileme.min?raw";
+import { MonacoLanguageClient } from "monaco-languageclient";
 
 type Status = "loading" | "ready" | "error";
 
-export default function MinEditor() {
-  const [source, setSource] = useState(minCode);
+export default function MinEditor(props: { onCompiled: (asm: string) => void; sourceCode: string }) {
   const [status, setStatus] = useState<Status>("loading");
   const [errorMsg, setErrorMsg] = useState("");
+  const lcRef = useRef<MonacoLanguageClient | null>(null);
 
   const handleEditorStartDone = useCallback((editorApp?: EditorApp) => {
     setStatus("ready");
@@ -21,6 +20,10 @@ export default function MinEditor() {
 
   const handleLCStartDone = useCallback((lcsManager: LanguageClientManager) => {
     setStatus("ready");
+    lcRef.current = lcsManager.getLanguageClient("minmin") || null;
+    lcsManager.getLanguageClient("minmin")?.onNotification("server/onCompiled", ({ asm }) => {
+      props.onCompiled(asm);
+    });
   }, []);
 
   const handleError = useCallback((err: Error) => {
@@ -29,10 +32,10 @@ export default function MinEditor() {
     setErrorMsg(err.message);
   }, []);
 
-  const editorAppConfig = {
+  const editorAppConfig: EditorAppConfig = {
     codeResources: {
       modified: {
-        text: source,
+        text: props.sourceCode,
         uri: `/workspace/example.min`,
       },
     },
