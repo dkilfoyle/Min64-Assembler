@@ -21,39 +21,65 @@ import {
   type Program,
 } from "../ls/generated/ast";
 import { osAddr } from "./oslabels";
+import { hexByte, hexWord } from "./utils";
+import { ExpressionCompiler } from "./expr";
 
-const hex8 = (x: number) => `0x${x.toString(16).padStart(2, "0")}`;
-const hex16 = (x: number) => `0x${x.toString(16).padStart(4, "0")}`;
+export type Width = 8 | 16;
 
-class MinCompiler {
+export interface SymbolEntry {
+  addr: number; // zero-page address (word vars: low byte here, high at addr+1)
+  width: Width;
+}
+
+export interface SymbolTable {
+  vars: Map<string, SymbolEntry>;
+}
+
+export class MinCompiler {
   assembly: string[] = [];
   zpMap = new Map<string, string>();
   zpCursor = 0x50;
   labelCounter = 0;
   osUsed = new Set<string>();
+  counters: Map<string, number> = new Map();
+  symbols: SymbolTable = { vars: new Map() };
+
+  expressionCompiler: ExpressionCompiler;
+
+  constructor() {
+    this.expressionCompiler = new ExpressionCompiler(this);
+  }
 
   reset() {
+    this.counters = new Map();
+    this.symbols.vars = new Map();
     this.osUsed = new Set();
     this.zpMap = new Map();
     this.assembly = [];
     this.zpCursor = 0x50;
-    this.zpMap.set("z_BC", hex8(this.zpCursor));
-    this.zpMap.set("z_B", hex8(this.zpCursor++));
-    this.zpMap.set("z_C", hex8(this.zpCursor++));
-    this.zpMap.set("z_DE", hex8(this.zpCursor));
-    this.zpMap.set("z_D", hex8(this.zpCursor++));
-    this.zpMap.set("z_E", hex8(this.zpCursor++));
+    this.zpMap.set("z_BC", hexByte(this.zpCursor));
+    this.zpMap.set("z_B", hexByte(this.zpCursor++));
+    this.zpMap.set("z_C", hexByte(this.zpCursor++));
+    this.zpMap.set("z_DE", hexByte(this.zpCursor));
+    this.zpMap.set("z_D", hexByte(this.zpCursor++));
+    this.zpMap.set("z_E", hexByte(this.zpCursor++));
+  }
+
+  nextLabel(prefix: string): string {
+    const n = (this.counters.get(prefix) ?? 0) + 1;
+    this.counters.set(prefix, n);
+    return `${prefix}${n}`;
   }
 
   addZpByte(name: string) {
     if (!this.zpMap.has(name)) {
-      this.zpMap.set(name, hex8(this.zpCursor++));
+      this.zpMap.set(name, hexByte(this.zpCursor++));
     }
   }
 
   addZpWord(name: string) {
     if (!this.zpMap.has(name)) {
-      this.zpMap.set(name, hex16((this.zpCursor += 2)));
+      this.zpMap.set(name, hexWord((this.zpCursor += 2)));
     }
   }
 
@@ -82,8 +108,20 @@ class MinCompiler {
     this.compile(program);
     this.emit(`\n; MinOS`);
     this.osUsed.forEach((o) => this.emit(`#org 0x${osAddr[o].toString(16).padStart(4, "0")} ${o}:`));
-
+    // this.peephole();
     return this.assembly.join("\n");
+  }
+
+  peephole(lines: string[]): string[] {
+    const out: string[] = [];
+    for (const line of lines) {
+      const prev = out[out.length - 1];
+      if (prev && (prev.startsWith("LDZ ") || prev.startsWith("LDI ")) && prev === line && !prev.endsWith(":")) {
+        continue;
+      }
+      out.push(line);
+    }
+    return out;
   }
 
   compilePrint(print: PrintStatement) {
@@ -92,57 +130,10 @@ class MinCompiler {
         if (isConstExpression(expr)) {
           this.emit(`JPS ${this.osCall("_Print")} "${expr.value}", 0`, "_Print");
         } else {
-          this.compileExpression(expr);
+          this.expressionCompiler.compileExpression(expr);
         }
       });
     });
-  }
-
-  compileExpression(expr: Expression) {
-    switch (true) {
-      case isBinaryExpression(expr):
-        console.error(`${expr.$type} compilation not implemented`);
-        this.compileExpression(expr.right);
-        this.emit("PHA", "Store right side operand expression onto hardware stack tracking");
-        this.compileExpression(expr.left);
-        if (expr.operator === "+") {
-          this.emit("ADD_STACK", "Add top stack workspace allocation variable to Accumulator A");
-        } else {
-          this.emit("SUB_STACK", "Subtract stack value element allocation directly away from Accumulator A");
-        }
-        break;
-      case isUnaryExpression(expr):
-        console.error(`${expr.$type} compilation not implemented`);
-        break;
-      case isNumberLiteral(expr):
-        console.error(`${expr.$type} compilation not implemented`);
-        this.emit(`LDI ${expr.value}, Load intermediate numerical integer literal value directly`);
-        break;
-      case isStringLiteral(expr):
-        console.error(`${expr.$type} compilation not implemented`);
-        // this.emit(`LDI ${expr.value}, Load intermediate numerical integer literal value directly`);
-        break;
-      case isVariableReference(expr):
-        console.error(`${expr.$type} compilation not implemented`);
-        // Look up global tracking reference mappings or locally localized scope tags
-        // Check if a localized instance mapping configuration exists for tracking
-        // let targetLookup = node.name;
-        // // Basic scope lookup: check if it matches an active variable tracking footprint
-        // for (const key of this.zeroPageMap.keys()) {
-        //   if (key.endsWith(`_local_${node.name}`)) {
-        //     targetLookup = key;
-        //     break;
-        //   }
-        // }
-        // const addr = this.getZpAddress(targetLookup);
-        // this.emit(`LDZ ${addr}, Load tracking variable entry '${node.name}' out from Zero-Page`);
-        break;
-      case isFunctionCall(expr):
-        console.error(`${expr.$type} compilation not implemented`);
-        break;
-      default:
-        throw Error("Unknown expr type ");
-    }
   }
 
   compile(node: AstNode) {
@@ -188,10 +179,10 @@ class MinCompiler {
         // const zpAddr = this.getZpAddress(node.name);
         // this.emit(`STZ ${zpAddr}, Store accumulator directly into variable mapping '${node.name}'`);
         break;
-      case isExpression(node):
-        console.error(`${node.$type} compilation not implemented`);
-        this.compileExpression(node);
-        break;
+      // case isExpression(node):
+      //   console.error(`${node.$type} compilation not implemented`);
+      //   this.compileExpression(node);
+      //   break;
       case isIf(node):
         console.error(`${node.$type} compilation not implemented`);
         const labelId = this.labelCounter++;

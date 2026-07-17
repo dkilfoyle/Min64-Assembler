@@ -704,7 +704,7 @@ export const MinminModelGrammar = (): Grammar => loadedMinminModelGrammar ?? (lo
           },
           {
             "$type": "Assignment",
-            "feature": "id",
+            "feature": "varName",
             "operator": "=",
             "terminal": {
               "$type": "CrossReference",
@@ -765,7 +765,7 @@ export const MinminModelGrammar = (): Grammar => loadedMinminModelGrammar ?? (lo
         "elements": [
           {
             "$type": "Assignment",
-            "feature": "id",
+            "feature": "varName",
             "operator": "=",
             "terminal": {
               "$type": "CrossReference",
@@ -798,7 +798,7 @@ export const MinminModelGrammar = (): Grammar => loadedMinminModelGrammar ?? (lo
           },
           {
             "$type": "Assignment",
-            "feature": "operator",
+            "feature": "op",
             "operator": "=",
             "terminal": {
               "$type": "Alternatives",
@@ -1076,7 +1076,7 @@ export const MinminModelGrammar = (): Grammar => loadedMinminModelGrammar ?? (lo
               },
               {
                 "$type": "Assignment",
-                "feature": "operator",
+                "feature": "op",
                 "operator": "=",
                 "terminal": {
                   "$type": "Alternatives",
@@ -1144,7 +1144,7 @@ export const MinminModelGrammar = (): Grammar => loadedMinminModelGrammar ?? (lo
               },
               {
                 "$type": "Assignment",
-                "feature": "operator",
+                "feature": "op",
                 "operator": "=",
                 "terminal": {
                   "$type": "Alternatives",
@@ -1212,7 +1212,7 @@ export const MinminModelGrammar = (): Grammar => loadedMinminModelGrammar ?? (lo
               },
               {
                 "$type": "Assignment",
-                "feature": "operator",
+                "feature": "op",
                 "operator": "=",
                 "terminal": {
                   "$type": "Alternatives",
@@ -1285,14 +1285,14 @@ export const MinminModelGrammar = (): Grammar => loadedMinminModelGrammar ?? (lo
                 "$type": "Action",
                 "inferredType": {
                   "$type": "InferredType",
-                  "name": "BinaryExpression"
+                  "name": "ComparisonExpression"
                 },
                 "feature": "left",
                 "operator": "="
               },
               {
                 "$type": "Assignment",
-                "feature": "operator",
+                "feature": "op",
                 "operator": "=",
                 "terminal": {
                   "$type": "Alternatives",
@@ -1417,7 +1417,7 @@ export const MinminModelGrammar = (): Grammar => loadedMinminModelGrammar ?? (lo
         "elements": [
           {
             "$type": "Assignment",
-            "feature": "operator",
+            "feature": "op",
             "operator": "=",
             "terminal": {
               "$type": "Alternatives",
@@ -1434,11 +1434,16 @@ export const MinminModelGrammar = (): Grammar => loadedMinminModelGrammar ?? (lo
             }
           },
           {
-            "$type": "RuleCall",
-            "rule": {
-              "$ref": "#/rules@20"
-            },
-            "arguments": []
+            "$type": "Assignment",
+            "feature": "expr",
+            "operator": "=",
+            "terminal": {
+              "$type": "RuleCall",
+              "rule": {
+                "$ref": "#/rules@20"
+              },
+              "arguments": []
+            }
           }
         ]
       },
@@ -1620,7 +1625,7 @@ export const MinminModelGrammar = (): Grammar => loadedMinminModelGrammar ?? (lo
           },
           {
             "$type": "Assignment",
-            "feature": "id",
+            "feature": "varName",
             "operator": "=",
             "terminal": {
               "$type": "CrossReference",

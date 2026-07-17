@@ -57,10 +57,10 @@ VariableDeclaration returns NamedElement:
   {infer VariableDeclaration} type=("int"|"char") name=ID ("@" atexpr=Expression)? ("=" assignExpr=CompoundExpression)?;
 
 VariableAssignment:
-  {infer VariableAssignment} id=[NamedElement:ID] (index=ArrayIndex)? "=" assignExpr=CompoundExpression;
+  {infer VariableAssignment} varName=[NamedElement:ID] (index=ArrayIndex)? "=" assignExpr=CompoundExpression;
 
 VariableCalcAssignment:
-  id=[NamedElement:ID] (index=ArrayIndex)? operator=("+="|"-=") NumberLiteral;
+  varName=[NamedElement:ID] (index=ArrayIndex)? op=("+="|"-=") NumberLiteral;
 
 ReturnStatement:
   "return" expr=CompoundExpression;
@@ -84,20 +84,17 @@ CompoundExpression:
 Expression:
   Addition;
 
-// Assignment infers Expression:
-//   Addition ({infer BinaryExpression.left=current} operator=('=') right=Addition)*;
-
 Addition infers Expression:
-  Multiplication ({infer BinaryExpression.left=current} operator=('+' | '-') right=Multiplication)*;
+  Multiplication ({infer BinaryExpression.left=current} op=('+' | '-') right=Multiplication)*;
 
 Multiplication infers Expression:
-  Logical ({infer BinaryExpression.left=current} operator=('*' | '/') right=Logical)*;
+  Logical ({infer BinaryExpression.left=current} op=('*' | '/') right=Logical)*;
 
 Logical infers Expression:
-  Comparison ({infer BinaryExpression.left=current} operator=('and' | 'or' | 'xor' | '>>' | '<<') right=Comparison)*;
+  Comparison ({infer BinaryExpression.left=current} op=('and' | 'or' | 'xor' | '>>' | '<<') right=Comparison)*;
 
 Comparison infers Expression:
-  Primary ({infer BinaryExpression.left=current} operator=('<=' | '<' | '>=' | '>' | '==' | '!=') right=Primary)*;
+  Primary ({infer ComparisonExpression.left=current} op=('<=' | '<' | '>=' | '>' | '==' | '!=') right=Primary)*;
 
 Primary infers Expression:
   '(' Expression ')' |
@@ -107,7 +104,7 @@ Primary infers Expression:
     FunctionCall;
 
 UnaryExpression:
-  operator=("not"|"-") Expression;
+  op=("not"|"-") expr=Expression;
 
 FunctionCall:
   functionName=[Def:ID] '(' (args+=CompoundExpression ("," args+=CompoundExpression)*)? ')';
@@ -122,7 +119,7 @@ StringLiteral:
   value=STRING;
 
 VariableReference:
-  isAddress?="&"? id=[NamedElement:ID] index=RangeIndex?;
+  isAddress?="&"? varName=[NamedElement:ID] index=RangeIndex?;
 
 RangeIndex:
   "[" startExpr=Expression? ("|" endExpr=Expression)? "]";
