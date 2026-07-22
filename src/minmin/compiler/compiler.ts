@@ -16,12 +16,6 @@ import { osAddr } from "./oslabels";
 import { highOperand, lowOperand } from "./utils";
 import { ExpressionCompiler } from "./expressions";
 
-const stdlib = import.meta.glob("./stdlib/*.{asm}", {
-  query: "?raw",
-  import: "default",
-  eager: true,
-});
-
 interface ScopeSymbol {
   kind: "variable" | "function";
 }
