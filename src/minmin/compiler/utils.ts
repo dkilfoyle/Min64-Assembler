@@ -1,10 +1,10 @@
 export function hexByte(n: number): string {
   // return `$${(n & 0xff).toString(16).padStart(2, "0").toUpperCase()}`;
-  return `${(n & 0xff).toString(16).padStart(2, "0").toUpperCase()}`;
+  return `0x${(n & 0xff).toString(16).padStart(2, "0").toUpperCase()}`;
 }
 export function hexWord(n: number): string {
   // return `$${(n & 0xffff).toString(16).padStart(4, "0").toUpperCase()}`;
-  return `${(n & 0xffff).toString(16).padStart(4, "0").toUpperCase()}`;
+  return `0x${(n & 0xffff).toString(16).padStart(4, "0").toUpperCase()}`;
 }
 export function immByte(v: number): string {
   // return `#${hex2(v)}`;

@@ -603,7 +603,8 @@ getCall:				LDZ z_nextcall+0 STB getptr+0								             ; copy call top pt
 
 Factor:					CLZ z_refset LDT z_pc                         				 ; use default referenced element size 1
 
-                CPI 0xd0 FNE fac_next2																        ; TN_INT_CONST
+                CPI 0xd0 FNE fac_next2		
+                ; INTEGER CONSTANT = WORD SIZE														        ; TN_INT_CONST
                   INV z_pc MIZ 2,z_type
                   MIZ 1,z_cnt+0 CLZ z_cnt+1												       ; single int
                   LDT z_pc STT z_sp INV z_pc

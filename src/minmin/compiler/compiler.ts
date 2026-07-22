@@ -1,136 +1,117 @@
 import type { AstNode } from "langium";
 import {
-  Expression,
-  isBinaryExpression,
   isCallStatement,
   isConstExpression,
   isDef,
-  isExpression,
-  isFunctionCall,
   isIf,
-  isNumberLiteral,
   isPrintStatement,
   isProgram,
   isReturnStatement,
-  isStringLiteral,
-  isUnaryExpression,
   isVariableAssignment,
-  isVariableReference,
   isWhile,
   PrintStatement,
   type Program,
 } from "../ls/generated/ast";
 import { osAddr } from "./oslabels";
-import { hexByte, hexWord } from "./utils";
-import { ExpressionCompiler } from "./expr";
+import { highOperand, lowOperand } from "./utils";
+import { ExpressionCompiler } from "./expressions";
 
-export type Width = 8 | 16;
+const stdlib = import.meta.glob("./stdlib/*.{asm}", {
+  query: "?raw",
+  import: "default",
+  eager: true,
+});
 
-export interface SymbolEntry {
-  addr: number; // zero-page address (word vars: low byte here, high at addr+1)
-  width: Width;
+interface ScopeSymbol {
+  kind: "variable" | "function";
 }
 
-export interface SymbolTable {
-  vars: Map<string, SymbolEntry>;
+export interface VariableSymbol extends ScopeSymbol {
+  kind: "variable";
+  address: number;
+  type: "int" | "byte";
+  count: number;
 }
+
+export interface FunctionSymbol extends ScopeSymbol {
+  kind: "function";
+  addr: number;
+}
+
+// zero-page map
+// 00..3d - named
+// 3e..5d - word temps growing down
+// 5e..7e - byte temps growing down
 
 export class MinCompiler {
   assembly: string[] = [];
-  zpMap = new Map<string, string>();
-  zpCursor = 0x50;
-  labelCounter = 0;
-  osUsed = new Set<string>();
-  counters: Map<string, number> = new Map();
-  symbols: SymbolTable = { vars: new Map() };
+
+  labelPrefixCounters: Map<string, number> = new Map();
+  scopeStack: Map<string, VariableSymbol | FunctionSymbol>[] = [];
 
   expressionCompiler: ExpressionCompiler;
 
   constructor() {
     this.expressionCompiler = new ExpressionCompiler(this);
+    this.reset();
   }
 
   reset() {
-    this.counters = new Map();
-    this.symbols.vars = new Map();
-    this.osUsed = new Set();
-    this.zpMap = new Map();
+    this.labelPrefixCounters = new Map();
     this.assembly = [];
-    this.zpCursor = 0x50;
-    this.zpMap.set("z_BC", hexByte(this.zpCursor));
-    this.zpMap.set("z_B", hexByte(this.zpCursor++));
-    this.zpMap.set("z_C", hexByte(this.zpCursor++));
-    this.zpMap.set("z_DE", hexByte(this.zpCursor));
-    this.zpMap.set("z_D", hexByte(this.zpCursor++));
-    this.zpMap.set("z_E", hexByte(this.zpCursor++));
+    this.scopeStack = [];
+  }
+
+  getSymbolInfo(name: string) {
+    for (let i = this.scopeStack.length - 1; i >= 0; i--) {
+      const frame = this.scopeStack[i];
+      const s = frame.get(name);
+      if (s) return s;
+    }
+    return undefined;
   }
 
   nextLabel(prefix: string): string {
-    const n = (this.counters.get(prefix) ?? 0) + 1;
-    this.counters.set(prefix, n);
+    const n = (this.labelPrefixCounters.get(prefix) ?? 0) + 1;
+    this.labelPrefixCounters.set(prefix, n);
     return `${prefix}${n}`;
   }
 
-  addZpByte(name: string) {
-    if (!this.zpMap.has(name)) {
-      this.zpMap.set(name, hexByte(this.zpCursor++));
-    }
-  }
-
-  addZpWord(name: string) {
-    if (!this.zpMap.has(name)) {
-      this.zpMap.set(name, hexWord((this.zpCursor += 2)));
-    }
-  }
-
-  getZpByte(name: string): string {
-    this.addZpByte(name);
-    return this.zpMap.get(name)!;
-  }
-
-  getZpWord(name: string): string {
-    this.addZpWord(name);
-    return this.zpMap.get(name)!;
-  }
-
   osCall(name: string) {
-    this.osUsed.add(name);
+    if (!osAddr[name]) throw Error("Unknown osCall " + name);
+    this.symbols.globals.set(name, osAddr[name]);
     return name;
   }
 
-  emit(instruction: string, comment: string = "") {
+  out(instruction: string, comment: string = "") {
     this.assembly.push(comment ? `${instruction.padEnd(38)}; ${comment}` : instruction);
   }
 
   generate(fname: string, program: Program): string {
     this.reset();
-    this.emit(`; Code compiled from ${fname}\n`);
+    this.out(`; Code compiled from ${fname}\n`);
     this.compile(program);
-    this.emit(`\n; MinOS`);
-    this.osUsed.forEach((o) => this.emit(`#org 0x${osAddr[o].toString(16).padStart(4, "0")} ${o}:`));
-    // this.peephole();
+    this.out(`\n; Globals`);
+    this.symbols.globals.forEach((addr, name) => this.out(`#org 0x${addr.toString(16).padStart(4, "0")} ${name}:`));
     return this.assembly.join("\n");
   }
 
-  peephole(lines: string[]): string[] {
-    const out: string[] = [];
-    for (const line of lines) {
-      const prev = out[out.length - 1];
-      if (prev && (prev.startsWith("LDZ ") || prev.startsWith("LDI ")) && prev === line && !prev.endsWith(":")) {
-        continue;
-      }
-      out.push(line);
-    }
-    return out;
-  }
-
-  compilePrint(print: PrintStatement) {
+  emitPrint(print: PrintStatement) {
+    this.out("; " + print.$cstNode?.text);
     print.args.forEach((arg, i) => {
       arg.exprs.forEach((expr, j) => {
         if (isConstExpression(expr)) {
-          this.emit(`JPS ${this.osCall("_Print")} "${expr.value}", 0`, "_Print");
+          this.out(`JPS ${this.osCall("_Print")} "${expr.value}", 0`, "_Print");
         } else {
-          this.expressionCompiler.compileExpression(expr);
+          const { width, loc } = this.expressionCompiler.compileExpression(expr);
+          if (width == "byte") this.out(`JPS ${this.osCall("_PrintHex")}`);
+          else {
+            this.out(`; print result @ ${lowOperand(loc?.addr!)}`);
+            this.out(`PHS ${lowOperand(loc?.addr!)}`);
+            this.out(`PHS ${highOperand(loc?.addr!)}`);
+            this.out(`JPS ${this.osCall("_PrintPtr")}`);
+            this.expressionCompiler.freeLoc(loc!);
+          }
         }
       });
     });
@@ -142,11 +123,11 @@ export class MinCompiler {
         node.elements.forEach((stmt) => this.compile(stmt));
         break;
       case isPrintStatement(node):
-        this.compilePrint(node);
+        this.emitPrint(node);
         break;
       case isDef(node):
         console.error(`${node.$type} compilation not implemented`);
-        this.emit(`\nfn_${node.name}:, Declaration entry for function "${node.name}"`);
+        this.out(`\nfn_${node.name}:, Declaration entry for function "${node.name}"`);
         // Pull parameters off the stack frame in reverse order they were pushed
         // Store parameters into quick hardware Zero-Page locations allocated for this scope
         // for (let i = 0; i < node.params.length; i++) {
@@ -171,7 +152,7 @@ export class MinCompiler {
       case isReturnStatement(node):
         console.error(`${node.$type} compilation not implemented`);
         // this.compile(node.value); // Leaves return evaluation scalar payload in Register A
-        this.emit("RTS", "Return from function subroutine, output stored in A");
+        this.out("RTS", "Return from function subroutine, output stored in A");
         break;
       case isVariableAssignment(node):
         console.error(`${node.$type} compilation not implemented`);
@@ -185,7 +166,7 @@ export class MinCompiler {
       //   break;
       case isIf(node):
         console.error(`${node.$type} compilation not implemented`);
-        const labelId = this.labelCounter++;
+        const labelId = this.nextLabel("If");
         const elseLabel = `IF_ELSE_${labelId}`;
         const endLabel = `IF_END_${labelId}`;
         // this.compile(node.condition); // Leaves condition evaluation result check in register A

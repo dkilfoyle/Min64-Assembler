@@ -82,29 +82,29 @@ CompoundExpression:
   exprs+=Expression ("_" exprs+=Expression)*;
 
 Expression:
-  Addition;
+  Logic;
 
-Addition infers Expression:
+Logic:
+  Comparison ({infer BinaryExpression.left=current} op=('and'|'or'|'xor'|'>>'|'<<') right=Comparison)*;
+
+Comparison:
+  Addition ({infer ComparisonExpression.left=current} op=('<' | '<=' | '>' | '>=' | '==' | '!=') right=Addition)*;
+
+Addition:
   Multiplication ({infer BinaryExpression.left=current} op=('+' | '-') right=Multiplication)*;
 
-Multiplication infers Expression:
-  Logical ({infer BinaryExpression.left=current} op=('*' | '/') right=Logical)*;
+Multiplication:
+  Unary ({infer BinaryExpression.left=current} op=('*' | '/') right=Unary)*;
 
-Logical infers Expression:
-  Comparison ({infer BinaryExpression.left=current} op=('and' | 'or' | 'xor' | '>>' | '<<') right=Comparison)*;
-
-Comparison infers Expression:
-  Primary ({infer ComparisonExpression.left=current} op=('<=' | '<' | '>=' | '>' | '==' | '!=') right=Primary)*;
+Unary:
+  {infer UnaryExpression} op=('not' | '-') inner=Primary
+    | Primary;
 
 Primary infers Expression:
   '(' Expression ')' |
-    UnaryExpression |
     ConstExpression |
     VariableReference |
     FunctionCall;
-
-UnaryExpression:
-  op=("not"|"-") expr=Expression;
 
 FunctionCall:
   functionName=[Def:ID] '(' (args+=CompoundExpression ("," args+=CompoundExpression)*)? ')';
