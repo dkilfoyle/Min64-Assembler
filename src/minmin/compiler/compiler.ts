@@ -1,13 +1,18 @@
 import type { AstNode } from "langium";
 import {
+  FunctionCall,
+  isBinaryExpression,
   isCallStatement,
-  isConstExpression,
   isDef,
+  isFunctionCall,
   isIf,
+  isNumberLiteral,
   isPrintStatement,
   isProgram,
   isReturnStatement,
+  isStringLiteral,
   isVariableAssignment,
+  isVariableReference,
   isWhile,
   PrintStatement,
   type Program,
@@ -16,34 +21,27 @@ import { osAddr } from "./oslabels";
 import { highOperand, lowOperand } from "./utils";
 import { ExpressionCompiler } from "./expressions";
 
-interface ScopeSymbol {
-  kind: "variable" | "function";
-}
+type ScopeSymbol = VariableSymbol | FunctionSymbol;
 
-export interface VariableSymbol extends ScopeSymbol {
+export interface VariableSymbol {
   kind: "variable";
   address: number;
-  type: "int" | "byte";
+  type: "int" | "char";
   count: number;
 }
 
-export interface FunctionSymbol extends ScopeSymbol {
+export interface FunctionSymbol {
   kind: "function";
   addr: number;
 }
 
-// zero-page map
-// 00..3d - named
-// 3e..5d - word temps growing down
-// 5e..7e - byte temps growing down
-
 export class MinCompiler {
   assembly: string[] = [];
-
   labelPrefixCounters: Map<string, number> = new Map();
-  scopeStack: Map<string, VariableSymbol | FunctionSymbol>[] = [];
-
+  scopeStack: Map<string, ScopeSymbol>[] = [];
+  osUsed: Set<string> = new Set();
   expressionCompiler: ExpressionCompiler;
+  runtimeUsed = new Set<string>();
 
   constructor() {
     this.expressionCompiler = new ExpressionCompiler(this);
@@ -54,6 +52,9 @@ export class MinCompiler {
     this.labelPrefixCounters = new Map();
     this.assembly = [];
     this.scopeStack = [];
+    this.osUsed.clear();
+    this.runtimeUsed.clear();
+    this.expressionCompiler.reset();
   }
 
   getSymbolInfo(name: string) {
@@ -62,7 +63,7 @@ export class MinCompiler {
       const s = frame.get(name);
       if (s) return s;
     }
-    return undefined;
+    throw new Error(`${name} is not a defined symbol`);
   }
 
   nextLabel(prefix: string): string {
@@ -71,9 +72,9 @@ export class MinCompiler {
     return `${prefix}${n}`;
   }
 
-  osCall(name: string) {
+  os(name: string) {
     if (!osAddr[name]) throw Error("Unknown osCall " + name);
-    this.symbols.globals.set(name, osAddr[name]);
+    this.osUsed.add(name);
     return name;
   }
 
@@ -84,29 +85,47 @@ export class MinCompiler {
   generate(fname: string, program: Program): string {
     this.reset();
     this.out(`; Code compiled from ${fname}\n`);
+    this.out("#org 0x2000");
     this.compile(program);
-    this.out(`\n; Globals`);
-    this.symbols.globals.forEach((addr, name) => this.out(`#org 0x${addr.toString(16).padStart(4, "0")} ${name}:`));
+    this.out(`JPA ${this.os("_Prompt")}`);
+    this.expressionCompiler.emitRuntime();
+    this.expressionCompiler.emitHeader();
+    this.emitOsCalls();
     return this.assembly.join("\n");
+  }
+
+  emitOsCalls() {
+    this.out(`; MinOS API`);
+    this.osUsed.forEach((name) => {
+      const addr = osAddr[name];
+      if (!addr) throw new Error(`Unknown os call ${name}`);
+      this.out(`#org 0x${addr.toString(16).padStart(4, "0")} ${name}:`);
+    });
   }
 
   emitPrint(print: PrintStatement) {
     this.out("; " + print.$cstNode?.text);
     print.args.forEach((arg, i) => {
       arg.exprs.forEach((expr, j) => {
-        if (isConstExpression(expr)) {
-          this.out(`JPS ${this.osCall("_Print")} "${expr.value}", 0`, "_Print");
-        } else {
-          const { width, loc } = this.expressionCompiler.compileExpression(expr);
-          if (width == "byte") this.out(`JPS ${this.osCall("_PrintHex")}`);
-          else {
-            this.out(`; print result @ ${lowOperand(loc?.addr!)}`);
-            this.out(`PHS ${lowOperand(loc?.addr!)}`);
-            this.out(`PHS ${highOperand(loc?.addr!)}`);
-            this.out(`JPS ${this.osCall("_PrintPtr")}`);
-            this.expressionCompiler.freeLoc(loc!);
+        if (isNumberLiteral(expr) || isStringLiteral(expr)) {
+          this.out(`JPS ${this.os("_Print")} "${expr.value}", 0`, "_Print");
+          return;
+        }
+        if (isVariableReference(expr)) {
+          const varName = expr.varName.$refText;
+          const v = this.getSymbolInfo(varName);
+          if (v.kind == "variable" && v.type == "char") {
+            // print 0 terminated char(s)
+            this.out(`PHS ${lowOperand(v.address)} PHS ${highOperand(v.address)} JPS ${this.os("_PrintPtr")} PLS PLS`, `print ${varName}`);
+
+            return;
           }
         }
+        this.expressionCompiler.compileExpression(expr);
+        // result will be int in z_A
+        this.out(`JPS __inttostr`);
+        this.out(`LDB __strptr+0 PHS LDB __strptr+1 PHS JPS ${this.os("_PrintPtr")} PLS PLS`);
+        this.runtimeUsed.add("__inttostr");
       });
     });
   }

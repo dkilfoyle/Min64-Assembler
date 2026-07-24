@@ -66,16 +66,6 @@ export type MinminKeywordNames =
 
 export type MinminTokenNames = MinminTerminalNames | MinminKeywordNames;
 
-export type Addition = BinaryExpression | Multiplication;
-
-export const Addition = {
-    $type: 'Addition'
-} as const;
-
-export function isAddition(item: unknown): item is Addition {
-    return reflection.isInstance(item, Addition.$type);
-}
-
 export interface ArrayIndex extends langium.AstNode {
     readonly $container: VariableAssignment | VariableCalcAssignment;
     readonly $type: 'ArrayIndex';
@@ -94,9 +84,9 @@ export function isArrayIndex(item: unknown): item is ArrayIndex {
 export interface BinaryExpression extends langium.AstNode {
     readonly $container: ArrayIndex | BinaryExpression | ComparisonExpression | CompoundExpression | ElIf | If | RangeIndex | UnaryExpression | VariableDeclaration | While;
     readonly $type: 'BinaryExpression';
-    left: Comparison | Multiplication | Unary;
+    left: Expression;
     op: '*' | '+' | '-' | '/' | '<<' | '>>' | 'and' | 'or' | 'xor';
-    right: Comparison | Multiplication | Unary;
+    right: Expression;
 }
 
 export const BinaryExpression = {
@@ -131,22 +121,12 @@ export function isCallStatement(item: unknown): item is CallStatement {
     return reflection.isInstance(item, CallStatement.$type);
 }
 
-export type Comparison = Addition | ComparisonExpression;
-
-export const Comparison = {
-    $type: 'Comparison'
-} as const;
-
-export function isComparison(item: unknown): item is Comparison {
-    return reflection.isInstance(item, Comparison.$type);
-}
-
 export interface ComparisonExpression extends langium.AstNode {
     readonly $container: ArrayIndex | BinaryExpression | ComparisonExpression | CompoundExpression | ElIf | If | RangeIndex | UnaryExpression | VariableDeclaration | While;
     readonly $type: 'ComparisonExpression';
-    left: Addition;
+    left: Expression;
     op: '!=' | '<' | '<=' | '==' | '>' | '>=';
-    right: Addition;
+    right: Expression;
 }
 
 export const ComparisonExpression = {
@@ -246,7 +226,7 @@ export function isElse(item: unknown): item is Else {
     return reflection.isInstance(item, Else.$type);
 }
 
-export type Expression = ConstExpression | FunctionCall | Logic | VariableReference;
+export type Expression = BinaryExpression | ComparisonExpression | ConstExpression | FunctionCall | UnaryExpression | VariableReference;
 
 export const Expression = {
     $type: 'Expression'
@@ -292,26 +272,6 @@ export const If = {
 
 export function isIf(item: unknown): item is If {
     return reflection.isInstance(item, If.$type);
-}
-
-export type Logic = BinaryExpression | Comparison;
-
-export const Logic = {
-    $type: 'Logic'
-} as const;
-
-export function isLogic(item: unknown): item is Logic {
-    return reflection.isInstance(item, Logic.$type);
-}
-
-export type Multiplication = BinaryExpression | Unary;
-
-export const Multiplication = {
-    $type: 'Multiplication'
-} as const;
-
-export function isMultiplication(item: unknown): item is Multiplication {
-    return reflection.isInstance(item, Multiplication.$type);
 }
 
 export type NamedElement = ParameterDeclaration | VariableDeclaration;
@@ -447,16 +407,6 @@ export function isStringLiteral(item: unknown): item is StringLiteral {
     return reflection.isInstance(item, StringLiteral.$type);
 }
 
-export type Unary = Expression | UnaryExpression;
-
-export const Unary = {
-    $type: 'Unary'
-} as const;
-
-export function isUnary(item: unknown): item is Unary {
-    return reflection.isInstance(item, Unary.$type);
-}
-
 export interface UnaryExpression extends langium.AstNode {
     readonly $container: ArrayIndex | BinaryExpression | ComparisonExpression | CompoundExpression | ElIf | If | RangeIndex | UnaryExpression | VariableDeclaration | While;
     readonly $type: 'UnaryExpression';
@@ -585,11 +535,9 @@ export function isWhile(item: unknown): item is While {
 }
 
 export type MinminAstType = {
-    Addition: Addition
     ArrayIndex: ArrayIndex
     BinaryExpression: BinaryExpression
     CallStatement: CallStatement
-    Comparison: Comparison
     ComparisonExpression: ComparisonExpression
     CompoundExpression: CompoundExpression
     ConstExpression: ConstExpression
@@ -600,8 +548,6 @@ export type MinminAstType = {
     Expression: Expression
     FunctionCall: FunctionCall
     If: If
-    Logic: Logic
-    Multiplication: Multiplication
     NamedElement: NamedElement
     NumberLiteral: NumberLiteral
     ParameterDeclaration: ParameterDeclaration
@@ -611,7 +557,6 @@ export type MinminAstType = {
     ReturnStatement: ReturnStatement
     SimpleStatement: SimpleStatement
     StringLiteral: StringLiteral
-    Unary: Unary
     UnaryExpression: UnaryExpression
     Use: Use
     VariableAssignment: VariableAssignment
@@ -623,12 +568,6 @@ export type MinminAstType = {
 
 export class MinminAstReflection extends langium.AbstractAstReflection {
     override readonly types = {
-        Addition: {
-            name: Addition.$type,
-            properties: {
-            },
-            superTypes: [Comparison.$type]
-        },
         ArrayIndex: {
             name: ArrayIndex.$type,
             properties: {
@@ -651,7 +590,7 @@ export class MinminAstReflection extends langium.AbstractAstReflection {
                     name: BinaryExpression.right
                 }
             },
-            superTypes: [Addition.$type, Logic.$type, Multiplication.$type]
+            superTypes: [Expression.$type]
         },
         CallStatement: {
             name: CallStatement.$type,
@@ -661,12 +600,6 @@ export class MinminAstReflection extends langium.AbstractAstReflection {
                 }
             },
             superTypes: [SimpleStatement.$type]
-        },
-        Comparison: {
-            name: Comparison.$type,
-            properties: {
-            },
-            superTypes: [Logic.$type]
         },
         ComparisonExpression: {
             name: ComparisonExpression.$type,
@@ -681,7 +614,7 @@ export class MinminAstReflection extends langium.AbstractAstReflection {
                     name: ComparisonExpression.right
                 }
             },
-            superTypes: [Comparison.$type]
+            superTypes: [Expression.$type]
         },
         CompoundExpression: {
             name: CompoundExpression.$type,
@@ -750,7 +683,7 @@ export class MinminAstReflection extends langium.AbstractAstReflection {
             name: Expression.$type,
             properties: {
             },
-            superTypes: [Unary.$type]
+            superTypes: []
         },
         FunctionCall: {
             name: FunctionCall.$type,
@@ -788,18 +721,6 @@ export class MinminAstReflection extends langium.AbstractAstReflection {
                 }
             },
             superTypes: [Element.$type]
-        },
-        Logic: {
-            name: Logic.$type,
-            properties: {
-            },
-            superTypes: [Expression.$type]
-        },
-        Multiplication: {
-            name: Multiplication.$type,
-            properties: {
-            },
-            superTypes: [Addition.$type]
         },
         NamedElement: {
             name: NamedElement.$type,
@@ -903,12 +824,6 @@ export class MinminAstReflection extends langium.AbstractAstReflection {
             },
             superTypes: [ConstExpression.$type]
         },
-        Unary: {
-            name: Unary.$type,
-            properties: {
-            },
-            superTypes: [Multiplication.$type]
-        },
         UnaryExpression: {
             name: UnaryExpression.$type,
             properties: {
@@ -919,7 +834,7 @@ export class MinminAstReflection extends langium.AbstractAstReflection {
                     name: UnaryExpression.op
                 }
             },
-            superTypes: [Unary.$type]
+            superTypes: [Expression.$type]
         },
         Use: {
             name: Use.$type,

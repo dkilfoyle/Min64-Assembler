@@ -84,19 +84,20 @@ CompoundExpression:
 Expression:
   Logic;
 
-Logic:
+Logic infers Expression:
   Comparison ({infer BinaryExpression.left=current} op=('and'|'or'|'xor'|'>>'|'<<') right=Comparison)*;
 
-Comparison:
+Comparison infers Expression:
   Addition ({infer ComparisonExpression.left=current} op=('<' | '<=' | '>' | '>=' | '==' | '!=') right=Addition)*;
 
-Addition:
+Addition infers Expression:
   Multiplication ({infer BinaryExpression.left=current} op=('+' | '-') right=Multiplication)*;
 
-Multiplication:
+
+Multiplication infers Expression:
   Unary ({infer BinaryExpression.left=current} op=('*' | '/') right=Unary)*;
 
-Unary:
+Unary infers Expression:
   {infer UnaryExpression} op=('not' | '-') inner=Primary
     | Primary;
 

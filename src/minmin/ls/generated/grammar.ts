@@ -1048,6 +1048,10 @@ export const MinminModelGrammar = (): Grammar => loadedMinminModelGrammar ?? (lo
     {
       "$type": "ParserRule",
       "name": "Logic",
+      "inferredType": {
+        "$type": "InferredType",
+        "name": "Expression"
+      },
       "definition": {
         "$type": "Group",
         "elements": [
@@ -1124,6 +1128,10 @@ export const MinminModelGrammar = (): Grammar => loadedMinminModelGrammar ?? (lo
     {
       "$type": "ParserRule",
       "name": "Comparison",
+      "inferredType": {
+        "$type": "InferredType",
+        "name": "Expression"
+      },
       "definition": {
         "$type": "Group",
         "elements": [
@@ -1204,6 +1212,10 @@ export const MinminModelGrammar = (): Grammar => loadedMinminModelGrammar ?? (lo
     {
       "$type": "ParserRule",
       "name": "Addition",
+      "inferredType": {
+        "$type": "InferredType",
+        "name": "Expression"
+      },
       "definition": {
         "$type": "Group",
         "elements": [
@@ -1268,6 +1280,10 @@ export const MinminModelGrammar = (): Grammar => loadedMinminModelGrammar ?? (lo
     {
       "$type": "ParserRule",
       "name": "Multiplication",
+      "inferredType": {
+        "$type": "InferredType",
+        "name": "Expression"
+      },
       "definition": {
         "$type": "Group",
         "elements": [
@@ -1332,6 +1348,10 @@ export const MinminModelGrammar = (): Grammar => loadedMinminModelGrammar ?? (lo
     {
       "$type": "ParserRule",
       "name": "Unary",
+      "inferredType": {
+        "$type": "InferredType",
+        "name": "Expression"
+      },
       "definition": {
         "$type": "Alternatives",
         "elements": [

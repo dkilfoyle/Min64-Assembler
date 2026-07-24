@@ -3,7 +3,6 @@ import {
   ComparisonExpression,
   FunctionCall,
   isBinaryExpression,
-  isComparisonExpression,
   isFunctionCall,
   isNumberLiteral,
   isUnaryExpression,
@@ -16,15 +15,24 @@ import {
 import type { MinCompiler } from "./compiler";
 import { hexByte, hexWord } from "./utils";
 
-const runtime = import.meta.glob("./runtime/*.{asm}", {
+const runtime2 = import.meta.glob("./runtime/*.asm", {
   query: "?raw",
   import: "default",
   eager: true,
 });
 
+const runtime = Object.fromEntries(
+  Object.entries(runtime2).map(([path, definition]) => {
+    // Extract file name without extension to use as the new key
+    const fileName = "__" + path.slice(path.lastIndexOf("/") + 1).replace(".asm", "");
+    return [fileName, definition];
+  }),
+);
+
+console.log(runtime);
+
 export class ExpressionCompiler {
   private zpBase: number;
-  private runtimeUsed = new Set<string>();
 
   // computed zero-page addresses (word regs are 2 bytes: +0 = lsb, +1 = msb)
   readonly A: number;
@@ -48,9 +56,7 @@ export class ExpressionCompiler {
     this.FLAG = this.zpBase + 9;
   }
 
-  reset() {
-    this.runtimeUsed = new Set<string>();
-  }
+  reset() {}
 
   out(instruction: string, comment?: string) {
     this.compiler.out(instruction, comment);
@@ -80,15 +86,13 @@ export class ExpressionCompiler {
         return this.compileCall(e);
       case isUnaryExpression(e):
         return this.compileUnary(e);
-      case isComparisonExpression(e):
-        return this.compileComparison(e);
       case isBinaryExpression(e):
         return this.compileBinary(e);
     }
   }
 
   private compileNum(e: NumberLiteral) {
-    this.out(`MIV ${hexWord(e.value)},${hexByte(this.A)}`, `const ${e.value}`);
+    this.out(`MIV ${hexWord(e.value)},z_A`, `const ${e.value}`);
   }
 
   private compileVar(e: VariableReference) {
@@ -107,7 +111,7 @@ export class ExpressionCompiler {
       }
       return;
     } else {
-      // byte
+      // char
       if (isZP) {
         this.out(`LDZ ${hexByte(v.address)}`, `${varName} (byte, zp)`);
       } else {
@@ -124,7 +128,7 @@ export class ExpressionCompiler {
     if (f.kind != "function") throw new Error(`Expected function received variable`);
 
     for (const arg of e.args) {
-      this.compileExpression(arg); // result -> __A
+      // this.compileExpression(arg); // result -> __A
       this.pushZA(); // push __A onto hw stack (lsb, msb)
     }
 
@@ -204,31 +208,31 @@ export class ExpressionCompiler {
         break;
       case "*":
         this.out(`JPS __mul16`, `*`);
-        this.runtimeUsed.add("mul16");
+        this.compiler.runtimeUsed.add("mul16");
         break;
       case "/":
         this.out(`JPS __div16`, `/ (divisor magnitude must fit in a byte)`);
-        this.runtimeUsed.add("div16");
+        this.compiler.runtimeUsed.add("div16");
         break;
       case "and":
         this.out(`JPS __and16`, `and`);
-        this.runtimeUsed.add("and16");
+        this.compiler.runtimeUsed.add("and16");
         break;
       case "or":
         this.out(`JPS __or16`, `or`);
-        this.runtimeUsed.add("or16");
+        this.compiler.runtimeUsed.add("or16");
         break;
       case "xor":
         this.out(`JPS __xor16`, `xor`);
-        this.runtimeUsed.add("xor16");
+        this.compiler.runtimeUsed.add("xor16");
         break;
       case "<<":
         this.out(`JPS __shl16`, `<<`);
-        this.runtimeUsed.add("shl16");
+        this.compiler.runtimeUsed.add("shl16");
         break;
       case ">>":
         this.out(`JPS __shr16`, `>> (logical)`);
-        this.runtimeUsed.add("shr16");
+        this.compiler.runtimeUsed.add("shr16");
         break;
       default:
         throw new Error(`Unhandled binary operator '${e.op}'`);
@@ -252,27 +256,27 @@ export class ExpressionCompiler {
       // PLS after each JPS to discard the
       case "<":
         this.out("JPS __lt16", "<");
-        this.runtimeUsed.add("lt16");
+        this.compiler.runtimeUsed.add("lt16");
         break;
       case ">":
         this.out("JPS __gt16", "<");
-        this.runtimeUsed.add("gt16");
+        this.compiler.runtimeUsed.add("gt16");
         break;
       case "==":
         this.out("JPS __eq16", "==");
-        this.runtimeUsed.add("eq16");
+        this.compiler.runtimeUsed.add("eq16");
         break;
       case "!=":
         this.out("JPS __neq16", "==");
-        this.runtimeUsed.add("neq16");
+        this.compiler.runtimeUsed.add("neq16");
         break;
       case "<=":
         this.out("JPS __lteq16", "==");
-        this.runtimeUsed.add("lteq16");
+        this.compiler.runtimeUsed.add("lteq16");
         break;
       case ">=":
         this.out("JPS __gteq16", "==");
-        this.runtimeUsed.add("gteq16");
+        this.compiler.runtimeUsed.add("gteq16");
         break;
       default:
         throw new Error(`Unhandled comparison operator '${e.op}'`);
@@ -282,6 +286,7 @@ export class ExpressionCompiler {
   }
 
   emitHeader() {
+    this.out("");
     this.out(`; ---- expression compiler zero-page working storage ----`);
     this.out(`#org ${hexWord(this.zpBase)}`);
     this.out(`z_A:      0x0000    ; accumulator / expression result / fn return value`);
@@ -294,9 +299,10 @@ export class ExpressionCompiler {
   }
 
   emitRuntime() {
+    this.out("");
     this.out(`; --- runtime library ---`);
     this.out(`#page`);
-    this.runtimeUsed.forEach((x) => {
+    this.compiler.runtimeUsed.forEach((x) => {
       const code = runtime[x];
       if (!code) throw new Error(`Unable to find runtime code for ${x}`);
       code.split("\n").forEach((line) => this.out(line));
