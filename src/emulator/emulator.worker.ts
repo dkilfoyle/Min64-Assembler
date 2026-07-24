@@ -80,8 +80,6 @@ function renderLoop(currentTime: number): void {
   const imageData = new ImageData(cpuState.pixelData, 512, 256);
   ctx.putImageData(imageData, -96, -12, 96, 12, 400, 240);
 
-  console.log("z_A", cpu.memory.readWord(0));
-
   // Request next frame
   requestAnimationFrame(renderLoop);
 }
