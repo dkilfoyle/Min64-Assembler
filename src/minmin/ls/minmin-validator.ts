@@ -4,13 +4,14 @@
  * ------------------------------------------------------------------------------------------ */
 
 import type { ValidationAcceptor, ValidationCategory, ValidationChecks } from "langium";
-import { type MinminAstType } from "./generated/ast.js";
+import { StringLiteral, type MinminAstType } from "./generated/ast.js";
 import type { MinminServices } from "./minmin-module.js";
 
 export function registerValidationChecks(services: MinminServices) {
   const registry = services.validation.ValidationRegistry;
   const validator = services.validation.MinminValidator;
   const checks: ValidationChecks<MinminAstType> = {
+    StringLiteral: (state, accept) => validator.checkValidString(state, accept),
     // Directive: (state, accept) => validator.checkOrgAddress(state, accept),
     // Instruction: (state, accept) => validator.checkInstructionArgs(state, accept),
     // Data: (state, accept) => validator.checkDataArgs(state, accept),
@@ -20,6 +21,9 @@ export function registerValidationChecks(services: MinminServices) {
 }
 
 export class MinminValidator {
+  checkValidString(str: StringLiteral, accept: ValidationAcceptor) {
+    if (str.value == "") accept("warning", "No empty strings", { node: str });
+  }
   // private curInstr: Instruction | null = null;
   // checkProgram(program: Program, accept: ValidationAcceptor) {
   //   this.curInstr = null;

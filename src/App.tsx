@@ -1,4 +1,5 @@
 import "./App.css";
+import { Emulator } from "./emulator/Emulator";
 import AsmEditor from "./minasm/editor";
 import MinEditor from "./minmin/editor";
 
@@ -19,6 +20,7 @@ export default function App() {
         <div style={{ display: "flex", height: "100%", width: "100%" }}>
           <MinEditor onCompiled={(asm: string) => setAsmCode(asm)} sourceCode={minCode} />
           <AsmEditor sourceCode={asmCode} />
+          <Emulator></Emulator>
         </div>
       </main>
     </div>

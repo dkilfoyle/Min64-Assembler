@@ -5,6 +5,7 @@ import type { LanguageClientManager } from "monaco-languageclient/lcwrapper";
 
 import { monacoApiConfig } from "../monaco/MonacoApiConfig";
 import { languageClientConfig } from "./config/languageClientConfig";
+import { useDocStore } from "../myStore";
 
 type Status = "loading" | "ready" | "error";
 
@@ -12,6 +13,7 @@ export default function AsmEditor(props: { sourceCode: string }) {
   const [status, setStatus] = useState<Status>("loading");
   const [errorMsg, setErrorMsg] = useState("");
   const [trigger, setTrigger] = useState(0);
+  const setHex = useDocStore((state) => state.setHex);
 
   const handleEditorStartDone = useCallback((editorApp?: EditorApp) => {
     setStatus("ready");
@@ -19,6 +21,9 @@ export default function AsmEditor(props: { sourceCode: string }) {
 
   const handleLCStartDone = useCallback((lcsManager: LanguageClientManager) => {
     setStatus("ready");
+    lcsManager.getLanguageClient("minasm")?.onNotification("minasmlsp/AssemblerResult", (data) => {
+      setHex("demo", data.hex);
+    });
   }, []);
 
   const handleError = useCallback((err: Error) => {

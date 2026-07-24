@@ -97,6 +97,7 @@ class IntelHex {
     hex += ":00000001FF\n";
     return hex.toUpperCase();
   }
+
   debug() {
     this.records.forEach((r) => {
       console.log(

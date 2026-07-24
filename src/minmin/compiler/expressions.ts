@@ -299,6 +299,7 @@ export class ExpressionCompiler {
   }
 
   emitRuntime() {
+    if (Array.from(this.compiler.runtimeUsed.keys()).length == 0) return;
     this.out("");
     this.out(`; --- runtime library ---`);
     this.out(`#page`);

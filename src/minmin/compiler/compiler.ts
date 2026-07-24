@@ -85,7 +85,7 @@ export class MinCompiler {
   generate(fname: string, program: Program): string {
     this.reset();
     this.out(`; Code compiled from ${fname}\n`);
-    this.out("#org 0x2000");
+    this.out("#org 0x0100");
     this.compile(program);
     this.out(`JPA ${this.os("_Prompt")}`);
     this.expressionCompiler.emitRuntime();

@@ -12,8 +12,9 @@
     "langium:minmin": "langium generate -f src/minmin/config/langium-config.json"
   },
   "dependencies": {
-    "@typefox/monaco-editor-react": "^7.7.0",
     "@codingame/esbuild-import-meta-url-plugin": "^1.0.3",
+    "@typefox/monaco-editor-react": "^7.7.0",
+    "immer": "^11.1.15",
     "langium": "^4.3.0",
     "monaco-languageclient": "^10.7.0",
     "react": "^19.2.7",
@@ -21,7 +22,8 @@
     "vite-plugin-top-level-await": "^1.6.0",
     "vite-plugin-wasm": "^3.6.0",
     "vscode-languageclient": "^10.0.0",
-    "vscode-languageserver": "^10.0.0"
+    "vscode-languageserver": "^10.0.0",
+    "zustand": "^5.0.14"
   },
   "devDependencies": {
     "@types/node": "^24.13.2",
