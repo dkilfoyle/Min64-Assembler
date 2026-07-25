@@ -7,9 +7,9 @@ extensionFilesOrContents.set(`/minmin-configuration.json`, minminLanguageConfig)
 extensionFilesOrContents.set(`/minmin-grammar.json`, minminTextmate);
 
 // this will be injected into shared vscodeApiConfig
-export const extensionConfig: ExtensionConfig = {
+export const minminExtensionConfig: ExtensionConfig = {
   config: {
-    name: "minmin-example",
+    name: "minmin-lang",
     publisher: "DK",
     version: "1.0.0",
     engines: {
@@ -31,6 +31,31 @@ export const extensionConfig: ExtensionConfig = {
           path: `./minmin-grammar.json`,
         },
       ],
+      commands: [
+        {
+          command: "minmin-compile",
+          title: "Compile",
+          icon: "$(build)",
+        },
+        {
+          command: "minmin-autocompile",
+          title: "Toggle auto compile",
+          icon: "$(sync)",
+        },
+      ],
+      menus: {
+        "editor/title": [
+          {
+            when: "editorLangId == minmin",
+            command: "minmin-compile",
+            group: "navigation",
+          },
+          {
+            when: "editorLangId == minmin",
+            command: "minmin-autocompile",
+          },
+        ],
+      },
     },
   },
   filesOrContents: extensionFilesOrContents,

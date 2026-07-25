@@ -11,8 +11,6 @@ export default defineConfig({
     target: "esnext",
   },
   resolve: {
-    // vscode is aliased to the codingame shim by monaco-languageclient
-    // but Vite needs a hint for the bare specifier
     alias: [],
     dedupe: ["vscode"],
   },

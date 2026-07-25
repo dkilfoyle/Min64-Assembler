@@ -6,9 +6,9 @@ const extensionFilesOrContents = new Map<string, string | URL>();
 extensionFilesOrContents.set(`/minasm-configuration.json`, minasmLanguageConfig);
 extensionFilesOrContents.set(`/minasm-grammar.json`, minasmTextmate);
 
-export const extensionConfig: ExtensionConfig = {
+export const minasmExtensionConfig: ExtensionConfig = {
   config: {
-    name: "minasm-example",
+    name: "minasm-lang",
     publisher: "DK",
     version: "1.0.0",
     engines: {

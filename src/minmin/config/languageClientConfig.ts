@@ -1,4 +1,3 @@
-import { LogLevel } from "@codingame/monaco-vscode-api";
 import type { LanguageClientConfig } from "monaco-languageclient/lcwrapper";
 
 const lspWorker = new Worker(new URL("../worker/minmin-server.ts", import.meta.url), {
@@ -6,7 +5,7 @@ const lspWorker = new Worker(new URL("../worker/minmin-server.ts", import.meta.u
   name: "Minmin Server Regular",
 });
 
-export const languageClientConfig: LanguageClientConfig = {
+export const minLanguageClientConfig: LanguageClientConfig = {
   languageId: "minmin",
   clientOptions: {
     documentSelector: ["minmin"],
@@ -17,5 +16,4 @@ export const languageClientConfig: LanguageClientConfig = {
       worker: lspWorker,
     },
   },
-  logLevel: LogLevel.Off,
 };
