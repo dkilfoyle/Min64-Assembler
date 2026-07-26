@@ -23,5 +23,22 @@
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src"]
+  "include": [
+    "src",
+    "packages/emulator/src/store/myStore.ts",
+    "packages/emulator/src/emulator.worker.ts",
+    "packages/emulator/src/emulator/alu.ts",
+    "packages/emulator/src/emulator/cpu.ts",
+    "packages/emulator/src/emulator/Emulator.tsx",
+    "src/emulator/EmulatorWebviewPanel.ts",
+    "packages/emulator/src/emulator/flags.ts",
+    "packages/emulator/src/emulator/flags2.ts",
+    "packages/emulator/src/emulator/instructions.ts",
+    "packages/emulator/src/emulator/io.ts",
+    "packages/emulator/src/emulator/memory.ts",
+    "packages/emulator/src/emulator/programCounter.ts",
+    "packages/emulator/src/emulator/register.ts",
+    "packages/emulator/src/emulator/symbols.ts",
+    "src/emulator/webviewContent.ts"
+  ]
 }

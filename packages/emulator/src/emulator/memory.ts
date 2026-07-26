@@ -1,4 +1,3 @@
-import { cpu } from "./cpu";
 import { Register8 } from "./register";
 import { labelToAddress } from "./symbols";
 
@@ -152,6 +151,7 @@ export class Memory {
   loadIntelHex(hexString: string) {
     const lines = hexString.split(/\r?\n/);
     let upperAddressOffset = 0; // Tracks 32-bit linear address shifts
+    let totalBytes = 0;
 
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i].trim();
@@ -162,6 +162,8 @@ export class Memory {
       const byteCount = parseInt(line.substring(1, 3), 16);
       const lowerAddress = parseInt(line.substring(3, 7), 16);
       const recordType = parseInt(line.substring(7, 9), 16);
+
+      totalBytes += byteCount;
 
       // Extract raw data segment
       const dataBytes = [];
@@ -194,5 +196,7 @@ export class Memory {
       }
       // Types 02, 03, and 05 can be added here if your hardware environment utilizes them
     }
+
+    return totalBytes;
   }
 }

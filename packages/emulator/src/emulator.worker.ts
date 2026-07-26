@@ -1,5 +1,5 @@
-import { cpu } from "./cpu";
-import { scancodes } from "./io";
+import { cpu } from "./emulator/cpu";
+import { scancodes } from "./emulator/io";
 
 // Define worker self context for TypeScript
 const ctxWorker: Worker = self as any;
@@ -10,14 +10,14 @@ let ctx: OffscreenCanvasRenderingContext2D | null = null;
 const keyPressedState: Record<string, boolean> = {};
 const keyPressedTime: Record<string, number> = {};
 
-// Game state variables
-let boxX = 100;
-let boxY = 100;
-const SPEED = 300; // Movement speed in pixels per second
-
 // Delta time tracking variables
 let lastTime = 0;
 let isRunning = true;
+const msPerClock = 1000 / 8000000; // 8mhz clock = 0.000125ms/clock = 125ns/clock
+let frameCount = 0;
+let deltaAverage = 0;
+
+// if 60 fps = 16.67ms per frame = 133369 min clocks / frame
 
 ctxWorker.onmessage = async (e: MessageEvent) => {
   const data = e.data;
@@ -57,7 +57,9 @@ ctxWorker.onmessage = async (e: MessageEvent) => {
   if (data.type === "HEX") {
     // const hex = new TextEncoder().encode(data.hex);
     // hex.forEach((x) => cpu.uart.receive(x));
-    cpu.memory.loadIntelHex(data.hex);
+    const totalBytes = cpu.memory.loadIntelHex(data.hex);
+    console.info(`EMULATOR received ${totalBytes} bytes`);
+    cpu.pc.write(0x100);
   }
 };
 
@@ -67,18 +69,24 @@ function renderLoop(currentTime: number): void {
   // 1. Calculate delta time (ms elapsed since last frame)
   const deltaTime = currentTime - lastTime;
   lastTime = currentTime;
+  frameCount++;
+  deltaAverage += (deltaTime - deltaAverage) / frameCount;
 
   // Prevent giant jumps if the user leaves the tab and comes back
   const dt = Math.min(deltaTime, 100);
 
   let t = dt;
   while (t > 0 && isRunning) {
-    t -= cpu.step() * 0.000125; // 8mhz clock
+    t -= cpu.step() * msPerClock; // 8mhz clock
   }
 
   const cpuState = cpu.getState();
   const imageData = new ImageData(cpuState.pixelData, 512, 256);
   ctx.putImageData(imageData, -96, -12, 96, 12, 400, 240);
+  ctx.font = "bold 10px Arial"; // Configures size and family (Default: 10px sans-serif)
+  ctx.fillStyle = "#ff4500";
+  ctx.textAlign = "right";
+  ctx.fillText((1000 / deltaAverage).toFixed(2), 395, 10);
 
   // Request next frame
   requestAnimationFrame(renderLoop);

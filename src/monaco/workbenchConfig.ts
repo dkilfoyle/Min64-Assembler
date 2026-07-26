@@ -25,17 +25,12 @@ import * as vscode from "vscode";
 import "@codingame/monaco-vscode-search-result-default-extension";
 
 import { createDefaultLocaleConfiguration } from "monaco-languageclient/vscodeApiLocales";
-import {
-  defaultHtmlAugmentationInstructions,
-  defaultViewsInit,
-  MonacoVscodeApiWrapper,
-  type MonacoVscodeApiConfig,
-} from "monaco-languageclient/vscodeApiWrapper";
+import { MonacoVscodeApiWrapper, type MonacoVscodeApiConfig } from "monaco-languageclient/vscodeApiWrapper";
 import { configureDefaultWorkerFactory } from "monaco-languageclient/workerFactory";
 
 import blocksMinCode from "../minmin/examples/blocks.min?raw";
 import stdMinCode from "../minmin/examples/std.min?raw";
-import compilemeMinCode from "../minmin/examples/compileme.min?raw";
+import testminCode from "../minmin/examples/test.min?raw";
 import type { RegisterLocalProcessExtensionResult } from "@codingame/monaco-vscode-api/extensions";
 import { minasmExtensionConfig } from "../minasm/config/extensionConfig";
 import { minminExtensionConfig } from "../minmin/config/extensionConfig";
@@ -45,7 +40,7 @@ export type ConfigResult = {
   workspaceFileUri: vscode.Uri;
   stdminUri: vscode.Uri;
   blocksminUri: vscode.Uri;
-  compilememinUri: vscode.Uri;
+  testminUri: vscode.Uri;
 };
 
 export const configure = async (htmlContainer?: HTMLElement): Promise<ConfigResult> => {
@@ -53,7 +48,7 @@ export const configure = async (htmlContainer?: HTMLElement): Promise<ConfigResu
 
   const vscodeApiConfig: MonacoVscodeApiConfig = {
     $type: "extended",
-    logLevel: LogLevel.Debug,
+    logLevel: LogLevel.Info,
     serviceOverrides: {
       ...getKeybindingsServiceOverride(),
       ...getLifecycleServiceOverride(),
@@ -131,10 +126,10 @@ export const configure = async (htmlContainer?: HTMLElement): Promise<ConfigResu
     monacoWorkerFactory: configureDefaultWorkerFactory,
   };
 
-  const workspaceUri = vscode.Uri.file("/workspace");
-  const stdminUri = vscode.Uri.file("/workspace/std.min");
-  const blocksminUri = vscode.Uri.file("/workspace/blocks.min");
-  const compilememinUri = vscode.Uri.file("/workspace/compileme.min");
+  const workspaceUri = vscode.Uri.file("/min");
+  const stdminUri = vscode.Uri.file("/min/std.min");
+  const blocksminUri = vscode.Uri.file("/min/blocks.min");
+  const testminUri = vscode.Uri.file("/min/test.min");
   const fileSystemProvider = new InMemoryFileSystemProvider();
   const textEncoder = new TextEncoder();
 
@@ -145,10 +140,11 @@ export const configure = async (htmlContainer?: HTMLElement): Promise<ConfigResu
     overwrite: true,
   };
   await fileSystemProvider.mkdir(workspaceUri);
+  await fileSystemProvider.mkdir(vscode.Uri.file("/asm"));
   await fileSystemProvider.writeFile(stdminUri, textEncoder.encode(stdMinCode), options);
   await fileSystemProvider.writeFile(blocksminUri, textEncoder.encode(blocksMinCode), options);
-  await fileSystemProvider.writeFile(compilememinUri, textEncoder.encode(compilemeMinCode), options);
-  await fileSystemProvider.writeFile(workspaceFileUri, textEncoder.encode(createDefaultWorkspaceContent("/workspace")), options);
+  await fileSystemProvider.writeFile(testminUri, textEncoder.encode(testminCode), options);
+  await fileSystemProvider.writeFile(workspaceFileUri, textEncoder.encode(createDefaultWorkspaceContent("/min")), options);
   registerFileSystemOverlay(1, fileSystemProvider);
 
   return {
@@ -156,7 +152,7 @@ export const configure = async (htmlContainer?: HTMLElement): Promise<ConfigResu
     workspaceFileUri,
     stdminUri,
     blocksminUri,
-    compilememinUri,
+    testminUri,
   };
 };
 
@@ -178,10 +174,7 @@ export const configurePostStart = async (apiWrapper: MonacoVscodeApiWrapper, con
   const result = apiWrapper.getExtensionRegisterResult("min-ide") as RegisterLocalProcessExtensionResult;
   await result.setAsDefaultApi();
 
-  await Promise.all([
-    vscode.workspace.openTextDocument(configResult.compilememinUri),
-    vscode.workspace.openTextDocument(configResult.stdminUri),
-  ]);
+  await Promise.all([vscode.workspace.openTextDocument(configResult.testminUri), vscode.workspace.openTextDocument(configResult.stdminUri)]);
 
-  await Promise.all([vscode.window.showTextDocument(configResult.compilememinUri)]);
+  await Promise.all([vscode.window.showTextDocument(configResult.testminUri)]);
 };

@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from "react";
-import { useDocStore } from "../myStore";
+import { useDocStore } from "./store/myStore";
+import "./App.css";
 
 // Define the shape of messages sent to the worker
 export type CanvasWorkerMessage =
@@ -7,7 +8,7 @@ export type CanvasWorkerMessage =
   | { type: "KEY_DOWN"; key: string }
   | { type: "KEY_UP"; key: string };
 
-export const Emulator: React.FC = () => {
+export const App: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const divRef = useRef<HTMLDivElement | null>(null);
   const workerRef = useRef<Worker | null>(null);
@@ -33,22 +34,36 @@ export const Emulator: React.FC = () => {
       worker.postMessage({ type: "KEY_UP", key: e.keyCode });
     };
 
-    divRef.current!.addEventListener("keydown", handleKeyDown);
-    divRef.current!.addEventListener("keyup", handleKeyUp);
+    const handleMessage = (e: MessageEvent) => {
+      const message = e.data;
+      switch (message.command) {
+        case "RUN_HEX":
+          worker.postMessage({ type: "HEX", hex: message.data });
+          break;
+      }
+      // console.log("emulator webview app received message from vscode app", e.data);
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+    window.addEventListener("message", handleMessage);
 
     // Cleanup on unmount
     return () => {
-      divRef.current?.removeEventListener("keydown", handleKeyDown);
-      divRef.current?.removeEventListener("keyup", handleKeyUp);
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+      window.removeEventListener("message", handleMessage);
       worker.terminate();
     };
   }, []);
 
   return (
-    <div ref={divRef} style={{ width: "500px" }} tabIndex={-1}>
-      <canvas ref={canvasRef} width={400} height={240} style={{ display: "block" }} onClick={() => divRef.current?.focus()} />
-      <button onClick={() => workerRef.current?.postMessage({ type: "HEX", hex: hex })}>Send</button>
-      {hex}
+    <div ref={divRef} className="canvas-container">
+      <canvas ref={canvasRef} width={400} height={240} className="screen" />
+      {/* <button onClick={() => workerRef.current?.postMessage({ type: "HEX", hex: hex })} className="screen">
+        Send
+      </button> */}
+      {/* {hex} */}
     </div>
   );
 };

@@ -56,7 +56,7 @@ export const start = async (port: MessagePort | DedicatedWorkerGlobalScope, name
       // console.log(`${doc.uri.toString()} AST`, doc.parseResult.value.elements);
       if (doc.diagnostics?.length == 0) {
         const asm = minCompiler.generate(doc.uri.toString(), doc.parseResult.value);
-        const docChangeNotification = new NotificationType<MinDocChangeNotification>("minlsp/docChange");
+        const docChangeNotification = new NotificationType<MinDocChangeNotification>("minminlsp/docChange");
         connection.sendNotification(docChangeNotification, {
           uri: doc.uri.toString(),
           asm,

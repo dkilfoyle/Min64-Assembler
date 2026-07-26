@@ -30,6 +30,22 @@ export const minasmExtensionConfig: ExtensionConfig = {
           path: `./minasm-grammar.json`,
         },
       ],
+      commands: [
+        {
+          command: "minasm-run",
+          title: "Run",
+          icon: "$(vm-running)",
+        },
+      ],
+      menus: {
+        "editor/title": [
+          {
+            when: "editorLangId == minasm",
+            command: "minasm-run",
+            group: "navigation",
+          },
+        ],
+      },
     },
   },
   filesOrContents: extensionFilesOrContents,
