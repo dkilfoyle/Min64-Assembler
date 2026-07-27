@@ -1,5 +1,6 @@
+import * as Comlink from "comlink";
 import { cpu } from "./emulator/cpu";
-import { scancodes } from "./emulator/io";
+import { keycodes } from "./emulator/io";
 
 // Define worker self context for TypeScript
 const ctxWorker: Worker = self as any;
@@ -19,49 +20,88 @@ let deltaAverage = 0;
 
 // if 60 fps = 16.67ms per frame = 133369 min clocks / frame
 
-ctxWorker.onmessage = async (e: MessageEvent) => {
-  const data = e.data;
-
-  if (data.type === "INIT") {
+const api = {
+  init: async (canvas: OffscreenCanvas) => {
     console.log("Emulator worker init...");
-    const canvas = data.canvas as OffscreenCanvas;
     ctx = canvas.getContext("2d");
-
-    // Initialize timing and kick off the loop
     await cpu.reset();
     console.log(" - cpu initialised");
     lastTime = performance.now();
     requestAnimationFrame(renderLoop);
-  }
-
-  if (data.type === "KEY_DOWN") {
+  },
+  keyDown: (key: string) => {
     const tnow = performance.now();
-    if (keyPressedState[data.key]) {
+    if (keyPressedState[key]) {
       // already pushed
-      if (tnow - keyPressedTime[data.key] > 260) {
-        keyPressedTime[data.key] = tnow;
-        if (data.key in scancodes) cpu.ps2.receive(scancodes[data.key]);
+      if (tnow - keyPressedTime[key] > 260) {
+        keyPressedTime[key] = tnow;
+        if (key in keycodes) cpu.ps2.receive(keycodes[key]);
       }
     } else {
       // initial key down
-      keyPressedState[data.key] = true;
-      keyPressedTime[data.key] = tnow;
-      if (data.key in scancodes) cpu.ps2.receive(scancodes[data.key]);
+      keyPressedState[key] = true;
+      keyPressedTime[key] = tnow;
+      if (key in keycodes) cpu.ps2.receive(keycodes[key]);
     }
-  }
-
-  if (data.type === "KEY_UP") {
-    keyPressedState[data.key] = false; // reset key press
-  }
-
-  if (data.type === "HEX") {
-    // const hex = new TextEncoder().encode(data.hex);
-    // hex.forEach((x) => cpu.uart.receive(x));
-    const totalBytes = cpu.memory.loadIntelHex(data.hex);
+  },
+  keyUp: (key: string) => {
+    keyPressedState[key] = false; // reset key press
+  },
+  runHex: (hex: string) => {
+    const totalBytes = cpu.memory.loadIntelHex(hex);
     console.info(`EMULATOR received ${totalBytes} bytes`);
     cpu.pc.write(0x100);
-  }
+  },
+  getState: () => {
+    return cpu.getState();
+  },
 };
+
+Comlink.expose(api);
+
+// ctxWorker.onmessage = async (e: MessageEvent) => {
+//   const data = e.data;
+
+//   if (data.type === "INIT") {
+//     console.log("Emulator worker init...");
+//     const canvas = data.canvas as OffscreenCanvas;
+//     ctx = canvas.getContext("2d");
+
+//     // Initialize timing and kick off the loop
+//     await cpu.reset();
+//     console.log(" - cpu initialised");
+//     lastTime = performance.now();
+//     requestAnimationFrame(renderLoop);
+//   }
+
+//   if (data.type === "KEY_DOWN") {
+//     const tnow = performance.now();
+//     if (keyPressedState[data.key]) {
+//       // already pushed
+//       if (tnow - keyPressedTime[data.key] > 260) {
+//         keyPressedTime[data.key] = tnow;
+//         if (data.key in scancodes) cpu.ps2.receive(scancodes[data.key]);
+//       }
+//     } else {
+//       // initial key down
+//       keyPressedState[data.key] = true;
+//       keyPressedTime[data.key] = tnow;
+//       if (data.key in scancodes) cpu.ps2.receive(scancodes[data.key]);
+//     }
+//   }
+
+//   if (data.type === "KEY_UP") {
+//     keyPressedState[data.key] = false; // reset key press
+//   }
+
+//   if (data.type === "HEX") {
+//     // const hex = new TextEncoder().encode(data.hex);
+//     // hex.forEach((x) => cpu.uart.receive(x));
+//     const totalBytes = cpu.memory.loadIntelHex(data.hex);
+//     console.info(`EMULATOR received ${totalBytes} bytes`);
+//     cpu.pc.write(0x100);
+//   }
+// };
 
 function renderLoop(currentTime: number): void {
   if (!ctx) return;

@@ -10,16 +10,45 @@ function getNonce() {
   return text;
 }
 
+interface IEmulatorState {
+  pc: number;
+  sp: number;
+  a: number;
+  mem: number[];
+}
+
 export class EmulatorWebviewPanel {
   public static currentPanel: EmulatorWebviewPanel | undefined;
   private readonly _panel: WebviewPanel;
   private _disposables: Disposable[] = [];
+  emulatorState: IEmulatorState = {
+    pc: 0,
+    sp: 0,
+    a: 0,
+    mem: [],
+  };
 
   private constructor(panel: WebviewPanel) {
     this._panel = panel;
     this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
     this._panel.webview.html = this._getWebviewContent();
     this._setWebviewMessageListener(this._panel.webview);
+  }
+
+  private _setWebviewMessageListener(webview: Webview) {
+    webview.onDidReceiveMessage(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (message: any) => {
+        const command = message.command;
+        switch (command) {
+          case "EMULATOR_STATE":
+            this.emulatorState = message.data;
+            return;
+        }
+      },
+      undefined,
+      this._disposables,
+    );
   }
 
   public static render() {
@@ -50,24 +79,11 @@ export class EmulatorWebviewPanel {
     }
   }
 
-  static sendRunHex(hex: string) {
+  static postMessage(command: string, data: any) {
     if (EmulatorWebviewPanel.currentPanel) {
-      EmulatorWebviewPanel.currentPanel?._panel.webview.postMessage({ command: "RUN_HEX", data: hex });
+      EmulatorWebviewPanel.currentPanel?._panel.webview.postMessage({ command, data });
     }
   }
-
-  // static sendComputerState(cs: ComputerState[]) {
-  //   if (EmulatorWebviewPanel.currentPanel) {
-  //     EmulatorWebviewPanel.currentPanel?._panel.webview.postMessage({ command: "setComputerState", data: cs });
-  //   }
-  // }
-
-  // static sendRuntimeState(rs: IRuntimeState) {
-  //   // console.log("Runtime State", rs);
-  //   if (EmulatorWebviewPanel.currentPanel) {
-  //     EmulatorWebviewPanel.currentPanel?._panel.webview.postMessage({ command: "setRuntimeState", data: rs });
-  //   }
-  // }
 
   private _getWebviewContent() {
     const scriptUri = "/emulator.js";
@@ -87,26 +103,5 @@ export class EmulatorWebviewPanel {
           <script type="module" nonce="${nonce}" src="${scriptUri}"></script>
         </body>
       </html>`;
-  }
-
-  private _setWebviewMessageListener(webview: Webview) {
-    webview.onDidReceiveMessage(
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (message: any) => {
-        const command = message.command;
-        const text = message.text;
-
-        switch (command) {
-          case "hello":
-            // Code that should run in response to the hello message command
-            window.showInformationMessage(text);
-            return;
-          // Add more switch case statements here as more webview message commands
-          // are created within the webview context (i.e. inside media/main.js)
-        }
-      },
-      undefined,
-      this._disposables,
-    );
   }
 }

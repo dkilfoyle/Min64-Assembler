@@ -20,6 +20,8 @@ import getStatusBarServiceOverride from "@codingame/monaco-vscode-view-status-ba
 import getTitleBarServiceOverride from "@codingame/monaco-vscode-view-title-bar-service-override";
 import getWorkbenchServiceOverride from "@codingame/monaco-vscode-workbench-service-override";
 import getMarkersServiceOverride from "@codingame/monaco-vscode-markers-service-override";
+import getDebugServiceOverride from "@codingame/monaco-vscode-debug-service-override";
+import getOutputServiceOverride from "@codingame/monaco-vscode-output-service-override";
 import * as vscode from "vscode";
 
 import "@codingame/monaco-vscode-search-result-default-extension";
@@ -65,6 +67,8 @@ export const configure = async (htmlContainer?: HTMLElement): Promise<ConfigResu
       ...getOutlineServiceOverride(),
       ...getWorkbenchServiceOverride(),
       ...getMarkersServiceOverride(),
+      ...getDebugServiceOverride(),
+      ...getOutputServiceOverride(),
     },
     viewsConfig: {
       $type: "WorkbenchService",

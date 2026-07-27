@@ -1,6 +1,11 @@
 import React, { useEffect, useRef } from "react";
 import { useDocStore } from "./store/myStore";
+import * as Comlink from "comlink";
 import "./App.css";
+import { transfer } from "comlink";
+import type { ICpuState } from "./emulator/cpu";
+
+const vscode = typeof acquireVsCodeApi !== "undefined" ? acquireVsCodeApi() : null;
 
 // Define the shape of messages sent to the worker
 export type CanvasWorkerMessage =
@@ -21,25 +26,39 @@ export const App: React.FC = () => {
     const worker = new Worker(new URL("./emulator.worker.ts", import.meta.url), { type: "module" });
     workerRef.current = worker;
 
+    const api = Comlink.wrap<{
+      init(canvas: OffscreenCanvas): Promise<void>;
+      keyDown(key: string): Promise<void>;
+      keyUp(key: string): Promise<void>;
+      runHex(hex: string): Promise<void>;
+      getState(): Promise<ICpuState>;
+    }>(worker);
+
     // 2. Transfer canvas control to the worker
     const offscreen = canvasRef.current.transferControlToOffscreen();
-    worker.postMessage({ type: "INIT", canvas: offscreen }, [offscreen]);
+    api.init(transfer(offscreen, [offscreen]));
 
     // 3. Forward keyboard events
     const handleKeyDown = (e: KeyboardEvent) => {
-      worker.postMessage({ type: "KEY_DOWN", key: e.keyCode });
+      api.keyDown(e.code);
     };
 
     const handleKeyUp = (e: KeyboardEvent) => {
-      worker.postMessage({ type: "KEY_UP", key: e.keyCode });
+      api.keyUp(e.code);
     };
 
     const handleMessage = (e: MessageEvent) => {
       const message = e.data;
       switch (message.command) {
         case "RUN_HEX":
-          worker.postMessage({ type: "HEX", hex: message.data });
+          api.runHex(message.hex);
           break;
+        case "GET_STATE":
+          const minimalState = api.getState();
+          vscode?.postMessage({ command: "GOT_STATE", state: minimalState });
+          break;
+        default:
+          console.warn("Unknown message from worker:", message);
       }
       // console.log("emulator webview app received message from vscode app", e.data);
     };
@@ -60,10 +79,6 @@ export const App: React.FC = () => {
   return (
     <div ref={divRef} className="canvas-container">
       <canvas ref={canvasRef} width={400} height={240} className="screen" />
-      {/* <button onClick={() => workerRef.current?.postMessage({ type: "HEX", hex: hex })} className="screen">
-        Send
-      </button> */}
-      {/* {hex} */}
     </div>
   );
 };

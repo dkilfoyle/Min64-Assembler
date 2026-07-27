@@ -106,3 +106,67 @@ export const scancodes: Record<number, number> = {
   63: 0x4e, // ?
   160: 0x0e, // ^
 };
+
+export const keycodes: Record<string, number> = {
+  KeyA: 0x1c, // A (GERMAN KEYBOARD LAYOUT)
+  KeyB: 0x32, // B
+  KeyC: 0x21, // C
+  KeyD: 0x23, // D
+  KeyE: 0x24, // E
+  KeyF: 0x2b, // F
+  KeyG: 0x34, // G
+  KeyH: 0x33, // H
+  KeyI: 0x43, // I
+  KeyJ: 0x3b, // J
+  KeyK: 0x42, // K
+  KeyL: 0x4b, // L
+  KeyM: 0x3a, // M
+  KeyN: 0x31, // N
+  KeyO: 0x44, // O
+  KeyP: 0x4d, // P
+  KeyQ: 0x15, // Q
+  KeyR: 0x2d, // R
+  KeyS: 0x1b, // S
+  KeyT: 0x2c, // T
+  KeyU: 0x3c, // U
+  KeyV: 0x2a, // V
+  KeyW: 0x1d, // W
+  KeyX: 0x22, // X
+  KeyY: 0x35, // Y
+  KeyZ: 0x1a, // Z
+  Digit0: 0x45, // 0
+  Digit1: 0x16, // 1
+  Digit2: 0x1e, // 2
+  Digit3: 0x26, // 3
+  Digit4: 0x25, // 4
+  Digit5: 0x2e, // 5
+  Digit6: 0x36, // 6
+  Digit7: 0x3d, // 7
+  Digit8: 0x3e, // 8
+  Digit9: 0x46, // 9
+  Space: 0x29, // SPACE
+  Comma: 0x41, // ,
+  Period: 0x49, // .
+  Enter: 0x5a, // ENTER
+  Escape: 0x76, // ESC
+  Tab: 0x0d, // TAB
+  Backspace: 0x66, // BACKSPACE
+  Delete: 0x71, // DEL
+  ArrowUp: 0x75, // UP
+  ArrowDown: 0x72, // DOWN
+  ArrowLeft: 0x6b, // LEFT
+  ArrowRight: 0x74, // RIGHT
+  ShiftLeft: 0x12, // SHIFT
+  CapsLock: 0x14, // CAPS->CTRL
+  AltLeft: 0x11, // ALT/ALTGR
+  Home: 0x6c, // HOME
+  End: 0x69, // END
+  PageUp: 0x7d, // PAGE UP
+  PageDown: 0x7a, // PAGE DOWN
+  Minus: 0x4a, // MINUS
+  Hash: 0x5d, // #
+  Equal: 0x5b, // +
+  IntlBackslash: 0x61, // <
+  Slash: 0x4e, // ?
+  Caret: 0x0e, // ^
+};
