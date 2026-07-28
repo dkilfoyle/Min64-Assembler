@@ -48,6 +48,8 @@
     "vite-plugin-wasm": "^3.6.0",
     "vscode-languageclient": "^10.0.0",
     "vscode-languageserver": "^10.0.0",
+    "vscode-messenger": "^0.6.1",
+    "vscode-messenger-common": "^0.6.1",
     "zustand": "^5.0.14"
   },
   "devDependencies": {

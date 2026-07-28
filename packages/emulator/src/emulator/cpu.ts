@@ -24,16 +24,17 @@ const ZBVWQL: IMode[] = ["Z", "B", "V", "W", "Q", "L"];
 const ZBTRVWQL: IMode[] = ["Z", "B", "T", "R", "V", "W", "Q", "L"];
 const IZBTR: IMode[] = ["I", "Z", "B", "T", "R"];
 
-export interface ICpuState {
+export interface IEmulationState {
   pc: number;
   sp: number;
   a: number;
   flags: number;
-  flagState: { C: number; N: number; Z: number };
-  opcode: number;
-  operands: IOperandInfo[];
-  pixelData: Uint8ClampedArray<ArrayBuffer>;
-  totalClocks: number;
+  // flagState: { C: number; N: number; Z: number };
+  // opcode: number;
+  // operands: IOperandInfo[];
+  // pixelData: Uint8ClampedArray<ArrayBuffer>;
+  memory: Uint8Array;
+  // totalClocks: number;
 }
 
 class CPU {
@@ -117,29 +118,30 @@ class CPU {
     this.totalClocks = 0;
   }
 
-  getState(): ICpuState {
+  getEmulationState(): IEmulationState {
     const pc = this.pc.read();
     const flags = this.flags.read();
-    const opcode = this.memory.readByte(pc);
-    const info = instructionInfo[opcode];
+    // const opcode = this.memory.readByte(pc);
+    // const info = instructionInfo[opcode];
 
-    const operands = info.operands.map((operand) => ({
-      type: operand.type,
-      size: operand.size,
-      addrStart: pc + operand.pcOffset,
-      value: operand.size == 2 ? cpu.memory.readWord(pc + operand.pcOffset) : cpu.memory.readByte(pc + operand.pcOffset),
-    }));
+    // const operands = info.operands.map((operand) => ({
+    //   type: operand.type,
+    //   size: operand.size,
+    //   addrStart: pc + operand.pcOffset,
+    //   value: operand.size == 2 ? cpu.memory.readWord(pc + operand.pcOffset) : cpu.memory.readByte(pc + operand.pcOffset),
+    // }));
 
     return {
-      totalClocks: this.totalClocks,
+      // totalClocks: this.totalClocks,
       pc,
       sp: 0xff00 + this.memory.readByte(0xff),
       a: this.a.read(),
       flags,
-      flagState: { C: flags & FLAG_C, N: flags & FLAG_N, Z: flags & FLAG_Z },
-      opcode: this.memory.readByte(pc),
-      operands,
-      pixelData: this.memory.getVRAMImage(),
+      // flagState: { C: flags & FLAG_C, N: flags & FLAG_N, Z: flags & FLAG_Z },
+      // opcode: this.memory.readByte(pc),
+      // operands,
+      memory: this.memory.ram,
+      // pixelData: this.memory.getVRAMImage(),
     };
   }
 
@@ -1389,12 +1391,12 @@ class CPU {
 
   traceStep() {
     this.step();
-    return this.getState();
+    return this.getEmulationState();
   }
 
   traceSteps(breakpoint: string) {
     const breakpc = breakpoint.startsWith("0x") ? parseInt(breakpoint, 16) : labelToAddress[breakpoint];
-    if (!breakpc) return this.getState();
+    if (!breakpc) return this.getEmulationState();
     console.log("tracing steps to breakpoint ", breakpc);
     let steps = 0;
     while (this.pc.read() != breakpc && steps < 50000) {
@@ -1403,7 +1405,7 @@ class CPU {
     }
 
     console.log(`Ran ${steps} steps`);
-    return this.getState();
+    return this.getEmulationState();
   }
 
   traceOver() {
@@ -1424,7 +1426,7 @@ class CPU {
     this.step(); // process the RTS
 
     console.log(`Ran ${steps} steps`);
-    return this.getState();
+    return this.getEmulationState();
   }
 
   frame(deltaTime: number) {

@@ -3,15 +3,17 @@ import { useDocStore } from "./store/myStore";
 import * as Comlink from "comlink";
 import "./App.css";
 import { transfer } from "comlink";
-import type { ICpuState } from "./emulator/cpu";
+import type { IEmulationState } from "./emulator/cpu";
 
-const vscode = typeof acquireVsCodeApi !== "undefined" ? acquireVsCodeApi() : null;
+import { Messenger } from "vscode-messenger-webview";
+import { HOST_EXTENSION, type RequestType } from "vscode-messenger-common";
+import { hexNotificationType } from "./messageTypes";
+// import { Messenger } from "./messenger";
 
-// Define the shape of messages sent to the worker
-export type CanvasWorkerMessage =
-  | { type: "INIT"; canvas: OffscreenCanvas }
-  | { type: "KEY_DOWN"; key: string }
-  | { type: "KEY_UP"; key: string };
+const vscode = acquireVsCodeApi();
+const webview_messenger = new Messenger(vscode);
+
+const emulationStateRequestType: RequestType<string, IEmulationState> = { method: "getEmulationState" };
 
 export const App: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -26,52 +28,66 @@ export const App: React.FC = () => {
     const worker = new Worker(new URL("./emulator.worker.ts", import.meta.url), { type: "module" });
     workerRef.current = worker;
 
-    const api = Comlink.wrap<{
+    const worker_api = Comlink.wrap<{
       init(canvas: OffscreenCanvas): Promise<void>;
       keyDown(key: string): Promise<void>;
       keyUp(key: string): Promise<void>;
       runHex(hex: string): Promise<void>;
-      getState(): Promise<ICpuState>;
+      getState(): Promise<IEmulationState>;
     }>(worker);
 
-    // 2. Transfer canvas control to the worker
-    const offscreen = canvasRef.current.transferControlToOffscreen();
-    api.init(transfer(offscreen, [offscreen]));
+    // worker communication
 
-    // 3. Forward keyboard events
+    const offscreen = canvasRef.current.transferControlToOffscreen();
+    worker_api.init(transfer(offscreen, [offscreen]));
+
     const handleKeyDown = (e: KeyboardEvent) => {
-      api.keyDown(e.code);
+      worker_api.keyDown(e.code);
     };
 
     const handleKeyUp = (e: KeyboardEvent) => {
-      api.keyUp(e.code);
+      worker_api.keyUp(e.code);
     };
 
-    const handleMessage = (e: MessageEvent) => {
-      const message = e.data;
-      switch (message.command) {
-        case "RUN_HEX":
-          api.runHex(message.hex);
-          break;
-        case "GET_STATE":
-          const minimalState = api.getState();
-          vscode?.postMessage({ command: "GOT_STATE", state: minimalState });
-          break;
-        default:
-          console.warn("Unknown message from worker:", message);
-      }
-      // console.log("emulator webview app received message from vscode app", e.data);
-    };
+    // webview communcation
+
+    webview_messenger.onRequest(emulationStateRequestType, async () => {
+      const state = await worker_api.getState();
+      return state;
+    });
+
+    webview_messenger.onNotification(hexNotificationType, (hex: string) => {
+      console.log("webview received hex notification", hex.slice(0, 20));
+      worker_api.runHex(hex);
+    });
+
+    webview_messenger.start();
+
+    // const handleMessage = (e: MessageEvent) => {
+    //   const message = e.data;
+    //   switch (message.command) {
+    //     case "RUN_HEX":
+    //       api.runHex(message.hex);
+    //       break;
+    //     case "GET_STATE":
+    //       const minimalState = api.getState();
+    //       vscode?.postMessage({ command: "GOT_STATE", state: minimalState });
+    //       break;
+    //     default:
+    //       console.warn("Unknown message from worker:", message);
+    //   }
+    //   // console.log("emulator webview app received message from vscode app", e.data);
+    // };
 
     window.addEventListener("keydown", handleKeyDown);
     window.addEventListener("keyup", handleKeyUp);
-    window.addEventListener("message", handleMessage);
+    // window.addEventListener("message", handleMessage);
 
     // Cleanup on unmount
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("keyup", handleKeyUp);
-      window.removeEventListener("message", handleMessage);
+      // window.removeEventListener("message", handleMessage);
       worker.terminate();
     };
   }, []);

@@ -39,6 +39,7 @@
     "packages/emulator/src/emulator/programCounter.ts",
     "packages/emulator/src/emulator/register.ts",
     "packages/emulator/src/emulator/symbols.ts",
-    "src/emulator/webviewContent.ts"
+    "src/emulator/webviewContent.ts",
+    "packages/emulator/src/messageTypes.ts"
   ]
 }

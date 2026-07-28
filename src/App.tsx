@@ -6,6 +6,7 @@ import type { MinDocChangeNotification } from "./minmin/worker/minmin-server-sta
 import { getWebviewContent } from "./emulator/webviewContent";
 import { EmulatorWebviewPanel } from "./emulator/EmulatorWebviewPanel";
 import type { AsmHexNotification } from "./minasm/worker/minasm-server-start";
+import { runtime } from "./emulator/runtime";
 
 const config = await configure(document.getElementById("root")!);
 
@@ -31,12 +32,15 @@ export default function App() {
           await vscode.window.showTextDocument(uri, { viewColumn: vscode.ViewColumn.Beside });
         });
 
-        minasm.onNotification("minasmlsp/hex", async (data: AsmHexNotification) => {
-          EmulatorWebviewPanel.sendRunHex(data.hex);
-        });
+        // minasm.onNotification("minasmlsp/hex", async (data: AsmHexNotification) => {
+        //   console.log("minasmlsp/hex", data.hex.slice(0, 20));
+        //   runtime.loadHex(data.hex);
+        // });
 
-        vscode.commands.registerCommand("minasm-run", () => {
-          minasm.sendNotification("app/minasm-compile", { uri: vscode.window.activeTextEditor?.document.uri.toString() });
+        vscode.commands.registerCommand("minasm-run", async () => {
+          const hex = await minasm.sendRequest("app/minasm-compile", { uri: vscode.window.activeTextEditor?.document.uri.toString() });
+          debugger;
+          runtime.loadHex(hex);
         });
         vscode.commands.registerCommand("minmin-compile", () => {
           minlsp.sendNotification("app/minmin-compile", { uri: vscode.window.activeTextEditor?.document.uri.toString() });

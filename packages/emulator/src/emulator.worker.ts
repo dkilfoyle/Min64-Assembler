@@ -48,12 +48,13 @@ const api = {
     keyPressedState[key] = false; // reset key press
   },
   runHex: (hex: string) => {
+    console.log("worker received hex", hex.slice(0, 20));
     const totalBytes = cpu.memory.loadIntelHex(hex);
     console.info(`EMULATOR received ${totalBytes} bytes`);
     cpu.pc.write(0x100);
   },
   getState: () => {
-    return cpu.getState();
+    return cpu.getEmulationState();
   },
 };
 
@@ -120,8 +121,8 @@ function renderLoop(currentTime: number): void {
     t -= cpu.step() * msPerClock; // 8mhz clock
   }
 
-  const cpuState = cpu.getState();
-  const imageData = new ImageData(cpuState.pixelData, 512, 256);
+  const pixelData = cpu.memory.getVRAMImage();
+  const imageData = new ImageData(pixelData, 512, 256);
   ctx.putImageData(imageData, -96, -12, 96, 12, 400, 240);
   ctx.font = "bold 10px Arial"; // Configures size and family (Default: 10px sans-serif)
   ctx.fillStyle = "#ff4500";

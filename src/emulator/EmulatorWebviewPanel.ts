@@ -1,4 +1,5 @@
 import { Disposable, type Webview, type WebviewPanel, window, ViewColumn } from "vscode";
+import { runtime } from "./runtime";
 // import { IRuntimeState } from "src/debugger/AsmRuntime";
 
 function getNonce() {
@@ -10,46 +11,36 @@ function getNonce() {
   return text;
 }
 
-interface IEmulatorState {
-  pc: number;
-  sp: number;
-  a: number;
-  mem: number[];
-}
-
 export class EmulatorWebviewPanel {
   public static currentPanel: EmulatorWebviewPanel | undefined;
   private readonly _panel: WebviewPanel;
   private _disposables: Disposable[] = [];
-  emulatorState: IEmulatorState = {
-    pc: 0,
-    sp: 0,
-    a: 0,
-    mem: [],
-  };
 
   private constructor(panel: WebviewPanel) {
     this._panel = panel;
     this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
     this._panel.webview.html = this._getWebviewContent();
-    this._setWebviewMessageListener(this._panel.webview);
+    // this._setWebviewMessageListener(this._panel.webview);
   }
 
-  private _setWebviewMessageListener(webview: Webview) {
-    webview.onDidReceiveMessage(
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (message: any) => {
-        const command = message.command;
-        switch (command) {
-          case "EMULATOR_STATE":
-            this.emulatorState = message.data;
-            return;
-        }
-      },
-      undefined,
-      this._disposables,
-    );
-  }
+  // private _setWebviewMessageListener(webview: Webview) {
+  //   webview.onDidReceiveMessage(
+  //     // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  //     (message: any) => {
+  //       const command = message.command;
+  //       switch (command) {
+  //         case "EMULATOR_STATE":
+  //           this.emulatorState = message.data;
+  //           return;
+  //         case "CANVAS":
+  //           console.log(message.data);
+  //           return;
+  //       }
+  //     },
+  //     undefined,
+  //     this._disposables,
+  //   );
+  // }
 
   public static render() {
     if (EmulatorWebviewPanel.currentPanel) {
@@ -64,6 +55,7 @@ export class EmulatorWebviewPanel {
           retainContextWhenHidden: true,
         },
       );
+      runtime.registerWebviewPanel(panel);
       EmulatorWebviewPanel.currentPanel = new EmulatorWebviewPanel(panel);
     }
   }
@@ -79,11 +71,11 @@ export class EmulatorWebviewPanel {
     }
   }
 
-  static postMessage(command: string, data: any) {
-    if (EmulatorWebviewPanel.currentPanel) {
-      EmulatorWebviewPanel.currentPanel?._panel.webview.postMessage({ command, data });
-    }
-  }
+  // static postMessage(command: string, data: any) {
+  //   if (EmulatorWebviewPanel.currentPanel) {
+  //     EmulatorWebviewPanel.currentPanel?._panel.webview.postMessage({ command, data });
+  //   }
+  // }
 
   private _getWebviewContent() {
     const scriptUri = "/emulator.js";

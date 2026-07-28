@@ -4,7 +4,7 @@ import { labelToAddress } from "./symbols";
 export class Memory {
   // Memory implementation
   private flash: Uint8Array = new Uint8Array(0x80000); // 512KB of flash memory
-  private ram: Uint8Array = new Uint8Array(0x10000); // 64KB of RAM
+  public ram: Uint8Array = new Uint8Array(0x10000); // 64KB of RAM
   public bank = new Register8(); // Bank register for memory banking
   private flashState: number = 0;
   public pixelData = new Uint8ClampedArray(512 * 256 * 4);

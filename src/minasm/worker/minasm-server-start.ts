@@ -45,16 +45,14 @@ export const start = async (port: MessagePort | DedicatedWorkerGlobalScope, name
   // Start the language server with the shared services
   startLanguageServer(shared);
 
-  connection.onNotification("app/minasm-compile", async (data: AsmCompileRequestNotification) => {
+  connection.onRequest("app/minasm-compile", async (data: AsmCompileRequestNotification) => {
     const doc = shared.workspace.LangiumDocuments.getDocument(URI.parse(data.uri));
     if (doc) {
-      const asmHexNotification = new NotificationType<AsmHexNotification>("minasmlsp/hex");
       const hex = compileToHex(doc);
-      if (hex)
-        connection.sendNotification(asmHexNotification, {
-          uri: doc.uri.toString(),
-          hex: hex,
-        });
+      return hex;
+    } else {
+      console.error("Document not found for URI:", data.uri);
+      return undefined;
     }
   });
 
