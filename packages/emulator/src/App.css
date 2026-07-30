@@ -1,0 +1,12 @@
+.canvas-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  height: 280;
+  /* background-color: #454545; */
+}
+
+.screen {
+  border-radius: 4px;
+}

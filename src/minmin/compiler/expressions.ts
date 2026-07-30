@@ -29,8 +29,6 @@ const runtime = Object.fromEntries(
   }),
 );
 
-console.log(runtime);
-
 export class ExpressionCompiler {
   private zpBase: number;
 

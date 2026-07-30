@@ -5,18 +5,28 @@
 
 /// <reference lib="WebWorker" />
 
-import { DocumentState, EmptyFileSystem, type AstNode, type LangiumDocument } from "langium";
+import { DocumentState, EmptyFileSystem, URI, type AstNode, type LangiumDocument } from "langium";
 import { startLanguageServer } from "langium/lsp";
-import { BrowserMessageReader, BrowserMessageWriter, createConnection } from "vscode-languageserver/browser";
+import { BrowserMessageReader, BrowserMessageWriter, createConnection, NotificationType } from "vscode-languageserver/browser";
 import { createMinminServices } from "../ls/minmin-module.js";
-import { isProgram } from "../ls/generated/ast.js";
+import { isProgram, Program } from "../ls/generated/ast.js";
 import { minCompiler } from "../compiler/compiler.js";
+
+export interface MinDocChangeNotification {
+  uri: string;
+  asm: string;
+  ast: Program;
+}
+
+export interface MinCompileRequestNotification {
+  uri: string;
+}
 
 let messageReader: BrowserMessageReader | undefined;
 let messageWriter: BrowserMessageWriter | undefined;
 
 const buildTimers = new Map<string, number>();
-const DEBOUNCE_DELAY_MS = 500; // Adjust as needed
+const DEBOUNCE_DELAY_MS = 1000; // Adjust as needed
 
 export const start = async (port: MessagePort | DedicatedWorkerGlobalScope, name: string) => {
   console.log(`Starting ${name}...`);
@@ -36,12 +46,22 @@ export const start = async (port: MessagePort | DedicatedWorkerGlobalScope, name
   // Start the language server with the shared services
   startLanguageServer(shared);
 
+  connection.onNotification("app/minmin-compile", async (data: MinCompileRequestNotification) => {
+    const doc = shared.workspace.LangiumDocuments.getDocument(URI.parse(data.uri));
+    if (doc) buildDoc(doc);
+  });
+
   const buildDoc = (doc: LangiumDocument) => {
     if (isProgram(doc.parseResult.value)) {
-      console.log(`${doc.uri.toString()} AST`, doc.parseResult.value.elements);
+      // console.log(`${doc.uri.toString()} AST`, doc.parseResult.value.elements);
       if (doc.diagnostics?.length == 0) {
         const asm = minCompiler.generate(doc.uri.toString(), doc.parseResult.value);
-        connection.sendNotification("server/onCompiled", { asm });
+        const docChangeNotification = new NotificationType<MinDocChangeNotification>("minminlsp/docChange");
+        connection.sendNotification(docChangeNotification, {
+          uri: doc.uri.toString(),
+          asm,
+          ast: doc.parseResult.value,
+        });
       }
     }
   };

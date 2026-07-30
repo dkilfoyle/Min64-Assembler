@@ -1,8 +1,8 @@
 import { LogLevel } from "@codingame/monaco-vscode-api";
 import type { MonacoVscodeApiConfig } from "monaco-languageclient/vscodeApiWrapper";
 import { configureDefaultWorkerFactory } from "monaco-languageclient/workerFactory";
-import { extensionConfig as minasmExtensionConfig } from "../minasm/config/extensionConfig";
-import { extensionConfig as minminExtensionConfig } from "../minmin/config/extensionConfig";
+import { minasmExtensionConfig } from "../minasm/config/extensionConfig";
+import { minminExtensionConfig } from "../minmin/config/extensionConfig";
 
 export const monacoApiConfig: MonacoVscodeApiConfig = {
   $type: "extended",

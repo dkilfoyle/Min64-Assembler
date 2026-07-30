@@ -1,49 +1,45 @@
 import * as Alu from "./alu";
 import { BYTE } from "./alu";
+import type { Computer } from "./computer";
 import { FLAG_C, FLAG_N, FLAG_Z, Flags } from "./flags";
 import { instructionInfo } from "./instructions";
 import { IODevice } from "./io";
 import { Memory } from "./memory";
 import { ProgramCounter } from "./programCounter";
 import { Register8 } from "./register";
-import { labelToAddress } from "./symbols";
 
 export const SIZE_BYTE = 1;
 export const SIZE_WORD = 2;
 export const SIZE_LONG = 4;
 
-interface IOperandInfo {
-  value: number;
-  type: string;
-  size: number;
-  addrStart: number;
-}
+// interface IOperandInfo {
+//   value: number;
+//   type: string;
+//   size: number;
+//   addrStart: number;
+// }
 
 type IMode = "I" | "Z" | "T" | "B" | "R" | "V" | "W" | "Q" | "L";
 const ZBVWQL: IMode[] = ["Z", "B", "V", "W", "Q", "L"];
 const ZBTRVWQL: IMode[] = ["Z", "B", "T", "R", "V", "W", "Q", "L"];
 const IZBTR: IMode[] = ["I", "Z", "B", "T", "R"];
 
-export interface ICpuState {
-  pc: number;
-  sp: number;
-  a: number;
-  flags: number;
-  flagState: { C: number; N: number; Z: number };
-  opcode: number;
-  operands: IOperandInfo[];
-  pixelData: Uint8ClampedArray<ArrayBuffer>;
-  totalClocks: number;
-}
+export class CPU {
+  memory: Memory;
+  a: Register8;
+  pc: ProgramCounter;
+  flags: Flags;
+  uart: IODevice;
+  ps2: IODevice;
 
-class CPU {
-  public memory = new Memory();
-  public a = new Register8();
-  public pc = new ProgramCounter();
-  public flags = new Flags();
-  public uart = new IODevice(264);
-  public ps2 = new IODevice(5400);
-  public totalClocks = 0;
+  constructor(computer: Computer) {
+    this.memory = computer.memory;
+    this.a = computer.a;
+    this.pc = computer.pc;
+    this.flags = computer.flags;
+    this.uart = computer.uart;
+    this.ps2 = computer.ps2;
+  }
 
   modeFn(mode: IMode) {
     switch (mode) {
@@ -107,41 +103,7 @@ class CPU {
     }
   }
 
-  async reset() {
-    await this.memory.reset();
-    this.a.reset();
-    this.pc.reset();
-    this.flags.reset();
-    this.uart.reset();
-    this.ps2.reset();
-    this.totalClocks = 0;
-  }
-
-  getState(): ICpuState {
-    const pc = this.pc.read();
-    const flags = this.flags.read();
-    const opcode = this.memory.readByte(pc);
-    const info = instructionInfo[opcode];
-
-    const operands = info.operands.map((operand) => ({
-      type: operand.type,
-      size: operand.size,
-      addrStart: pc + operand.pcOffset,
-      value: operand.size == 2 ? cpu.memory.readWord(pc + operand.pcOffset) : cpu.memory.readByte(pc + operand.pcOffset),
-    }));
-
-    return {
-      totalClocks: this.totalClocks,
-      pc,
-      sp: 0xff00 + this.memory.readByte(0xff),
-      a: this.a.read(),
-      flags,
-      flagState: { C: flags & FLAG_C, N: flags & FLAG_N, Z: flags & FLAG_Z },
-      opcode: this.memory.readByte(pc),
-      operands,
-      pixelData: this.memory.getVRAMImage(),
-    };
-  }
+  // process operands
 
   readByteFromPC = () => {
     const byte = this.memory.readByte(this.pc.read());
@@ -247,7 +209,7 @@ class CPU {
     return { addr, val };
   };
 
-  step() {
+  execute() {
     // Fetch instruction
     const opcode = this.memory.readByte(this.pc.read());
     this.pc.inc();
@@ -1380,60 +1342,6 @@ class CPU {
       default:
         throw Error("Unknown opcode: " + opcode.toString(16));
     }
-    const cycles = instructionInfo[opcode].cycles;
-    this.totalClocks = (this.totalClocks + cycles) & 0xffffffff;
-    this.uart.waited(cycles);
-    this.ps2.waited(cycles);
-    return cycles;
-  }
-
-  traceStep() {
-    this.step();
-    return this.getState();
-  }
-
-  traceSteps(breakpoint: string) {
-    const breakpc = breakpoint.startsWith("0x") ? parseInt(breakpoint, 16) : labelToAddress[breakpoint];
-    if (!breakpc) return this.getState();
-    console.log("tracing steps to breakpoint ", breakpc);
-    let steps = 0;
-    while (this.pc.read() != breakpc && steps < 50000) {
-      this.step();
-      steps++;
-    }
-
-    console.log(`Ran ${steps} steps`);
-    return this.getState();
-  }
-
-  traceOver() {
-    // JPS 0x67
-    // JAS 0x68
-    // RTS 0x69
-    let steps = 0;
-    let level = 1;
-    let opcode = this.memory.readByte(this.pc.read());
-    if (!(opcode == 0x67 || opcode == 0x68)) throw Error();
-    while (!(opcode == 0x69 && level == 0)) {
-      this.step();
-      opcode = this.memory.readByte(this.pc.read());
-      if (opcode == 0x67 || opcode == 0x68) level++;
-      if (opcode == 0x69) level--;
-      steps++;
-    }
-    this.step(); // process the RTS
-
-    console.log(`Ran ${steps} steps`);
-    return this.getState();
-  }
-
-  frame(deltaTime: number) {
-    let haveClocks = deltaTime / 8000000; // 8MHz clock
-    while (haveClocks > 0) {
-      haveClocks -= this.step();
-    }
-    return this.memory.getVRAMImage();
+    return instructionInfo[opcode].cycles;
   }
 }
-
-export const cpu = new CPU();
