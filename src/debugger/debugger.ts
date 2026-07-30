@@ -2,7 +2,6 @@ import { ExtensionHostKind, registerExtension } from "@codingame/monaco-vscode-a
 import * as vscode from "vscode";
 import { MinAsmDebugSession } from "./MinAsmDebugSession.ts";
 import type { DebugConfiguration, WorkspaceFolder } from "vscode";
-import { compiledDocs } from "./MinAsmRuntime.ts";
 
 let outputChannel: vscode.OutputChannel;
 
@@ -29,9 +28,9 @@ const { getApi, registerFileUrl } = registerExtension(
           languages: ["minasm"],
           configurationAttributes: {
             launch: {
-              required: ["program"],
+              required: ["path"],
               properties: {
-                program: { type: "string", description: "Path to asm source file", default: "${workspaceFolder}/ummmm" },
+                path: { type: "string", description: "Asm source file path", default: "${workspaceFolder}/ummmm" },
                 stopOnEntry: { type: "boolean", description: "Stop after launch", default: true },
                 trace: { type: "boolean", description: "Enable logging of debug adapter protocol", default: true },
               },
@@ -99,7 +98,7 @@ void getApi().then(async (debuggerVscodeApi) => {
           type: "minasm",
           name: "Run File",
           request: "launch",
-          program: targetResource.toString(),
+          path: targetResource.toString(),
           // linkerInfo: compiledDocs[fn].linkerInfo,
           stopOnEntry: false,
         },
@@ -116,7 +115,7 @@ void getApi().then(async (debuggerVscodeApi) => {
         type: "minasm",
         name: "Launch",
         request: "launch",
-        program: config.program || editor?.document.uri.toString(),
+        path: config.path || editor?.document.uri.toString(),
         stopOnEntry: config.stopOnEntry || false,
         // linkerInfo: compiledDocs[editor?.document.uri.toString()].linkerInfo,
       };

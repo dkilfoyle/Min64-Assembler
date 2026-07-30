@@ -108,6 +108,8 @@ export const configure = async (htmlContainer?: HTMLElement): Promise<ConfigResu
         "editor.wordBasedSuggestions": "off",
         "editor.guides.bracketPairsHorizontal": true,
         "editor.experimental.asyncTokenization": true,
+        "window.restoreWindows": "none",
+        "files.hotExit": "off",
       }),
     },
     extensions: [

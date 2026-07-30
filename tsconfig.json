@@ -25,7 +25,7 @@
   },
   "include": [
     "src",
-    "packages/emulator/src/store/myStore.ts",
+    "src/store/myStore.ts",
     "packages/emulator/src/emulator.worker.ts",
     "packages/emulator/src/emulator/alu.ts",
     "packages/emulator/src/emulator/cpu.ts",
@@ -40,6 +40,6 @@
     "packages/emulator/src/emulator/register.ts",
     "packages/emulator/src/emulator/symbols.ts",
     "src/emulator/webviewContent.ts",
-    "packages/emulator/src/messageTypes.ts"
+    "packages/emulator/src/api.ts"
   ]
 }

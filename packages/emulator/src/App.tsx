@@ -1,25 +1,18 @@
 import React, { useEffect, useRef } from "react";
-import { useDocStore } from "./store/myStore";
 import * as Comlink from "comlink";
-import "./App.css";
 import { transfer } from "comlink";
-import type { IEmulationState } from "./emulator/cpu";
-
 import { Messenger } from "vscode-messenger-webview";
-import { HOST_EXTENSION, type RequestType } from "vscode-messenger-common";
-import { hexNotificationType } from "./messageTypes";
-// import { Messenger } from "./messenger";
+import { type IRunParams, RunNotification, EmulationStateRequest } from "./api";
+import type { IEmulationState } from "./emulator/computer";
+import "./App.css";
 
 const vscode = acquireVsCodeApi();
 const webview_messenger = new Messenger(vscode);
-
-const emulationStateRequestType: RequestType<string, IEmulationState> = { method: "getEmulationState" };
 
 export const App: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const divRef = useRef<HTMLDivElement | null>(null);
   const workerRef = useRef<Worker | null>(null);
-  const hex = useDocStore((state) => state.docs["demo"].hex);
 
   useEffect(() => {
     if (!canvasRef.current) return;
@@ -32,8 +25,8 @@ export const App: React.FC = () => {
       init(canvas: OffscreenCanvas): Promise<void>;
       keyDown(key: string): Promise<void>;
       keyUp(key: string): Promise<void>;
-      runHex(hex: string): Promise<void>;
-      getState(): Promise<IEmulationState>;
+      getEmulationState(): Promise<IEmulationState>;
+      run(params: IRunParams): Promise<void>;
     }>(worker);
 
     // worker communication
@@ -51,14 +44,13 @@ export const App: React.FC = () => {
 
     // webview communcation
 
-    webview_messenger.onRequest(emulationStateRequestType, async () => {
-      const state = await worker_api.getState();
+    webview_messenger.onRequest(EmulationStateRequest, async () => {
+      const state = await worker_api.getEmulationState();
       return state;
     });
 
-    webview_messenger.onNotification(hexNotificationType, (hex: string) => {
-      console.log("webview received hex notification", hex.slice(0, 20));
-      worker_api.runHex(hex);
+    webview_messenger.onNotification(RunNotification, (params) => {
+      return worker_api.run(params);
     });
 
     webview_messenger.start();

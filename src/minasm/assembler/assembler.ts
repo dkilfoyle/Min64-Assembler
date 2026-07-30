@@ -18,6 +18,7 @@ import {
   type Instruction,
   type Program,
 } from "../ls/generated/ast";
+import type { SourceLocation } from "../worker/api";
 import { instructionInfo } from "./instructionInfo";
 import { getExpressionSize } from "./utils";
 
@@ -112,10 +113,10 @@ class Assembler {
   public mc = 0x2000;
   public pc = 0x2000;
   public isEmit = true;
-  labels: Map<string, number> = new Map();
   hex: IntelHex = new IntelHex();
   curInstr: Instruction | null = null;
-  locations: Map<number, { offset?: number; length?: number }> = new Map();
+  labels: Record<string, { address: number; sourceLocation: SourceLocation }> = {};
+  locations: Record<number, SourceLocation> = {};
 
   reset(pass: 1 | 2) {
     this.mc = 0x2000;
@@ -123,7 +124,10 @@ class Assembler {
     this.isEmit = true;
     this.curInstr = null;
     if (pass == 2) this.hex.reset(0x2000);
-    if (pass == 1) this.labels.clear();
+    if (pass == 1) {
+      this.labels = {};
+      this.locations = {};
+    }
   }
 
   emitByte(x: number) {
@@ -207,11 +211,12 @@ class Assembler {
   }
 
   processLabel(label: Label) {
-    this.labels.set(label.name, this.pc);
+    this.labels[label.name] = { address: this.pc, sourceLocation: { ...label.$cstNode!.range } };
   }
 
   processInstruction(instr: Instruction) {
     const info = instructionInfo[instr.op];
+    this.locations[this.pc] = { ...instr.$cstNode!.range };
     this.advanceBytes(1);
     if (info.argSize.length) this.curInstr = instr; // the next Data will be arguments for this instruction
   }
@@ -338,9 +343,9 @@ class Assembler {
     } else if (isLabelReference(expr)) {
       const labelName = expr.label.ref?.name;
       if (!labelName) throw new Error("Label reference has no name");
-      const address = this.labels.get(labelName);
-      if (address === undefined) throw new Error(`Undefined label: ${labelName}`);
-      return { result: address, size: 2 };
+      const lbl = this.labels[labelName];
+      if (lbl === undefined) throw new Error(`Undefined label: ${labelName}`);
+      return { result: lbl.address, size: 2 };
     } else if (isStarLiteral(expr)) {
       return { result: this.mc, size: 2 };
     } else throw new Error(`Unknown expression type: ${expr}`);

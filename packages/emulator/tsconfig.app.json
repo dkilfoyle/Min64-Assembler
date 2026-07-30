@@ -22,5 +22,5 @@
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src", "../../src/emulator/EmulatorWebviewPanel.ts", "../../src/emulator/webviewContent.ts"]
+  "include": ["src", "../../src/emulator/EmulatorWebviewPanel.ts", "../../src/emulator/webviewContent.ts", "../../src/store"]
 }

@@ -5,12 +5,15 @@ import { initLanguageClients } from "./monaco/languageConfig";
 import type { MinDocChangeNotification } from "./minmin/worker/minmin-server-start";
 import { getWebviewContent } from "./emulator/webviewContent";
 import { EmulatorWebviewPanel } from "./emulator/EmulatorWebviewPanel";
-import type { AsmHexNotification } from "./minasm/worker/minasm-server-start";
 import { runtime } from "./emulator/runtime";
+import { useDocStore } from "./store/myStore";
+import { AsmCompileRequest, type AsmCompileResult } from "./minasm/worker/api";
 
 const config = await configure(document.getElementById("root")!);
 
 export default function App() {
+  const addCompiledAsm = useDocStore((state) => state.addCompiledAsm);
+  const compiledAsm = useDocStore((state) => state.compiledAsm);
   return (
     <MonacoEditorReactComp
       vscodeApiConfig={config.vscodeApiConfig}
@@ -29,19 +32,30 @@ export default function App() {
           } catch (e) {
             console.error("write file error", e);
           }
-          await vscode.window.showTextDocument(uri, { viewColumn: vscode.ViewColumn.Beside });
+          await vscode.window.showTextDocument(uri, { viewColumn: vscode.ViewColumn.Active, preserveFocus: true });
         });
 
-        // minasm.onNotification("minasmlsp/hex", async (data: AsmHexNotification) => {
-        //   console.log("minasmlsp/hex", data.hex.slice(0, 20));
-        //   runtime.loadHex(data.hex);
-        // });
+        vscode.commands.registerCommand("minasm-compile", async () => {
+          console.log("minasm-compile command triggered");
+          const result = await minasm.sendRequest<AsmCompileResult>(AsmCompileRequest.method, {
+            uri: vscode.window.activeTextEditor?.document.uri.toString(),
+          });
+          console.log("Compilation result:", result);
+          addCompiledAsm(result);
+        });
 
         vscode.commands.registerCommand("minasm-run", async () => {
-          const hex = await minasm.sendRequest("app/minasm-compile", { uri: vscode.window.activeTextEditor?.document.uri.toString() });
-          debugger;
-          runtime.loadHex(hex);
+          const uri = vscode.window.activeTextEditor?.document.uri.toString();
+          if (!uri) return;
+          if (!compiledAsm[uri]) {
+            const result = await minasm.sendRequest<AsmCompileResult>(AsmCompileRequest.method, {
+              uri: vscode.window.activeTextEditor?.document.uri.toString(),
+            });
+            addCompiledAsm(result);
+            runtime.run({ runType: "run", pc: 0x100, hex: result.hex });
+          }
         });
+
         vscode.commands.registerCommand("minmin-compile", () => {
           minlsp.sendNotification("app/minmin-compile", { uri: vscode.window.activeTextEditor?.document.uri.toString() });
         });

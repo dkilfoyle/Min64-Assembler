@@ -11,21 +11,13 @@ import { BrowserMessageReader, BrowserMessageWriter, createConnection, Notificat
 import { createMinasmServices } from "../ls/minasm-module.js";
 import { assembler } from "../assembler/assembler.js";
 import { isProgram } from "../ls/generated/ast.js";
+import { AsmCompileRequest } from "./api.js";
 
 let messageReader: BrowserMessageReader | undefined;
 let messageWriter: BrowserMessageWriter | undefined;
 
 const buildTimers = new Map<string, number>();
 const DEBOUNCE_DELAY_MS = 500; // Adjust as needed
-
-export interface AsmHexNotification {
-  uri: string;
-  hex: string;
-}
-
-interface AsmCompileRequestNotification {
-  uri: string;
-}
 
 export const start = async (port: MessagePort | DedicatedWorkerGlobalScope, name: string) => {
   console.log(`Starting ${name}...`);
@@ -45,23 +37,17 @@ export const start = async (port: MessagePort | DedicatedWorkerGlobalScope, name
   // Start the language server with the shared services
   startLanguageServer(shared);
 
-  connection.onRequest("app/minasm-compile", async (data: AsmCompileRequestNotification) => {
-    const doc = shared.workspace.LangiumDocuments.getDocument(URI.parse(data.uri));
-    if (doc) {
-      const hex = compileToHex(doc);
-      return hex;
+  connection.onRequest(AsmCompileRequest, async (params) => {
+    console.log("Received AsmCompileRequest for URI:", params.uri);
+    const doc = shared.workspace.LangiumDocuments.getDocument(URI.parse(params.uri));
+    if (doc && isProgram(doc.parseResult.value) && doc.diagnostics?.length == 0) {
+      assembler.assemble(doc.parseResult.value);
+      return { uri: params.uri, hex: assembler.hex.toString(), locations: assembler.locations, labels: assembler.labels };
     } else {
-      console.error("Document not found for URI:", data.uri);
-      return undefined;
+      console.error("Document not found for URI:", params.uri);
+      throw Error();
     }
   });
-
-  const compileToHex = (doc: LangiumDocument) => {
-    if (isProgram(doc.parseResult.value) && doc.diagnostics?.length == 0) {
-      assembler.assemble(doc.parseResult.value);
-      return assembler.hex.toString();
-    }
-  };
 
   // shared.workspace.DocumentBuilder.onBuildPhase(DocumentState.Validated, (documents, cancelToken) => {
   //   for (const doc of documents) {

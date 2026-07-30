@@ -1,16 +1,15 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
+import { runtime } from "../emulator/runtime";
 import { DebugSession } from "./dap/DebugSession";
 import { Handles } from "./dap/Handles";
 import { Subject } from "./dap/await-notify";
 import { InitializedEvent, TerminatedEvent } from "./dap/events";
 import { Breakpoint, Scope, Source, StackFrame, Thread } from "./dap/features";
-import { asmRuntime } from "./MinAsmRuntime";
 import type { DebugProtocol } from "@vscode/debugprotocol";
 
 interface LaunchRequestArguments extends DebugProtocol.LaunchRequestArguments {
   /** An absolute path to the "program" to debug. */
-  program: string;
-  linkerInfo: ILinkerInfo;
+  path: string;
   /** Automatically stop target after launch. If not specified, target does not stop. */
   stopOnEntry?: boolean;
   /** enable logging the Debug Adapter Protocol */
@@ -21,14 +20,13 @@ export class MinAsmDebugSession extends DebugSession {
   public static THREAD_ID = 1;
   private _variableHandles = new Handles<string>();
   private _cancelationTokens = new Map<number, boolean>();
-  linkerInfo: ILinkerInfo = {};
 
   private _configurationDone = new Subject();
   constructor() {
     super(false); // true for logging of request/response
     this.setDebuggerLinesStartAt1(false);
     this.setDebuggerColumnsStartAt1(false);
-    asmRuntime.setDebugSession(this);
+    runtime.registerDebugSession(this);
   }
   protected initializeRequest(response: DebugProtocol.InitializeResponse, _args: DebugProtocol.InitializeRequestArguments): void {
     response.body = response.body || {};
@@ -55,14 +53,13 @@ export class MinAsmDebugSession extends DebugSession {
     // make sure to 'Stop' the buffered logging if 'trace' is not set
     // logger.setup(args.trace ? Logger.LogLevel.Verbose : Logger.LogLevel.Stop, false);
 
-    asmRuntime.setSource(args.program);
-    this.linkerInfo = args.linkerInfo;
+    runtime.setSource(args.path);
 
     // wait until configuration has finished (and configurationDoneRequest has been called)
     await this._configurationDone.wait(1000);
 
     // start the program in the runtime
-    asmRuntime.start(args.program, !!args.stopOnEntry);
+    runtime.start(!!args.stopOnEntry);
 
     this.sendResponse(response);
   }

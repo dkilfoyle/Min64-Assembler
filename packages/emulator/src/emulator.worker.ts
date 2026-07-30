@@ -1,9 +1,10 @@
 import * as Comlink from "comlink";
-import { cpu } from "./emulator/cpu";
 import { keycodes } from "./emulator/io";
+import type { IRunParams, RunTypes } from "./api";
+import { computer } from "./emulator/computer";
 
 // Define worker self context for TypeScript
-const ctxWorker: Worker = self as any;
+// const ctxWorker: Worker = self as any;
 
 let ctx: OffscreenCanvasRenderingContext2D | null = null;
 
@@ -13,8 +14,7 @@ const keyPressedTime: Record<string, number> = {};
 
 // Delta time tracking variables
 let lastTime = 0;
-let isRunning = true;
-const msPerClock = 1000 / 8000000; // 8mhz clock = 0.000125ms/clock = 125ns/clock
+let runType: RunTypes = "run";
 let frameCount = 0;
 let deltaAverage = 0;
 
@@ -24,8 +24,8 @@ const api = {
   init: async (canvas: OffscreenCanvas) => {
     console.log("Emulator worker init...");
     ctx = canvas.getContext("2d");
-    await cpu.reset();
-    console.log(" - cpu initialised");
+    await computer.reset();
+    console.log(" - computer initialised");
     lastTime = performance.now();
     requestAnimationFrame(renderLoop);
   },
@@ -35,74 +35,32 @@ const api = {
       // already pushed
       if (tnow - keyPressedTime[key] > 260) {
         keyPressedTime[key] = tnow;
-        if (key in keycodes) cpu.ps2.receive(keycodes[key]);
+        if (key in keycodes) computer.ps2.receive(keycodes[key]);
       }
     } else {
       // initial key down
       keyPressedState[key] = true;
       keyPressedTime[key] = tnow;
-      if (key in keycodes) cpu.ps2.receive(keycodes[key]);
+      if (key in keycodes) computer.ps2.receive(keycodes[key]);
     }
   },
   keyUp: (key: string) => {
     keyPressedState[key] = false; // reset key press
   },
-  runHex: (hex: string) => {
-    console.log("worker received hex", hex.slice(0, 20));
-    const totalBytes = cpu.memory.loadIntelHex(hex);
-    console.info(`EMULATOR received ${totalBytes} bytes`);
-    cpu.pc.write(0x100);
+  run: (params: IRunParams) => {
+    if (params.hex) {
+      const totalBytes = computer.memory.loadIntelHex(params.hex);
+      console.info(`EMULATOR received ${totalBytes} bytes`);
+    }
+    if (params.pc != undefined) computer.pc.write(params.pc);
+    runType = params.runType;
   },
-  getState: () => {
-    return cpu.getEmulationState();
+  getEmulationState: () => {
+    return computer.getEmulationState();
   },
 };
 
 Comlink.expose(api);
-
-// ctxWorker.onmessage = async (e: MessageEvent) => {
-//   const data = e.data;
-
-//   if (data.type === "INIT") {
-//     console.log("Emulator worker init...");
-//     const canvas = data.canvas as OffscreenCanvas;
-//     ctx = canvas.getContext("2d");
-
-//     // Initialize timing and kick off the loop
-//     await cpu.reset();
-//     console.log(" - cpu initialised");
-//     lastTime = performance.now();
-//     requestAnimationFrame(renderLoop);
-//   }
-
-//   if (data.type === "KEY_DOWN") {
-//     const tnow = performance.now();
-//     if (keyPressedState[data.key]) {
-//       // already pushed
-//       if (tnow - keyPressedTime[data.key] > 260) {
-//         keyPressedTime[data.key] = tnow;
-//         if (data.key in scancodes) cpu.ps2.receive(scancodes[data.key]);
-//       }
-//     } else {
-//       // initial key down
-//       keyPressedState[data.key] = true;
-//       keyPressedTime[data.key] = tnow;
-//       if (data.key in scancodes) cpu.ps2.receive(scancodes[data.key]);
-//     }
-//   }
-
-//   if (data.type === "KEY_UP") {
-//     keyPressedState[data.key] = false; // reset key press
-//   }
-
-//   if (data.type === "HEX") {
-//     // const hex = new TextEncoder().encode(data.hex);
-//     // hex.forEach((x) => cpu.uart.receive(x));
-//     const totalBytes = cpu.memory.loadIntelHex(data.hex);
-//     console.info(`EMULATOR received ${totalBytes} bytes`);
-//     cpu.pc.write(0x100);
-//   }
-// };
 
 function renderLoop(currentTime: number): void {
   if (!ctx) return;
@@ -115,13 +73,9 @@ function renderLoop(currentTime: number): void {
 
   // Prevent giant jumps if the user leaves the tab and comes back
   const dt = Math.min(deltaTime, 100);
+  computer.run(runType, dt);
 
-  let t = dt;
-  while (t > 0 && isRunning) {
-    t -= cpu.step() * msPerClock; // 8mhz clock
-  }
-
-  const pixelData = cpu.memory.getVRAMImage();
+  const pixelData = computer.memory.getVRAMImage();
   const imageData = new ImageData(pixelData, 512, 256);
   ctx.putImageData(imageData, -96, -12, 96, 12, 400, 240);
   ctx.font = "bold 10px Arial"; // Configures size and family (Default: 10px sans-serif)

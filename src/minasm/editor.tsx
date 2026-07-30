@@ -5,7 +5,7 @@ import type { LanguageClientManager } from "monaco-languageclient/lcwrapper";
 
 import { monacoApiConfig } from "../monaco/MonacoApiConfig";
 import { languageClientConfig } from "./config/languageClientConfig";
-import { useDocStore } from "../../packages/emulator/src/store/myStore";
+import { useDocStore } from "../store/myStore";
 
 type Status = "loading" | "ready" | "error";
 

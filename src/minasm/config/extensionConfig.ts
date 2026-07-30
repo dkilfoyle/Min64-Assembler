@@ -32,6 +32,11 @@ export const minasmExtensionConfig: ExtensionConfig = {
       ],
       commands: [
         {
+          command: "minasm-compile",
+          title: "Compile",
+          icon: "$(gear)",
+        },
+        {
           command: "minasm-run",
           title: "Run",
           icon: "$(vm-running)",
@@ -39,6 +44,11 @@ export const minasmExtensionConfig: ExtensionConfig = {
       ],
       menus: {
         "editor/title": [
+          {
+            when: "editorLangId == minasm",
+            command: "minasm-compile",
+            group: "navigation",
+          },
           {
             when: "editorLangId == minasm",
             command: "minasm-run",
