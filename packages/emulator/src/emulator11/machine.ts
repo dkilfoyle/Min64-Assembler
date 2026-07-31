@@ -15,7 +15,7 @@ export interface IEmulationState {
   memory: Uint8Array;
 }
 
-export class Computer {
+export class Machine {
   cpu: CPU;
   memory: Memory;
   a: Register8;
@@ -136,4 +136,4 @@ export class Computer {
   }
 }
 
-export const computer = new Computer();
+export const machine = new Machine();

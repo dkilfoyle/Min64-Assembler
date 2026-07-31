@@ -1,6 +1,6 @@
 import { type WebviewPanel } from "vscode";
 import { Messenger } from "vscode-messenger";
-import type { IEmulationState } from "../../packages/emulator/src/emulator/computer";
+import type { IEmulationState } from "../../packages/emulator/src/emulator11/machine";
 import { MinAsmDebugSession } from "../debugger/MinAsmDebugSession";
 import type { AsmCompileResult } from "../minasm/worker/api";
 import { useDocStore } from "../store/myStore";

@@ -9,4 +9,6 @@
 
 .screen {
   border-radius: 4px;
+  padding: 20px;
+  background: black;
 }

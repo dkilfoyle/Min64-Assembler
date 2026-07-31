@@ -1,4 +1,4 @@
-import type { IEmulationState } from "./emulator/computer";
+import type { IEmulationState } from "./emulator11/machine";
 import type { NotificationType, RequestType } from "vscode-messenger-common";
 
 export type RunTypes = "run" | "stepInto" | "stepOver" | "stepOut" | "debugRun" | "stop" | "reset";

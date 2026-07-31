@@ -1,0 +1,517 @@
+import { Register8 } from "./register";
+import { labelToAddress } from "./symbols";
+
+export class Memory {
+  // Memory implementation
+  private flash: Uint8Array = new Uint8Array(0x80000); // 512KB of flash memory
+  public ram: Uint8Array = new Uint8Array(0x10000); // 64KB of RAM
+  public bank = new Register8(); // Bank register for memory banking
+  private flashState: number = 0;
+  public pixelData = new Uint8ClampedArray(512 * 256 * 4);
+
+  // Lowest 4k can be flash or ram
+  // bank selects pages 0..127 4k pages from flash, >= 128 disables flash and maps 64k ram
+  // 0x1000 to 0xffff/64k is always ram
+
+  constructor() {}
+
+  async reset() {
+    // Initialize memory if needed
+    const fileUrl = new URL("../assets/flash11.bin", import.meta.url);
+    await fetch(fileUrl)
+      .then((response) => response.arrayBuffer())
+      .then((buffer) => {
+        this.flash.set(new Uint8Array(buffer));
+      })
+      .catch((error) => {
+        console.error("Failed to load flash:", error);
+      });
+    this.bank.reset();
+    this.flashState = 0;
+    this.ram.fill(0xaa);
+  }
+
+  readByte(address: number): number {
+    // ram: bank >= 128/0x80 or address >= 4k/0x1000
+    if (this.bank.read() & 0x80 || address & 0x1000)
+      return this.ram[address & 0xffff]; // RAM access if bank bit is set or address is in RAM range
+    else return this.flash[((this.bank.read() & 0x7f) << 12) | (address & 0xfff)]; // Flash access based on bank and address
+  }
+
+  readWord(address: number) {
+    const low = this.readByte(address & 0xffff);
+    const high = this.readByte((address + 1) & 0xffff);
+    return (high << 8) | low;
+  }
+
+  readLong(address: number) {
+    const loword = this.readWord(address);
+    const hiword = this.readWord(address + 2);
+    return (hiword << 16) | loword;
+  }
+
+  writeArray = (address: number, bytes: Uint8Array) => {
+    let curaddr = address;
+    bytes.forEach((b) => this.writeByte(curaddr++, b));
+  };
+
+  writeWord = (address: number, value: number) => {
+    this.writeByte(address, value & 0xff);
+    this.writeByte(address + 1, (value >> 8) & 0xff);
+  };
+
+  writeLong = (address: number, value: number) => {
+    this.writeWord(address, value & 0xffff);
+    this.writeWord(address + 2, (value >> 16) & 0xffff);
+  };
+
+  writeByte = (address: number, value: number) => {
+    if (value > 255) debugger;
+
+    if ((this.bank.read() & 0x80) != 0 || (address & 0x1000) != 0)
+      this.ram[address & 0xffff] = value & 0xff; // RAM WRITE ACCESS
+    else // FLASH WRITE ACCESS
+    {
+      const adr15 = ((this.bank.read() << 12) | (address & 0x0fff)) & 0x7fff; // FLASH only needs 15 bits
+      switch (this.flashState) {
+        case 0:
+          if (adr15 == 0x5555 && value == 0xaa) this.flashState = 1;
+          else this.flashState = 0;
+          break;
+        case 1:
+          if (adr15 == 0x2aaa && value == 0x55) this.flashState = 2;
+          else this.flashState = 0;
+          break;
+        case 2:
+          if (adr15 == 0x5555 && value == 0xa0) {
+            this.flashState = 3;
+            break;
+          }
+          if (adr15 == 0x5555 && value == 0x80) {
+            this.flashState = 4;
+            break;
+          }
+          this.flashState = 0;
+          break;
+        case 3:
+          this.flash[(this.bank.read() << 12) | (address & 0x0fff)] &= value & 0xff;
+          this.flashState = 0;
+          break; // write operation only writes 1->0, not 0->1
+        case 4:
+          if (adr15 == 0x5555 && value == 0xaa) this.flashState = 5;
+          else this.flashState = 0;
+          break;
+        case 5:
+          if (adr15 == 0x2aaa && value == 0x55) this.flashState = 6;
+          else this.flashState = 0;
+          break;
+        case 6:
+          for (let i = 0; i < 0x1000; i++) this.flash[(this.bank.read() << 12) | i] = 0xff; // sector erase operation
+          this.flashState = 0;
+          break;
+        default:
+          this.flashState = 0;
+          break;
+      }
+    }
+  };
+
+  debugVar(size: 1 | 2, name: string) {
+    if (size == 1) {
+      const val = this.readByte(labelToAddress[name]);
+      console.log(name, val.toString(16), val);
+    }
+    if (size == 2) {
+      const val = this.readWord(labelToAddress[name]);
+      console.log(name, val.toString(16), val);
+    }
+  }
+
+  getVRAMImage() {
+    let pixelIndex = 0;
+    for (let addr = 0x4000; addr < 0x8000; addr++) {
+      let b = this.readByte(addr);
+      for (let pixel = 0; pixel < 8; pixel++) {
+        if ((b & 1) == 1) {
+          this.pixelData[pixelIndex++] = 0xe8;
+          this.pixelData[pixelIndex++] = 0xe4;
+          this.pixelData[pixelIndex++] = 0xe0;
+        } else {
+          this.pixelData[pixelIndex++] = 0x28;
+          this.pixelData[pixelIndex++] = 0x24;
+          this.pixelData[pixelIndex++] = 0x20;
+        }
+        this.pixelData[pixelIndex++] = 0xff; // alpha
+        b >>= 1;
+      }
+    }
+    return this.pixelData;
+  }
+
+  loadIntelHex(hexString: string) {
+    const lines = hexString.split(/\r?\n/);
+    let upperAddressOffset = 0; // Tracks 32-bit linear address shifts
+    let totalBytes = 0;
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (!line) continue;
+      if (!line.startsWith(":")) throw new Error(`Line ${i + 1} does not start with a colon.`);
+
+      // Extract structural metadata
+      const byteCount = parseInt(line.substring(1, 3), 16);
+      const lowerAddress = parseInt(line.substring(3, 7), 16);
+      const recordType = parseInt(line.substring(7, 9), 16);
+
+      totalBytes += byteCount;
+
+      // Extract raw data segment
+      const dataBytes = [];
+      for (let b = 0; b < byteCount; b++) {
+        const startIdx = 9 + b * 2;
+        dataBytes.push(parseInt(line.substring(startIdx, startIdx + 2), 16));
+      }
+
+      // Validate Checksum (Two's complement of the sum of preceding bytes)
+      const suppliedChecksum = parseInt(line.substring(9 + byteCount * 2, 11 + byteCount * 2), 16);
+      let calculatedSum = byteCount + (lowerAddress >> 8) + (lowerAddress & 0xff) + recordType;
+      dataBytes.forEach((byte) => (calculatedSum += byte));
+
+      if (((calculatedSum + suppliedChecksum) & 0xff) !== 0) {
+        throw new Error(`Checksum validation failed on line ${i + 1}`);
+      }
+
+      // Handle structural records vs data records
+      if (recordType === 0) {
+        // Data Record: Map target absolute memory location
+        const absoluteAddress = upperAddressOffset + lowerAddress;
+        // console.log("Writing to", absoluteAddress.toString(16), dataBytes);
+        this.writeArray(absoluteAddress, new Uint8Array(dataBytes));
+      } else if (recordType === 1) {
+        // End of File Record
+        break;
+      } else if (recordType === 4) {
+        // Extended Linear Address Record: shift base address for upper 16 bits
+        upperAddressOffset = ((dataBytes[0] << 8) | dataBytes[1]) << 16;
+      }
+      // Types 02, 03, and 05 can be added here if your hardware environment utilizes them
+    }
+
+    return totalBytes;
+  }
+}
+
+export const osAddressToLabel: Record<number, string> = {
+  0x000a: "imcopyloop",
+  0x0021: "OS_Image_Start",
+  0xf000: "_Start",
+  0xf003: "_Prompt",
+  0xf006: "_MemMove",
+  0xf009: "_Random",
+  0xf00c: "_ScanPS2",
+  0xf00f: "_ResetPS2",
+  0xf012: "_ReadInput",
+  0xf015: "_WaitInput",
+  0xf018: "_ReadLine",
+  0xf01b: "_SkipSpace",
+  0xf01e: "_ReadHex",
+  0xf021: "_FlashA",
+  0xf024: "_SerialPrint",
+  0xf027: "_FindFile",
+  0xf02a: "_LoadFile",
+  0xf02d: "_SaveFile",
+  0xf030: "_ClearVRAM",
+  0xf033: "_Clear",
+  0xf036: "_ClearRow",
+  0xf039: "_ScrollUp",
+  0xf03c: "_ScrollDn",
+  0xf03f: "_Char",
+  0xf042: "_PrintChar",
+  0xf045: "_Print",
+  0xf048: "_PrintPtr",
+  0xf04b: "_PrintHex",
+  0xf04e: "_SetPixel",
+  0xf051: "_Line",
+  0xf054: "_Rect",
+  0xf057: "_ClearPixel",
+  0xf05a: "OS_Start",
+  0xf078: "startupnext",
+  0xf07b: "startuplook",
+  0xf08a: "startupload",
+  0xf09d: "OS_Splash",
+  0xf135: "OS_Prompt",
+  0xf144: "parseline",
+  0xf15d: "notfound",
+  0xf16f: "OS_ResetPS2",
+  0xf17a: "OS_MemMove",
+  0xf19d: "cfw_loop",
+  0xf1a9: "copybackw",
+  0xf1af: "cbw_loop",
+  0xf1ba: "mc_done",
+  0xf1bb: "OS_ReadLine",
+  0xf1c1: "waitchar",
+  0xf1e6: "checkback",
+  0xf1fb: "havenoback",
+  0xf215: "haveenter",
+  0xf224: "clrcursor",
+  0xf22a: "OS_Print",
+  0xf235: "p_loop",
+  0xf23a: "p_entry",
+  0xf244: "OS_ReadHex",
+  0xf249: "hxgetchar",
+  0xf266: "hxletter",
+  0xf268: "hxLETTER",
+  0xf26a: "hxzahl",
+  0xf284: "hxreturn",
+  0xf285: "OS_LoadFile",
+  0xf2bf: "lf_loadloop",
+  0xf2d3: "lf_success",
+  0xf2d6: "lf_failure",
+  0xf2d9: "OS_FlashA",
+  0xf2e9: "fa_rts",
+  0xf2ea: "OS_FindFile",
+  0xf2ef: "ff_search",
+  0xf300: "match_loop",
+  0xf30f: "ff_isnoend",
+  0xf329: "files_dontmatch",
+  0xf351: "ff_returntrue",
+  0xf357: "ff_returnfalse",
+  0xf35a: "OS_SaveFile",
+  0xf371: "sf_namecopy",
+  0xf383: "sf_nameend",
+  0xf38d: "sf_existfile",
+  0xf3d6: "sf_delcheck",
+  0xf3e6: "sf_foundfree",
+  0xf3f4: "sf_shiftloop",
+  0xf404: "sf_shifted",
+  0xf43f: "sf_returnfalse",
+  0xf444: "sf_returnbrk",
+  0xf449: "OS_FLASHWrite",
+  0xf470: "fw_writecheck",
+  0xf48f: "fw_return",
+  0xf490: "OS_PrintPtr",
+  0xf49a: "vpp_loop",
+  0xf49f: "vpp_entry",
+  0xf4a5: "OS_ClearVRAM",
+  0xf4a9: "ca_loop",
+  0xf4b6: "OS_Rect",
+  0xf50b: "re_tlbpat",
+  0xf50d: "re_tloop",
+  0xf517: "re_trbpat",
+  0xf526: "re_mloop",
+  0xf52c: "re_mlbpat",
+  0xf530: "re_mrbpat",
+  0xf538: "re_bottom",
+  0xf53e: "re_blbpat",
+  0xf540: "re_bloop",
+  0xf54a: "re_brbpat",
+  0xf54e: "re_exit",
+  0xf54f: "OS_Clear",
+  0xf553: "vc_loop",
+  0xf56d: "OS_Logo",
+  0xf576: "vl_loopy",
+  0xf579: "vl_loopx",
+  0xf58f: "OS_ReadInput",
+  0xf59d: "ri_exit",
+  0xf59e: "OS_WaitInput",
+  0xf5b0: "wi_exit",
+  0xf5b1: "OS_SetPixel",
+  0xf5d1: "OS_SerialPrint",
+  0xf5dc: "s_loop",
+  0xf5df: "s_entry",
+  0xf5e9: "OS_SkipSpace",
+  0xf5f9: "ps_useit",
+  0xf5fa: "OS_Line",
+  0xf63c: "dxpos",
+  0xf665: "common",
+  0xf672: "fastdir",
+  0xf67c: "dyfastdir",
+  0xf686: "dyfloop",
+  0xf68a: "dyvert",
+  0xf694: "dyfnover",
+  0xf6a2: "dybitin",
+  0xf6a5: "dyfnodiag",
+  0xf6aa: "dxfastdir",
+  0xf6b7: "dxfloop",
+  0xf6c3: "dxbitin",
+  0xf6ca: "dxfnover",
+  0xf6cf: "dxvert",
+  0xf6d5: "dxfnodiag",
+  0xf6de: "OS_FLASHErase",
+  0xf702: "os_bank",
+  0xf708: "fe_wait",
+  0xf711: "OS_ClearRow",
+  0xf72f: "robit3",
+  0xf736: "robit2",
+  0xf73d: "robit1",
+  0xf744: "robit0",
+  0xf75c: "rostart",
+  0xf75e: "roentry",
+  0xf776: "rojump",
+  0xf779: "rostop",
+  0xf77b: "roloop",
+  0xf77d: "roexit",
+  0xf77e: "OS_ScrollDn",
+  0xf791: "sd_loopq",
+  0xf794: "sd_loopx",
+  0xf7c3: "ct_loop",
+  0xf7df: "OS_Char",
+  0xf833: "OS_ScanPS2",
+  0xf839: "key_reentry",
+  0xf86d: "key_check2",
+  0xf877: "key_check3",
+  0xf883: "key_ptrok",
+  0xf88a: "key_release",
+  0xf892: "key_wait",
+  0xf89f: "key_shift",
+  0xf8a8: "key_alt",
+  0xf8b1: "key_ctrl",
+  0xf8b8: "key_clrrel",
+  0xf8bc: "key_rts",
+  0xf8bd: "ps2_shift",
+  0xf8be: "ps2_ctrl",
+  0xf8bf: "ps2_alt",
+  0xf8c0: "ps2_release",
+  0xf8c1: "ps2_ascii",
+  0xf8c2: "ps2_ptr",
+  0xf8c5: "OS_ClearPixel",
+  0xf8e5: "OS_Random",
+  0xf8f5: "OS_PrintHex",
+  0xf903: "th_msn",
+  0xf906: "th_store",
+  0xf912: "th_lsn",
+  0xf916: "OS_ScrollUp",
+  0xf929: "su_loopq",
+  0xf92c: "su_loopx",
+  0xf959: "cb_loop",
+  0xf975: "OS_PrintChar",
+  0xf979: "pz_enter",
+  0xf986: "pz_godown",
+  0xf989: "pz_regular",
+  0xf99d: "pz_isin",
+  0xf9a2: "pz_exit",
+  0xf9a3: "OS_StartFile",
+  0xf9ad: "OS_Image_End",
+  0x0f00: "MinimalLogo",
+  0x0080: "xa",
+  0x0082: "ya",
+  0x0083: "xb",
+  0x0085: "yb",
+  0x0086: "dx",
+  0x0088: "dy",
+  0x0089: "bit",
+  0x008a: "err",
+  0x008c: "dxindex",
+  0x008e: "dyindex",
+  0x0090: "Z0",
+  0x0091: "Z1",
+  0x0092: "Z2",
+  0x0093: "Z3",
+  0x0094: "Z4",
+  0x0095: "Z5",
+  0x00c0: "_XPos",
+  0x00c1: "_YPos",
+  0x00c2: "_RandomState",
+  0x00c6: "_ReadNum",
+  0x00c9: "_ReadPtr",
+  0x00cd: "_ReadBuffer",
+  0x00fe: "ReadLast",
+  0x00ff: "SystemReg",
+  0x4000: "VIDEORAM",
+  0x430c: "VIEWPORT",
+  0x0032: "WIDTH",
+  0x001e: "HEIGHT",
+  0x0000: "Charset",
+  0x0100: "ClrTable",
+  0x0200: "LeftTable",
+  0x0300: "RightTable",
+  0x0800: "LineLSBTable",
+  0x0900: "LineMSBTable",
+  0x0a00: "PS2Table",
+  0x0c00: "Arguments",
+  0x0d00: "Mnemonics",
+  0xff00: "SaveStart",
+  0xff03: "sv_loop",
+  0xff0f: "sv_syntax",
+  0xff31: "sv_input",
+  0xff61: "SaveEnd",
+  0xfc00: "DirStart",
+  0xfc37: "dc_lookfiles",
+  0xfc87: "stoop",
+  0xfc99: "dc_nextchar",
+  0xfca7: "dc_noover",
+  0xfcd8: "dc_endreached",
+  0xfcfa: "DirEnd",
+  0xfc10: "dg_nextchunk",
+  0xfc15: "dg_biseqnext",
+  0xfc38: "dg_checknext",
+  0xfc8a: "dg_copythisfile",
+  0xfc92: "dg_copyabyte",
+  0xfca5: "dg_error",
+  0xfcb9: "dg_ramokay",
+  0xfcd3: "writeRAM",
+  0xfcf6: "dg_bytes",
+  0xfd03: "dg_endofused",
+  0xfd19: "dg_laloop",
+  0xfd30: "dg_raus",
+  0xfd38: "dg_ram",
+  0xfd3a: "dg_bis",
+  0xfd3d: "dg_next",
+  0xfd40: "dg_newbank",
+  0xfd41: "DefragEnd",
+  0xfc0f: "RunEnd",
+  0xfc0a: "ClearEnd",
+  0xfc33: "de_delcheck",
+  0xfc43: "de_syntax",
+  0xfc59: "de_flasherror",
+  0xfc6c: "de_canterror",
+  0xfc83: "de_notferror",
+  0xfc9a: "DelEnd",
+  0xfc21: "sh_syntaxok",
+  0xfc3b: "sh_found",
+  0xfc41: "sh_firstpage",
+  0xfc44: "sh_nextpage",
+  0xfc52: "sh_shownext",
+  0xfc6a: "sh_userexit",
+  0xfc72: "sh_not_eof",
+  0xfc86: "sh_enter",
+  0xfc8f: "sh_pagebreak",
+  0xfca9: "sh_backpage",
+  0xfcc3: "sh_advance",
+  0xfccb: "ShowEnd",
+  0xfc2a: "mfnext",
+  0xfc5c: "MemsetEnd",
+  0xfc48: "sc_syntax",
+  0xfc6d: "MemmoveEnd",
+  0xfc1b: "fm_input",
+  0xfc4c: "FormatEnd",
+  0xfc28: "hl_readline",
+  0xfc32: "hl_readloop",
+  0xfc39: "hl_exit",
+  0xfc42: "hl_fileerror",
+  0xfc57: "hl_next",
+  0xfc65: "hl_scanforhex",
+  0xfca4: "hl_dataloop",
+  0xfcbd: "hl_checkerror",
+  0xfcd6: "hl_endoffile",
+  0xfd12: "hl_flashimage",
+  0xfd33: "hl_imageclr",
+  0xfd3f: "hl_imagerdy",
+  0xfd86: "hl_ReadHexByte",
+  0xfd90: "hl_gotfirst",
+  0xfd9f: "hl_gotsecond",
+  0xfda6: "ReceiveEnd",
+  0xfc54: "w_parsing",
+  0xfc5f: "w_next1",
+  0xfc68: "w_next2",
+  0xfc71: "w_next3",
+  0xfc84: "w_tmode1",
+  0xfc88: "w_listpage",
+  0xfc8b: "w_listline",
+  0xfc91: "w_nextel",
+  0xfcb6: "w_tmode2",
+  0xfcc8: "w_isram",
+  0xfccf: "w_mode3",
+  0xfcd2: "w_clear",
+  0xfcdd: "w_printaddr",
+};

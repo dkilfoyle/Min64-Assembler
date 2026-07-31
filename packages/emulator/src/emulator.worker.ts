@@ -1,7 +1,8 @@
 import * as Comlink from "comlink";
-import { keycodes } from "./emulator/io";
+import { keycodes } from "./emulator11/io";
 import type { IRunParams, RunTypes } from "./api";
-import { computer } from "./emulator/computer";
+import { machine } from "./emulator14/machine";
+import { disassembleRange } from "./emulator14/disassembler";
 
 // Define worker self context for TypeScript
 // const ctxWorker: Worker = self as any;
@@ -24,8 +25,8 @@ const api = {
   init: async (canvas: OffscreenCanvas) => {
     console.log("Emulator worker init...");
     ctx = canvas.getContext("2d");
-    await computer.reset();
-    console.log(" - computer initialised");
+    await machine.reset();
+    console.log(" - machine initialised");
     lastTime = performance.now();
     requestAnimationFrame(renderLoop);
   },
@@ -35,13 +36,13 @@ const api = {
       // already pushed
       if (tnow - keyPressedTime[key] > 260) {
         keyPressedTime[key] = tnow;
-        if (key in keycodes) computer.ps2.receive(keycodes[key]);
+        if (key in keycodes) machine.io.pushKeyByte(keycodes[key]);
       }
     } else {
       // initial key down
       keyPressedState[key] = true;
       keyPressedTime[key] = tnow;
-      if (key in keycodes) computer.ps2.receive(keycodes[key]);
+      if (key in keycodes) machine.io.pushKeyByte(keycodes[key]);
     }
   },
   keyUp: (key: string) => {
@@ -49,14 +50,14 @@ const api = {
   },
   run: (params: IRunParams) => {
     if (params.hex) {
-      const totalBytes = computer.memory.loadIntelHex(params.hex);
+      const totalBytes = machine.loadHexIntoRam(params.hex);
       console.info(`EMULATOR received ${totalBytes} bytes`);
     }
-    if (params.pc != undefined) computer.pc.write(params.pc);
+    if (params.pc != undefined) machine.cpu.pc = params.pc;
     runType = params.runType;
   },
   getEmulationState: () => {
-    return computer.getEmulationState();
+    return machine.getEmulationState();
   },
 };
 
@@ -73,11 +74,11 @@ function renderLoop(currentTime: number): void {
 
   // Prevent giant jumps if the user leaves the tab and comes back
   const dt = Math.min(deltaTime, 100);
-  computer.run(runType, dt);
+  machine.run(runType, dt);
 
-  const pixelData = computer.memory.getVRAMImage();
-  const imageData = new ImageData(pixelData, 512, 256);
-  ctx.putImageData(imageData, -96, -12, 96, 12, 400, 240);
+  const pixelData = machine.vga.getScreenPixelData();
+  const imageData = new ImageData(pixelData, 400, 240); // 512, 256);
+  ctx.putImageData(imageData, 0, 0);
   ctx.font = "bold 10px Arial"; // Configures size and family (Default: 10px sans-serif)
   ctx.fillStyle = "#ff4500";
   ctx.textAlign = "right";

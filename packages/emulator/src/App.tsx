@@ -3,10 +3,17 @@ import * as Comlink from "comlink";
 import { transfer } from "comlink";
 import { Messenger } from "vscode-messenger-webview";
 import { type IRunParams, RunNotification, EmulationStateRequest } from "./api";
-import type { IEmulationState } from "./emulator/computer";
+import type { IEmulationState } from "./emulator11/machine";
 import "./App.css";
 
-const vscode = acquireVsCodeApi();
+const vscode =
+  typeof acquireVsCodeApi == "function"
+    ? acquireVsCodeApi()
+    : {
+        postMessage: (msg: any) => console.log("vscode.postMessage", msg),
+        getState: () => null,
+        setState: (state: any) => console.log("vscode.setState", state),
+      };
 const webview_messenger = new Messenger(vscode);
 
 export const App: React.FC = () => {

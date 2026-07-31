@@ -1,6 +1,6 @@
 import * as Alu from "./alu";
 import { BYTE } from "./alu";
-import type { Computer } from "./computer";
+import type { Machine } from "./machine";
 import { FLAG_C, FLAG_N, FLAG_Z, Flags } from "./flags";
 import { instructionInfo } from "./instructions";
 import { IODevice } from "./io";
@@ -32,7 +32,7 @@ export class CPU {
   uart: IODevice;
   ps2: IODevice;
 
-  constructor(computer: Computer) {
+  constructor(computer: Machine) {
     this.memory = computer.memory;
     this.a = computer.a;
     this.pc = computer.pc;
