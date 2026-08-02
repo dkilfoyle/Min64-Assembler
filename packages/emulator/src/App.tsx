@@ -2,8 +2,8 @@ import React, { useEffect, useRef } from "react";
 import * as Comlink from "comlink";
 import { transfer } from "comlink";
 import { Messenger } from "vscode-messenger-webview";
-import { type IRunParams, RunNotification, EmulationStateRequest } from "./api";
-import type { IEmulationState } from "./emulator11/machine";
+import { type IRunParams, type IStepParams, EmulationStateRequest, RunNotification, StepRequest } from "./api";
+import type { IEmulationState } from "./emulator14/machine";
 import "./App.css";
 
 const vscode =
@@ -34,6 +34,7 @@ export const App: React.FC = () => {
       keyUp(key: string): Promise<void>;
       getEmulationState(): Promise<IEmulationState>;
       run(params: IRunParams): Promise<void>;
+      step(params: IStepParams): Promise<IEmulationState>;
     }>(worker);
 
     // worker communication
@@ -60,23 +61,11 @@ export const App: React.FC = () => {
       return worker_api.run(params);
     });
 
-    webview_messenger.start();
+    webview_messenger.onRequest(StepRequest, async (params) => {
+      return await worker_api.step(params);
+    });
 
-    // const handleMessage = (e: MessageEvent) => {
-    //   const message = e.data;
-    //   switch (message.command) {
-    //     case "RUN_HEX":
-    //       api.runHex(message.hex);
-    //       break;
-    //     case "GET_STATE":
-    //       const minimalState = api.getState();
-    //       vscode?.postMessage({ command: "GOT_STATE", state: minimalState });
-    //       break;
-    //     default:
-    //       console.warn("Unknown message from worker:", message);
-    //   }
-    //   // console.log("emulator webview app received message from vscode app", e.data);
-    // };
+    webview_messenger.start();
 
     window.addEventListener("keydown", handleKeyDown);
     window.addEventListener("keyup", handleKeyUp);

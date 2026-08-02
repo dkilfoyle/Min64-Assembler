@@ -19,7 +19,7 @@ import {
   type Program,
 } from "../ls/generated/ast";
 import type { SourceLocation } from "../worker/api";
-import { instructionInfo } from "./instructionInfo";
+import { instructionInfo } from "./instructionInfo14";
 import { getExpressionSize } from "./utils";
 
 interface IRecord {

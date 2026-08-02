@@ -1,13 +1,14 @@
 import * as Comlink from "comlink";
 import { keycodes } from "./emulator11/io";
-import type { IRunParams, RunTypes } from "./api";
+import type { IRunParams, IStepParams } from "./api";
 import { machine } from "./emulator14/machine";
-import { disassembleRange } from "./emulator14/disassembler";
 
 // Define worker self context for TypeScript
 // const ctxWorker: Worker = self as any;
 
 let ctx: OffscreenCanvasRenderingContext2D | null = null;
+let animationFrameId: number | null = null;
+const nextFrame = () => new Promise((resolve) => (animationFrameId = requestAnimationFrame(resolve)));
 
 // Track active key states
 const keyPressedState: Record<string, boolean> = {};
@@ -15,7 +16,6 @@ const keyPressedTime: Record<string, number> = {};
 
 // Delta time tracking variables
 let lastTime = 0;
-let runType: RunTypes = "run";
 let frameCount = 0;
 let deltaAverage = 0;
 
@@ -26,9 +26,8 @@ const api = {
     console.log("Emulator worker init...");
     ctx = canvas.getContext("2d");
     await machine.reset();
-    console.log(" - machine initialised");
     lastTime = performance.now();
-    requestAnimationFrame(renderLoop);
+    runLoop();
   },
   keyDown: (key: string) => {
     const tnow = performance.now();
@@ -48,13 +47,31 @@ const api = {
   keyUp: (key: string) => {
     keyPressedState[key] = false; // reset key press
   },
-  run: (params: IRunParams) => {
+  run: async (params: IRunParams) => {
+    if (params.reset) {
+      console.log("resetting emulator -------------------------");
+      await machine.reset();
+      lastTime = performance.now();
+      runLoop();
+    }
     if (params.hex) {
       const totalBytes = machine.loadHexIntoRam(params.hex);
       console.info(`EMULATOR received ${totalBytes} bytes`);
+      console.log(
+        `EMULATOR RAM:`,
+        Array.from(machine.mem.ram.slice(0x100, 0x100 + 6)).map((b: number) => b.toString(16).padStart(2, "0")),
+      );
     }
     if (params.pc != undefined) machine.cpu.pc = params.pc;
-    runType = params.runType;
+    machine.mem.bank = 0xff;
+    machine.runType = params.runType;
+  },
+  step: async (params: IStepParams) => {
+    cancelAnimationFrame(animationFrameId!);
+    animationFrameId = null;
+    machine.runType = params.stepType;
+    lastTime = performance.now();
+    return await runLoop();
   },
   getEmulationState: () => {
     return machine.getEmulationState();
@@ -63,27 +80,64 @@ const api = {
 
 Comlink.expose(api);
 
-function renderLoop(currentTime: number): void {
+async function runLoop() {
   if (!ctx) return;
 
-  // 1. Calculate delta time (ms elapsed since last frame)
-  const deltaTime = currentTime - lastTime;
-  lastTime = currentTime;
-  frameCount++;
-  deltaAverage += (deltaTime - deltaAverage) / frameCount;
+  while (machine.runType !== "stop") {
+    // 1. Calculate delta time (ms elapsed since last frame)
+    const currentTime = performance.now();
+    const deltaTime = currentTime - lastTime;
+    lastTime = currentTime;
+    frameCount++;
+    deltaAverage += (deltaTime - deltaAverage) / frameCount;
 
-  // Prevent giant jumps if the user leaves the tab and comes back
-  const dt = Math.min(deltaTime, 100);
-  machine.run(runType, dt);
+    // Prevent giant jumps if the user leaves the tab and comes back
+    const dt = Math.min(deltaTime, 100);
 
-  const pixelData = machine.vga.getScreenPixelData();
-  const imageData = new ImageData(pixelData, 400, 240); // 512, 256);
-  ctx.putImageData(imageData, 0, 0);
-  ctx.font = "bold 10px Arial"; // Configures size and family (Default: 10px sans-serif)
-  ctx.fillStyle = "#ff4500";
-  ctx.textAlign = "right";
-  ctx.fillText((1000 / deltaAverage).toFixed(2), 395, 10);
+    machine.run(dt);
 
-  // Request next frame
-  requestAnimationFrame(renderLoop);
+    const pixelData = machine.vga.getScreenPixelData();
+    const imageData = new ImageData(pixelData, 400, 240); // 512, 256);
+    ctx.putImageData(imageData, 0, 0);
+    ctx.font = "bold 10px Arial"; // Configures size and family (Default: 10px sans-serif)
+    ctx.fillStyle = "#ff4500";
+    ctx.textAlign = "right";
+    ctx.fillText((1000 / deltaAverage).toFixed(2), 395, 10);
+
+    await nextFrame();
+  }
+
+  return machine.getEmulationState();
 }
+
+// function renderLoop(currentTime: number): void {
+//   if (!ctx) return;
+
+//   // 1. Calculate delta time (ms elapsed since last frame)
+//   const deltaTime = currentTime - lastTime;
+//   lastTime = currentTime;
+//   frameCount++;
+//   deltaAverage += (deltaTime - deltaAverage) / frameCount;
+
+//   // Prevent giant jumps if the user leaves the tab and comes back
+//   const dt = Math.min(deltaTime, 100);
+//   machine.run(dt);
+
+//   const pixelData = machine.vga.getScreenPixelData();
+//   const imageData = new ImageData(pixelData, 400, 240); // 512, 256);
+//   ctx.putImageData(imageData, 0, 0);
+//   ctx.font = "bold 10px Arial"; // Configures size and family (Default: 10px sans-serif)
+//   ctx.fillStyle = "#ff4500";
+//   ctx.textAlign = "right";
+//   ctx.fillText((1000 / deltaAverage).toFixed(2), 395, 10);
+
+//   if (machine.runType === "stop") {
+//     if (animationFrameId !== null) {
+//       cancelAnimationFrame(animationFrameId);
+//       animationFrameId = null;
+//     }
+//   } else {
+//     // Request next frame
+//     animationFrameId = requestAnimationFrame(renderLoop);
+//   }
+// }

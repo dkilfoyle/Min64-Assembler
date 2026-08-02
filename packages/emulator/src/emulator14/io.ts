@@ -68,7 +68,6 @@ export class IoDevices {
 
   /** OUT: transmit A over UART. */
   writeUart(byte: number): void {
-    console.log("IoDevices.writeUart", byte);
     this.onUartTransmit?.(byte & 0xff);
   }
 

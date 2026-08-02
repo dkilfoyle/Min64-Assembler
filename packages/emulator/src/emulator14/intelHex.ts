@@ -18,7 +18,7 @@ export function parseIntelHex(text: string): HexRecord[] {
   const records: HexRecord[] = [];
   for (const rawLine of text.split(/\r?\n/)) {
     const line = rawLine.trim();
-    if (!line || !line.startsWith(':')) continue;
+    if (!line || !line.startsWith(":")) continue;
     const bytes = hexToBytes(line.slice(1));
     const byteCount = bytes[0];
     const address = (bytes[1] << 8) | bytes[2];
@@ -36,12 +36,15 @@ export function parseIntelHex(text: string): HexRecord[] {
 }
 
 /** Applies parsed Intel HEX records into a flat byte array at their given addresses. */
-export function applyHexRecords(target: Uint8Array, records: HexRecord[], baseOffset = 0): void {
+export function applyHexRecords(target: Uint8Array, records: HexRecord[], baseOffset = 0): number {
+  let totalBytes = 0;
   for (const rec of records) {
     const start = baseOffset + rec.address;
     if (start < 0 || start + rec.data.length > target.length) continue;
     target.set(rec.data, start);
+    totalBytes += rec.data.length;
   }
+  return totalBytes;
 }
 
 function hexToBytes(hex: string): number[] {

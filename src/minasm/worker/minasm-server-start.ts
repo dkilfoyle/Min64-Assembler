@@ -38,7 +38,6 @@ export const start = async (port: MessagePort | DedicatedWorkerGlobalScope, name
   startLanguageServer(shared);
 
   connection.onRequest(AsmCompileRequest, async (params) => {
-    console.log("Received AsmCompileRequest for URI:", params.uri);
     const doc = shared.workspace.LangiumDocuments.getDocument(URI.parse(params.uri));
     if (doc && isProgram(doc.parseResult.value) && doc.diagnostics?.length == 0) {
       assembler.assemble(doc.parseResult.value);

@@ -18,7 +18,7 @@ import {
   type Instruction,
   type Program,
 } from "../ls/generated/ast";
-import { instructionInfo } from "./instructionInfo";
+import { instructionInfo } from "./instructionInfo11";
 import { getDataSize, getExpressionSize } from "./utils";
 
 interface IRecord {

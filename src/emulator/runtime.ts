@@ -1,28 +1,42 @@
-import { type WebviewPanel } from "vscode";
+import { SourceBreakpoint, type WebviewPanel } from "vscode";
 import { Messenger } from "vscode-messenger";
-import type { IEmulationState } from "../../packages/emulator/src/emulator11/machine";
+import type { IEmulationState } from "../../packages/emulator/src/emulator14/machine";
 import { MinAsmDebugSession } from "../debugger/MinAsmDebugSession";
 import type { AsmCompileResult } from "../minasm/worker/api";
 import { useDocStore } from "../store/myStore";
-import { OutputEvent, StoppedEvent, TerminatedEvent } from "../debugger/dap/events";
+import { BreakpointEvent, OutputEvent, StoppedEvent, TerminatedEvent } from "../debugger/dap/events";
+import {
+  BreakpointsNotification,
+  EmulationStateRequest,
+  RunNotification,
+  StepRequest,
+  type IStepParams,
+} from "../../packages/emulator/src/api";
 import * as vscode from "vscode";
-import { RunNotification, type IRunParams } from "../../packages/emulator/src/api";
+import { type IRunParams } from "../../packages/emulator/src/api";
 
 const messenger = new Messenger();
 
-interface IAsmBreakpoint {
-  id: number;
+interface IRuntimeBreakpoint {
+  pc: number;
+}
+
+interface ISourcePosition {
+  path: string;
   line: number;
-  verified: boolean;
+  column: number;
+  endLine: number;
+  endColumn: number;
 }
 
 export interface IStackFrame {
-  index: number;
   name: string;
-  file: string;
+  path: string;
   line: number;
+  column: number;
+  endLine: number;
+  endColumn: number;
   stackBase: number;
-  stackLabels: Record<string, string>;
 }
 
 type IStepMode = "stepInto" | "stepOut" | "stepOver" | "continue";
@@ -32,7 +46,8 @@ class Runtime {
   emulationState: IEmulationState | null = null;
   private debugSession: MinAsmDebugSession | null = null;
   compileResult: AsmCompileResult | null = null;
-  public frames: IStackFrame[] = [];
+  public stack: IStackFrame[] = [];
+  breakpoints: Map<string, number[]> = new Map();
 
   constructor() {}
 
@@ -44,53 +59,87 @@ class Runtime {
     this.debugSession = session;
   }
 
-  setCurrentLine() {
-    if (!this.emulationState) throw Error("No emulation state");
-    const pc = this.emulationState.pc;
+  async updateState() {
     if (!this.compileResult) throw Error("No compile result");
-    this.frames[0].line = this.compileResult.locations[pc].start.line;
-    this.frames[0].file = this.compileResult.uri;
+    this.emulationState = await messenger.sendRequest(EmulationStateRequest, { type: "webview", webviewType: "emulatorPanel" });
+    const pc = this.emulationState.pc;
+    const loc = this.compileResult.locations[pc];
+    console.log(pc, loc, this.compileResult.locations);
+    if (!loc) throw Error(`No source location for pc=${pc.toString(16)}`);
+    this.stack[0].line = loc.start.line + 1;
+    this.stack[0].column = loc.start.character + 1;
+    this.stack[0].endLine = loc.end.line + 1;
+    this.stack[0].endColumn = loc.end.character + 1;
+    this.stack[0].path = this.compileResult.uri;
   }
 
-  setSource(source: string) {
+  setSource(source: string, stopOnEntry: boolean) {
     const result = useDocStore.getState().compiledAsm[source];
-    if (!result) throw Error("unable to get compiled asm for source " + source);
+    if (!result) {
+      console.log(source, useDocStore.getState().compiledAsm);
+      throw Error("unable to get compiled asm for source " + source);
+    }
     this.compileResult = result;
-    this.run({ runType: "stop", pc: 0x100, hex: result.hex });
+    console.log("Runtime setSource", source, stopOnEntry, result);
+    this.run({ runType: stopOnEntry ? "stop" : "continue", pc: 0x100, hex: result.hex, reset: true });
   }
 
   public run(runParams: IRunParams) {
     messenger.sendNotification(RunNotification, { type: "webview", webviewType: "emulatorPanel" }, runParams);
   }
 
-  public setBreakpoint() {}
-  public removeBreakpoint() {}
+  public async step(stepParams: IStepParams) {
+    this.emulationState = await messenger.sendRequest(StepRequest, { type: "webview", webviewType: "emulatorPanel" }, stepParams);
+    this.stop("step", `Step completed`);
+  }
 
-  start(path: string, stopOnEntry: boolean) {
+  public setBreakpoints(path: string) {
+    const bps = this.breakpoints.get(path);
+    if (!bps) return;
+    messenger.sendNotification(BreakpointsNotification, { type: "webview", webviewType: "emulatorPanel" }, bps);
+  }
+
+  getMemory(memoryReference: string) {
+    if (!this.emulationState) throw Error("No emulation state");
+    if (memoryReference == "ram") {
+      return Array.from(this.emulationState.memory.slice(0x0000, 0xffff));
+    }
+    if (memoryReference == "sp") {
+      return Array.from(this.emulationState.memory.slice(this.emulationState.sp, 0xffff));
+    }
+    return [];
+  }
+
+  start(stopOnEntry: boolean) {
+    console.log("Runtime start", stopOnEntry);
     if (!this.debugSession) throw Error("No debug session set");
     if (!this.compileResult) throw Error("No source");
 
     // this.runUntilReturnFrom = "";
     // this.isDebugging = true;
 
-    this.frames = [
+    this.stack = [
       {
-        index: 0,
-        file: this.compileResult.uri,
+        path: this.compileResult.uri,
         line: 0,
-        name: "entry",
-        stackBase: 0x0140 - 1, // ugly hack, TODO: set to mem.size or config.initialStackBase
-        stackLabels: {},
+        column: 0,
+        endLine: 0,
+        endColumn: 0,
+        name: "global",
+        stackBase: 0xfe,
       },
     ];
 
     // this.log(`Asm runtime start uri=${this.compileResult.uri}`);
 
-    this.setCurrentLine();
-    this.stop("entry", `Runtime started`);
+    if (stopOnEntry) {
+      this.stop("entry", `Runtime started`);
+    }
   }
 
-  stop(type: "step" | "hlt" | "breakpoint" | "entry", output: string): IStepResult {
+  async stop(type: "step" | "hlt" | "breakpoint" | "entry", output: string): Promise<IStepResult> {
+    await this.updateState();
+    console.log(`Runtime stop type=${type}`, this.stack[0]);
     switch (type) {
       case "entry":
         this.debugSession!.sendEvent(new StoppedEvent("entry", MinAsmDebugSession.THREAD_ID));

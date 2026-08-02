@@ -6,7 +6,7 @@
 import type { ValidationAcceptor, ValidationCategory, ValidationChecks } from "langium";
 import { Data, type Directive, type Instruction, type MinasmAstType, Program, isStringLiteral } from "./generated/ast.js";
 import type { MinasmServices } from "./minasm-module.js";
-import { instructionInfo } from "../assembler/instructionInfo.js";
+import { instructionInfo } from "../assembler/instructionInfo11.js";
 import { getArgTypes, getExpressionSize } from "../assembler/utils.js";
 // import { getExpressionSize } from "../assembler/utils.js";
 

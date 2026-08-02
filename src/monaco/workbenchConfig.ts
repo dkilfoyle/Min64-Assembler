@@ -33,6 +33,8 @@ import { configureDefaultWorkerFactory } from "monaco-languageclient/workerFacto
 import blocksMinCode from "../minmin/examples/blocks.min?raw";
 import stdMinCode from "../minmin/examples/std.min?raw";
 import testminCode from "../minmin/examples/test.min?raw";
+import testasmCode from "../minasm/examples/test.masm?raw";
+
 import type { RegisterLocalProcessExtensionResult } from "@codingame/monaco-vscode-api/extensions";
 import { minasmExtensionConfig } from "../minasm/config/extensionConfig";
 import { minminExtensionConfig } from "../minmin/config/extensionConfig";
@@ -132,10 +134,14 @@ export const configure = async (htmlContainer?: HTMLElement): Promise<ConfigResu
     monacoWorkerFactory: configureDefaultWorkerFactory,
   };
 
-  const workspaceUri = vscode.Uri.file("/min");
+  const minDir = vscode.Uri.file("/min");
   const stdminUri = vscode.Uri.file("/min/std.min");
   const blocksminUri = vscode.Uri.file("/min/blocks.min");
   const testminUri = vscode.Uri.file("/min/test.min");
+
+  const asmDir = vscode.Uri.file("/asm");
+  const testasmUri = vscode.Uri.file("/asm/test.masm");
+
   const fileSystemProvider = new InMemoryFileSystemProvider();
   const textEncoder = new TextEncoder();
 
@@ -145,12 +151,15 @@ export const configure = async (htmlContainer?: HTMLElement): Promise<ConfigResu
     create: true,
     overwrite: true,
   };
-  await fileSystemProvider.mkdir(workspaceUri);
-  await fileSystemProvider.mkdir(vscode.Uri.file("/asm"));
+  await fileSystemProvider.mkdir(minDir);
+  await fileSystemProvider.mkdir(asmDir);
   await fileSystemProvider.writeFile(stdminUri, textEncoder.encode(stdMinCode), options);
   await fileSystemProvider.writeFile(blocksminUri, textEncoder.encode(blocksMinCode), options);
   await fileSystemProvider.writeFile(testminUri, textEncoder.encode(testminCode), options);
+  await fileSystemProvider.writeFile(testasmUri, textEncoder.encode(testasmCode), options);
+
   await fileSystemProvider.writeFile(workspaceFileUri, textEncoder.encode(createDefaultWorkspaceContent("/min")), options);
+  await fileSystemProvider.writeFile(workspaceFileUri, textEncoder.encode(createDefaultWorkspaceContent("/asm")), options);
   registerFileSystemOverlay(1, fileSystemProvider);
 
   return {

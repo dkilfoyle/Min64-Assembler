@@ -25,6 +25,7 @@ export class ProtocolServer implements vscode.DebugAdapter {
     } else if (msg.type === "response") {
       if (this.logging) console.log("receiving response");
       const response = <DebugProtocol.Response>msg;
+      console.log(response);
       const clb = this._pendingRequests.get(response.request_seq);
       if (clb) {
         this._pendingRequests.delete(response.request_seq);

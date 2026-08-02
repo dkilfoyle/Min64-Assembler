@@ -1,6 +1,8 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
+import type { IEmulationState } from "../../packages/emulator/src/emulator14/machine";
 import { runtime } from "../emulator/runtime";
-import { DebugSession } from "./dap/DebugSession";
+import type { AsmCompileResult } from "../minasm/worker/api";
+import { DebugSession, ErrorDestination } from "./dap/DebugSession";
 import { Handles } from "./dap/Handles";
 import { Subject } from "./dap/await-notify";
 import { InitializedEvent, TerminatedEvent } from "./dap/events";
@@ -16,6 +18,21 @@ interface LaunchRequestArguments extends DebugProtocol.LaunchRequestArguments {
   trace?: boolean;
 }
 
+const hex8 = (n: number) => "0x" + n.toString(16).padStart(2, "0");
+const hex16 = (n: number) => "0x" + n.toString(16).padStart(4, "0");
+
+/*
+Debug Adapter Protocol (DAP) sequence of events:
+- InitializeRequest
+  - respond with capabilities
+  - send InitializedEvent
+    - setBreakpointsRequest
+      - respond with verified breakpoints
+    - configurationDoneRequest
+      - respond
+
+*/
+
 export class MinAsmDebugSession extends DebugSession {
   public static THREAD_ID = 1;
   private _variableHandles = new Handles<string>();
@@ -27,8 +44,37 @@ export class MinAsmDebugSession extends DebugSession {
     this.setDebuggerLinesStartAt1(false);
     this.setDebuggerColumnsStartAt1(false);
     runtime.registerDebugSession(this);
+    console.log("MinAsmDebugSession initialized");
   }
+
+  getEmulationState(response: DebugProtocol.Response) {
+    const es = runtime.emulationState;
+    if (!es) {
+      const errorResponse = response as DebugProtocol.ErrorResponse;
+      errorResponse.success = false;
+      errorResponse.message = "No emulation state";
+      errorResponse.body = {
+        error: {
+          id: 1001,
+          format: "No emulation state",
+          showUser: true,
+        },
+      };
+      this.sendResponse(errorResponse);
+    }
+    return es;
+  }
+
+  getCompileState(response: DebugProtocol.Response) {
+    const cr = runtime.compileResult;
+    if (!cr) {
+      this.sendErrorResponse(response, 1002, "No compile result", undefined, ErrorDestination.User);
+    }
+    return cr;
+  }
+
   protected initializeRequest(response: DebugProtocol.InitializeResponse, _args: DebugProtocol.InitializeRequestArguments): void {
+    console.log("initializeRequest", _args);
     response.body = response.body || {};
     response.body.supportsConfigurationDoneRequest = true;
     response.body.supportsEvaluateForHovers = true;
@@ -52,8 +98,17 @@ export class MinAsmDebugSession extends DebugSession {
   protected async launchRequest(response: DebugProtocol.LaunchResponse, args: LaunchRequestArguments) {
     // make sure to 'Stop' the buffered logging if 'trace' is not set
     // logger.setup(args.trace ? Logger.LogLevel.Verbose : Logger.LogLevel.Stop, false);
+    console.log("launchRequest", args);
 
-    runtime.setSource(args.path);
+    try {
+      runtime.setSource(args.path, !!args.stopOnEntry);
+    } catch (e) {
+      const errorResponse = response as DebugProtocol.ErrorResponse;
+      errorResponse.success = false;
+      errorResponse.message = (e as Error).message;
+      this.sendResponse(errorResponse);
+      return;
+    }
 
     // wait until configuration has finished (and configurationDoneRequest has been called)
     await this._configurationDone.wait(1000);
@@ -73,17 +128,32 @@ export class MinAsmDebugSession extends DebugSession {
   }
 
   protected setBreakPointsRequest(response: DebugProtocol.SetBreakpointsResponse, args: DebugProtocol.SetBreakpointsArguments): void {
+    console.log("setBreakPointsRequest", args);
     const path = args.source.path;
     if (!path) throw new Error("no path");
-    const clientLines = args.lines || [];
-    asmRuntime.clearBreakpoints(path);
+    const cs = this.getCompileState(response); // ensure we have a compile state
+    if (!cs) return;
+    const clientbps = args.breakpoints || [];
+    runtime.breakpoints.set(path, []);
 
     // set and verify breakpoint locations
-    const actualBreakpoints = clientLines.map((l) => {
-      const { verified, line, id } = asmRuntime.setBreakPoint(path, this.convertClientLineToDebugger(l));
-      const bp = new Breakpoint(verified, this.convertDebuggerLineToClient(line));
-      bp.setId(id);
-      return bp;
+    const actualBreakpoints = clientbps.map((bp) => {
+      // calculate the PC @ the breakpoint
+      const valid = Object.entries(cs.locations).find(([pc, loc]) => {
+        if (
+          loc.start.line == this.convertClientLineToDebugger(bp.line) &&
+          loc.start.character == this.convertClientColumnToDebugger(bp.column || -1)
+        ) {
+          return true;
+        }
+      });
+      if (valid) {
+        runtime.breakpoints.get(path)!.push(parseInt(valid[0]));
+      }
+
+      const breakpoint = new Breakpoint(true, this.convertDebuggerLineToClient(bp.line), this.convertDebuggerColumnToClient(bp.column || 0));
+      // breakpoint.setId(id);
+      return breakpoint;
     });
 
     // send back the actual breakpoint positions
@@ -120,23 +190,29 @@ export class MinAsmDebugSession extends DebugSession {
     // const startFrame = typeof args.startFrame === "number" ? args.startFrame : 0;
     // const maxLevels = typeof args.levels === "number" ? args.levels : 1000;
     // const endFrame = startFrame + maxLevels;
-
-    const stk = asmRuntime.stack();
-
+    console.log("stackTraceRequest", _args, runtime.stack);
     response.body = {
-      stackFrames: stk.map((f) => new StackFrame(f.index, f.name, this.createSource(f.file), this.convertDebuggerLineToClient(f.line), 0)), //, this.convertDebuggerLineToClient(f.line))),
-      totalFrames: stk.length,
+      stackFrames: runtime.stack.map((f, i) => ({
+        id: i,
+        column: f.column,
+        endColumn: f.endColumn,
+        line: f.line,
+        endLine: f.endLine,
+        source: this.createSource(f.path),
+        name: f.name,
+      })),
+      totalFrames: runtime.stack.length,
     };
     this.sendResponse(response);
   }
 
   protected scopesRequest(response: DebugProtocol.ScopesResponse, _args: DebugProtocol.ScopesArguments): void {
+    console.log("scopesRequest", _args);
     response.body = {
       scopes: [
-        new Scope("8bit Registers", this._variableHandles.create("Registers8"), false),
+        new Scope("Registers", this._variableHandles.create("Registers"), false),
         new Scope("Pointers", this._variableHandles.create("Pointers"), false),
-        new Scope("Labels (file)", this._variableHandles.create("LabelsFile"), true),
-        new Scope("Labels (all)", this._variableHandles.create("LabelsAll"), true),
+        new Scope("Labels (file)", this._variableHandles.create("Labels"), true),
       ],
     };
     this.sendResponse(response);
@@ -147,83 +223,87 @@ export class MinAsmDebugSession extends DebugSession {
     args: DebugProtocol.VariablesArguments,
     _request?: DebugProtocol.Request,
   ) {
+    console.log("variablesRequest", args);
+    const es = this.getEmulationState(response);
+    if (!es) return;
+    const cs = this.getCompileState(response);
+    if (!cs) return;
+
     const variables: DebugProtocol.Variable[] = [];
 
     const id = this._variableHandles.get(args.variablesReference);
 
-    if (id == "Registers8") {
-      variables.push({
-        name: "a",
-        type: "integer",
-        value: `0x${asmRuntime.alu.acc.toString(16)}, ${emulator.alu.acc}`,
-        variablesReference: 0,
-      });
-
-      variables.push({
-        name: "sp",
-        type: "integer",
-        value: `0x${emulator.regs.sp.toString(16)}, ${emulator.regs.sp}`,
-        variablesReference: 0,
-      });
-      variables.push({
-        name: "wz",
-        type: "integer",
-        value: `0x${emulator.regs.wz.toString(16)}, ${emulator.regs.wz}`,
-        variablesReference: 0,
-      });
-    } else if (id == "LabelsFile") {
-      const f = Object.values(this.linkerInfo).find((fileinfo) => fileinfo.filename == asmRuntime.stack()[0].file);
-      if (f) {
-        Object.values(f.labels).forEach((labelinfo) => {
-          variables.push({
-            name: labelinfo.name,
-            type: "integer",
-            value: "0x" + (f.startOffset + labelinfo.localAddress).toString(16),
-            variablesReference: 0,
-          });
-        });
-      }
-    } else if (id == "LabelsAll") {
-      Object.entries(this.linkerInfo).forEach(([filename, fileinfo]) => {
-        Object.entries(fileinfo.labels).forEach(([labelname, labelinfo]) => {
-          variables.push({
-            name: labelinfo.name,
-            type: "integer",
-            value: "0x" + (fileinfo.startOffset + labelinfo.localAddress).toString(16),
-            variablesReference: 0,
-          });
-        });
-      });
-    } else if (id == "Pointers") {
-      const hl = emulator.mem.ram.at(emulator.regs.hl);
-      const sp = emulator.mem.ram.at(emulator.regs.sp);
-      const wz = emulator.mem.ram.at(emulator.regs.wz);
-      const pc = emulator.mem.ram.at(emulator.regs.pc);
-      variables.push({
-        name: "hl",
-        type: "integer",
-        value: `0x${hl?.toString(16).padStart(2, "0")}, ${hl}`,
-        variablesReference: 0,
-      });
-      variables.push({
-        name: "wz",
-        type: "integer",
-        value: `0x${wz?.toString(16).padStart(2, "0")}, ${wz}`,
-        variablesReference: 0,
-      });
-      variables.push({
-        name: "sp",
-        type: "integer",
-        value: `0x${sp?.toString(16).padStart(2, "0")}, ${sp}`,
-        variablesReference: 0,
-        memoryReference: "sp",
-      });
+    if (id == "Registers") {
+      const pcLabel = Object.entries(cs.labels).find(([label, info]) => info.address == es.pc);
       variables.push({
         name: "pc",
         type: "integer",
-        value: `0x${pc?.toString(16).padStart(2, "0")}, ${sp}`,
+        value: `${hex16(es.pc)}, ${pcLabel ? pcLabel[0] : ""}`,
         variablesReference: 0,
-        memoryReference: "pc",
+      });
+      variables.push({
+        name: "a",
+        type: "integer",
+        value: `${hex8(es.a)}, ${es.a}`,
+        variablesReference: 0,
+      });
+      variables.push({
+        name: "n",
+        type: "boolean",
+        value: `${es.n.toString()}`,
+        variablesReference: 0,
+      });
+      variables.push({
+        name: "c",
+        type: "boolean",
+        value: `${es.c.toString()}`,
+        variablesReference: 0,
+      });
+      variables.push({
+        name: "z",
+        type: "boolean",
+        value: `${es.z.toString()}`,
+        variablesReference: 0,
+      });
+      variables.push({
+        name: "sp",
+        type: "integer",
+        value: `${hex8(es.sp)}, ${es.sp}`,
+        variablesReference: 0,
+      });
+    } else if (id == "Labels") {
+      Object.entries(cs.labels).forEach(([labelname, labelinfo]) => {
+        variables.push({
+          name: labelname,
+          type: "integer",
+          value: `${hex16(labelinfo.address)}`,
+          variablesReference: 0,
+        });
+      });
+    } else if (id == "Pointers") {
+      variables.push({
+        name: "z0",
+        type: "integer",
+        value: `${hex8(es.memory[0x90])}, ${es.memory[0x90]}`,
+        variablesReference: 0,
+      });
+      variables.push({
+        name: "z1",
+        type: "integer",
+        value: `${hex8(es.memory[0x91])}, ${es.memory[0x91]}`,
+        variablesReference: 0,
+      });
+      variables.push({
+        name: "z2",
+        type: "integer",
+        value: `${hex8(es.memory[0x92])}, ${es.memory[0x92]}`,
+        variablesReference: 0,
+      });
+      variables.push({
+        name: "z3",
+        type: "integer",
+        value: `${hex8(es.memory[0x93])}, ${es.memory[0x93]}`,
+        variablesReference: 0,
       });
     }
 
@@ -240,44 +320,16 @@ export class MinAsmDebugSession extends DebugSession {
   ): void {
     let result = "";
     if (args.context == "hover") {
-      switch (args.expression.toUpperCase()) {
-        case "A":
-          result = `a: 0x${emulator.alu.acc.toString(16)}, ${emulator.alu.acc}`;
-          break;
-        case "C":
-          result = `c: 0x${emulator.regs.c.toString(16)}, ${emulator.regs.c}`;
-          break;
-        case "E":
-          result = `e: 0x${emulator.regs.e.toString(16)}, ${emulator.regs.e}`;
-          break;
-        case "L":
-          result = `l: 0x${emulator.regs.l.toString(16)}, ${emulator.regs.l}`;
-          break;
-        case "B":
-        case "BC":
-          result = ` b: 0x${emulator.regs.b.toString(16)}, ${emulator.regs.b}\nbc: 0x${emulator.regs.bc.toString(16)}, ${emulator.regs.bc}`;
-          break;
-        case "D":
-        case "DE":
-          result = ` d: 0x${emulator.regs.d.toString(16)}, ${emulator.regs.d}\nde: 0x${emulator.regs.de.toString(16)}, ${emulator.regs.de}`;
-          break;
-        case "H":
-        case "HL":
-          result = `  h: 0x${emulator.regs.h.toString(16)}, ${emulator.regs.h}\n hl: 0x${emulator.regs.hl.toString(16)}, ${
-            emulator.regs.hl
-          }\n@hl: 0x${emulator.mem.ram.at(emulator.regs.hl)?.toString(16)}, ${emulator.mem.ram.at(emulator.regs.hl)}`;
-          break;
-        default: {
-          // could be a label
-          const label = getLabelInfo(this.linkerInfo, args.expression, asmRuntime.stack()[0].file);
-          if (label) {
-            result = ` ${args.expression}: 0x${label.globalAddress.toString(16)}, ${label.globalAddress}\n@${
-              args.expression
-            }: 0x${emulator.mem.ram.at(label.globalAddress)?.toString(16)}, ${emulator.mem.ram.at(label.globalAddress)}`;
-          } else {
-            return this.sendResponse(response);
-          }
-        }
+      // could be a label
+      const cs = this.getCompileState(response);
+      if (!cs) return;
+      const es = this.getEmulationState(response);
+      if (!es) return;
+      const label = cs.labels[args.expression];
+      if (label) {
+        result = ` ${args.expression}: ${hex16(label.address)} = ${hex8(es.memory[label.address])}`;
+      } else {
+        return this.sendResponse(response);
       }
     }
     response.body = {
@@ -294,37 +346,39 @@ export class MinAsmDebugSession extends DebugSession {
   ): void {
     response.body = {
       address: args.memoryReference,
-      data: btoa(String.fromCharCode.apply(null, asmRuntime.getMemory(args.memoryReference))),
+      data: btoa(String.fromCharCode.apply(null, runtime.getMemory(args.memoryReference))),
     };
     this.sendResponse(response);
   }
 
-  protected continueRequest(response: DebugProtocol.ContinueResponse, _args: DebugProtocol.ContinueArguments): void {
-    asmRuntime.run("continue");
+  protected async continueRequest(response: DebugProtocol.ContinueResponse, _args: DebugProtocol.ContinueArguments): Promise<void> {
+    await runtime.run({ runType: "continue" });
     this.sendResponse(response);
   }
 
-  protected nextRequest(response: DebugProtocol.NextResponse, _args: DebugProtocol.NextArguments): void {
+  protected async nextRequest(response: DebugProtocol.NextResponse, _args: DebugProtocol.NextArguments): Promise<void> {
     // asmRuntime.step({ running: false, showStages: true, mode: "next" });
-    asmRuntime.run("stepOver");
+    await runtime.step({ stepType: "stepOver" });
+    console.log("nextRequest done", runtime.emulationState);
     this.sendResponse(response);
   }
 
-  protected stepInRequest(
+  protected async stepInRequest(
     response: DebugProtocol.StepInResponse,
     _args: DebugProtocol.StepInArguments,
     _request?: DebugProtocol.Request,
-  ): void {
-    asmRuntime.run("stepInto");
+  ): Promise<void> {
+    await runtime.step({ stepType: "stepInto" });
+    console.log("stepInRequest done", runtime.emulationState);
     this.sendResponse(response);
   }
 
-  protected stepOutRequest(
+  protected async stepOutRequest(
     response: DebugProtocol.StepOutResponse,
     _args: DebugProtocol.StepOutArguments,
     _request?: DebugProtocol.Request,
-  ): void {
-    asmRuntime.run("stepOut");
+  ): Promise<void> {
+    await runtime.step({ stepType: "stepOut" });
     this.sendResponse(response);
   }
 

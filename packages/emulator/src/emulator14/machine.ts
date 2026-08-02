@@ -3,7 +3,7 @@ import { IoDevices } from "./io";
 import { CPU } from "./cpu";
 import { Vga } from "./vga";
 import { parseIntelHex, applyHexRecords } from "./intelHex";
-import type { RunTypes } from "../api";
+import type { RunTypes, StepTypes } from "../api";
 import { disassembleOne, disassembleRange } from "./disassembler";
 import { osAddressToLabel } from "./oslabels";
 
@@ -17,18 +17,35 @@ export interface IEmulationState {
   memory: Uint8Array;
 }
 
+interface ICallStackEntry {
+  callAddress: number;
+  targetAddress: number;
+  returnAddressStackPosition: number;
+}
+
+interface IBreakpoint {
+  pc?: number;
+  stackPtr?: number;
+  onceOnly: boolean;
+}
+
 export class Machine {
   readonly mem = new Memory();
   readonly io = new IoDevices();
   readonly cpu = new CPU(this.mem, this.io);
   readonly vga = new Vga(this.mem);
   isTracing = false;
+  runType: RunTypes | StepTypes = "run";
+  // callStack: ICallStackEntry[] = [];
+  breakpoints: IBreakpoint[] = [];
 
   /** Resets the CPU (PC=0, BANK=0) and clears pending I/O, ready to boot from FLASH bank 0. */
   async reset() {
     await this.mem.reset();
     this.cpu.reset();
     this.io.reset();
+    this.runType = "run";
+    // this.callStack = [];
   }
 
   /**
@@ -59,14 +76,25 @@ export class Machine {
    * address (used e.g. for the 'receive' command's in-RAM OS update path, or for loading
    * a user program assembled to run from RAM).
    */
-  loadHexIntoRam(hexText: string): void {
+  loadHexIntoRam(hexText: string): number {
     const records = parseIntelHex(hexText);
-    applyHexRecords(this.mem.ram, records, 0);
+    return applyHexRecords(this.mem.ram, records, 0);
   }
 
   isBreakpoint(addr: number) {
-    // return this.memory.readByte(addr) == 0x69; // RTS
-    return false;
+    const hit = this.breakpoints.findIndex((bp) => {
+      if (bp.pc) return bp.pc == addr;
+      if (bp.stackPtr) {
+        const hi = this.mem.read(0xff00 + bp.stackPtr);
+        const lo = this.mem.read(0xff00 + bp.stackPtr + 1);
+        const retAddr = ((lo | (hi << 8)) + 2) & 0xffff;
+        return retAddr === addr;
+      }
+    });
+    if (hit !== -1 && this.breakpoints[hit].onceOnly) {
+      this.breakpoints.splice(hit, 1);
+    }
+    return hit !== -1;
   }
 
   debugLog() {
@@ -104,30 +132,62 @@ export class Machine {
     }
   }
 
-  run(runType: RunTypes, dt: number) {
+  /** Delivers a byte as if typed on the PS/2 keyboard (MinOS scan-code convention). */
+  pushKey(byte: number): void {
+    this.io.pushKeyByte(byte);
+  }
+
+  /** Delivers a byte as if received over the UART (e.g. a host terminal keystroke). */
+  pushUartByte(byte: number): void {
+    this.io.pushUartByte(byte);
+  }
+
+  debugStep() {
+    // if (this.isTracing) this.debugLog();
+    return this.cpu.step();
+    // if (this.isTracing) {
+    //   console.log(
+    //     `A=${this.cpu.a.toString(16).padStart(2, "0")} N=${this.cpu.n ? 1 : 0} Z=${this.cpu.z ? 1 : 0} C=${this.cpu.c ? 1 : 0}`,
+    //   );
+    // }
+  }
+
+  run(dt: number) {
     let haveClocks = dt * 8000; // 8MHz clock
-    switch (runType) {
+    switch (this.runType) {
       case "run":
         while (haveClocks > 0) {
-          this.debugLog();
           haveClocks -= this.cpu.step();
-          if (this.isTracing) {
-            console.log(
-              `A=${this.cpu.a.toString(16).padStart(2, "0")} N=${this.cpu.n ? 1 : 0} Z=${this.cpu.z ? 1 : 0} C=${this.cpu.c ? 1 : 0}`,
-            );
-          }
         }
         break;
-      case "debugRun":
+      case "continue":
         while (haveClocks > 0 && !this.isBreakpoint(this.cpu.pc)) {
-          haveClocks -= this.cpu.step();
+          haveClocks -= this.debugStep();
+        }
+        if (this.isBreakpoint(this.cpu.pc)) {
+          this.runType = "stop";
         }
         break;
       case "stepInto":
-        this.cpu.step();
+        console.log("debugPreStep", this.cpu.pc.toString(16));
+        console.log("next opcode", this.mem.bank, this.mem.read(this.cpu.pc).toString(16));
+        console.log(
+          `EMULATOR RAM:`,
+          Array.from(this.mem.ram.slice(0x100, 0x100 + 6)).map((b: number) => b.toString(16).padStart(2, "0")),
+        );
+        this.debugStep();
+        console.log("debugPostStep", this.cpu.pc.toString(16));
+        this.runType = "stop";
         break;
       case "stepOver":
-        throw Error("stepOver not implemented");
+        const opcode = this.mem.read(this.cpu.pc);
+        if (opcode === 0x67 || opcode === 0x68)
+          this.breakpoints.push({
+            stackPtr: this.mem.read(0xffff) - 1,
+            onceOnly: true,
+          });
+        this.runType = "continue";
+        break;
       case "stepOut":
         throw Error("stepOut not implemented");
       case "stop":
@@ -139,20 +199,10 @@ export class Machine {
     }
   }
 
-  /** Delivers a byte as if typed on the PS/2 keyboard (MinOS scan-code convention). */
-  pushKey(byte: number): void {
-    this.io.pushKeyByte(byte);
-  }
-
-  /** Delivers a byte as if received over the UART (e.g. a host terminal keystroke). */
-  pushUartByte(byte: number): void {
-    this.io.pushUartByte(byte);
-  }
-
   getEmulationState(): IEmulationState {
     return {
       pc: this.cpu.pc,
-      sp: 0xff00 + this.mem.read(0xff),
+      sp: this.mem.read(0xffff),
       a: this.cpu.a,
       n: this.cpu.n,
       z: this.cpu.z,

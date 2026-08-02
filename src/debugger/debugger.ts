@@ -3,13 +3,6 @@ import * as vscode from "vscode";
 import { MinAsmDebugSession } from "./MinAsmDebugSession.ts";
 import type { DebugConfiguration, WorkspaceFolder } from "vscode";
 
-let outputChannel: vscode.OutputChannel;
-
-export const printOutputChannel = (content: string, reveal = false) => {
-  outputChannel.appendLine(content);
-  if (reveal) outputChannel.show(true);
-};
-
 const { getApi, registerFileUrl } = registerExtension(
   {
     name: "debugger",
@@ -67,7 +60,7 @@ const { getApi, registerFileUrl } = registerExtension(
       commands: [
         {
           command: "extension.minasm-debug.runEditorContents",
-          title: "Run File",
+          title: "Debug Run",
           category: "Asm Debug",
           enablement: "!inDebugMode",
           icon: "$(play)",
@@ -81,8 +74,6 @@ const { getApi, registerFileUrl } = registerExtension(
 registerFileUrl("./extension.js", "data:text/javascript;base64," + window.btoa("// nothing"));
 
 void getApi().then(async (debuggerVscodeApi) => {
-  outputChannel = vscode.window.createOutputChannel("Minimal Emulator");
-
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   debuggerVscodeApi.commands.registerCommand("extension.minasm-debug.runEditorContents", (_resource: vscode.Uri) => {
     let targetResource; // = resource;
@@ -91,6 +82,7 @@ void getApi().then(async (debuggerVscodeApi) => {
       targetResource = debuggerVscodeApi.window.activeTextEditor.document.uri;
       fn = debuggerVscodeApi.window.activeTextEditor.document.uri.toString();
     }
+    console.log(targetResource, fn);
     if (targetResource && fn) {
       debuggerVscodeApi.debug.startDebugging(
         undefined,
@@ -100,9 +92,9 @@ void getApi().then(async (debuggerVscodeApi) => {
           request: "launch",
           path: targetResource.toString(),
           // linkerInfo: compiledDocs[fn].linkerInfo,
-          stopOnEntry: false,
+          stopOnEntry: true,
         },
-        { noDebug: true },
+        // { noDebug: true },
       );
     }
   });
@@ -110,7 +102,7 @@ void getApi().then(async (debuggerVscodeApi) => {
   debuggerVscodeApi.debug.registerDebugConfigurationProvider("minasm", {
     resolveDebugConfiguration(folder: WorkspaceFolder | undefined, config: DebugConfiguration) {
       const editor = debuggerVscodeApi.window.activeTextEditor;
-      if (!(editor && editor.document.languageId == "asm")) return undefined;
+      if (!(editor && editor.document.languageId == "minasm")) return undefined;
       return {
         type: "minasm",
         name: "Launch",

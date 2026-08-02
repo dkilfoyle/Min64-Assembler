@@ -8,8 +8,15 @@ import { EmulatorWebviewPanel } from "./emulator/EmulatorWebviewPanel";
 import { runtime } from "./emulator/runtime";
 import { useDocStore } from "./store/myStore";
 import { AsmCompileRequest, type AsmCompileResult } from "./minasm/worker/api";
+import "./debugger/debugger";
 
 const config = await configure(document.getElementById("root")!);
+
+let outputChannel: vscode.OutputChannel;
+export const printOutputChannel = (content: string, reveal = false) => {
+  outputChannel.appendLine(content);
+  if (reveal) outputChannel.show(true);
+};
 
 export default function App() {
   const addCompiledAsm = useDocStore((state) => state.addCompiledAsm);
@@ -36,11 +43,10 @@ export default function App() {
         });
 
         vscode.commands.registerCommand("minasm-compile", async () => {
-          console.log("minasm-compile command triggered");
           const result = await minasm.sendRequest<AsmCompileResult>(AsmCompileRequest.method, {
             uri: vscode.window.activeTextEditor?.document.uri.toString(),
           });
-          console.log("Compilation result:", result);
+          printOutputChannel(`Compiled ${result.uri} OK: machine code = ${result.hex.length} bytes`, true);
           addCompiledAsm(result);
         });
 
@@ -65,6 +71,8 @@ export default function App() {
         vscode.commands.registerCommand("show-emulator", () => {
           EmulatorWebviewPanel.render();
         });
+
+        outputChannel = vscode.window.createOutputChannel("Minimal Emulator");
 
         await vscode.commands.executeCommand("show-emulator");
 

@@ -843,6 +843,7 @@ export class CPU {
       // ============================================================ 0x76-0x7e: load into A
       case 0x76:
         this.a = this.fetch8();
+        console.log(`post LDI pc = `, this.pc);
         break; // LDI
       case 0x77:
         this.a = this.zpTarget().get();
@@ -1354,7 +1355,7 @@ export class CPU {
         const t = this.zpWordTarget();
         const r = this.add16(t.get16(), imm, 0);
         t.set16(r.result);
-        this.a = r.result & 0xff;
+        this.a = (r.result >> 8) & 0xff;
         this.setFlagsWordMsb(r.result, r.carry);
         break;
       } // AIV (A := LSB!)
@@ -1396,7 +1397,7 @@ export class CPU {
         const t = this.zpWordTarget();
         const r = this.add16(t.get16(), s.get(), 0);
         t.set16(r.result);
-        this.a = r.result & 0xff;
+        this.a = (r.result >> 8) & 0xff;
         this.setFlagsWordMsb(r.result, r.carry);
         break;
       } // AZV (A := LSB!)
@@ -1577,7 +1578,7 @@ export class CPU {
         const t = this.zpWordTarget();
         const r = this.sub16(t.get16(), imm, 1);
         t.set16(r.result);
-        this.a = r.result & 0xff;
+        this.a = (r.result >> 8) & 0xff;
         this.setFlagsWordMsb(r.result, r.carry);
         break;
       } // SIV (A := LSB!)
@@ -1619,7 +1620,7 @@ export class CPU {
         const t = this.zpWordTarget();
         const r = this.sub16(t.get16(), s.get(), 1);
         t.set16(r.result);
-        this.a = r.result & 0xff;
+        this.a = (r.result >> 8) & 0xff;
         this.setFlagsWordMsb(r.result, r.carry);
         break;
       } // SZV (A := LSB!)
