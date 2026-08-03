@@ -89,7 +89,7 @@ export const MinasmModelGrammar = (): Grammar => loadedMinasmModelGrammar ?? (lo
         "terminal": {
           "$type": "RuleCall",
           "rule": {
-            "$ref": "#/rules@22"
+            "$ref": "#/rules@23"
           },
           "arguments": []
         }
@@ -145,7 +145,7 @@ export const MinasmModelGrammar = (): Grammar => loadedMinasmModelGrammar ?? (lo
                 "terminal": {
                   "$type": "RuleCall",
                   "rule": {
-                    "$ref": "#/rules@19"
+                    "$ref": "#/rules@20"
                   },
                   "arguments": []
                 }
@@ -276,14 +276,6 @@ export const MinasmModelGrammar = (): Grammar => loadedMinasmModelGrammar ?? (lo
           },
           {
             "$type": "Keyword",
-            "value": "SEC"
-          },
-          {
-            "$type": "Keyword",
-            "value": "CLC"
-          },
-          {
-            "$type": "Keyword",
             "value": "LL0"
           },
           {
@@ -384,34 +376,6 @@ export const MinasmModelGrammar = (): Grammar => loadedMinasmModelGrammar ?? (lo
           },
           {
             "$type": "Keyword",
-            "value": "NOT"
-          },
-          {
-            "$type": "Keyword",
-            "value": "NEG"
-          },
-          {
-            "$type": "Keyword",
-            "value": "RTS"
-          },
-          {
-            "$type": "Keyword",
-            "value": "PHS"
-          },
-          {
-            "$type": "Keyword",
-            "value": "PLS"
-          },
-          {
-            "$type": "Keyword",
-            "value": "INC"
-          },
-          {
-            "$type": "Keyword",
-            "value": "DEC"
-          },
-          {
-            "$type": "Keyword",
             "value": "LLZ"
           },
           {
@@ -476,6 +440,10 @@ export const MinasmModelGrammar = (): Grammar => loadedMinasmModelGrammar ?? (lo
           },
           {
             "$type": "Keyword",
+            "value": "NOT"
+          },
+          {
+            "$type": "Keyword",
             "value": "NOZ"
           },
           {
@@ -496,7 +464,7 @@ export const MinasmModelGrammar = (): Grammar => loadedMinasmModelGrammar ?? (lo
           },
           {
             "$type": "Keyword",
-            "value": "NOL"
+            "value": "NEG"
           },
           {
             "$type": "Keyword",
@@ -517,10 +485,6 @@ export const MinasmModelGrammar = (): Grammar => loadedMinasmModelGrammar ?? (lo
           {
             "$type": "Keyword",
             "value": "NEQ"
-          },
-          {
-            "$type": "Keyword",
-            "value": "NEL"
           },
           {
             "$type": "Keyword",
@@ -552,6 +516,14 @@ export const MinasmModelGrammar = (): Grammar => loadedMinasmModelGrammar ?? (lo
           },
           {
             "$type": "Keyword",
+            "value": "AN.T"
+          },
+          {
+            "$type": "Keyword",
+            "value": "AN.R"
+          },
+          {
+            "$type": "Keyword",
             "value": "ORI"
           },
           {
@@ -580,6 +552,14 @@ export const MinasmModelGrammar = (): Grammar => loadedMinasmModelGrammar ?? (lo
           },
           {
             "$type": "Keyword",
+            "value": "OR.T"
+          },
+          {
+            "$type": "Keyword",
+            "value": "OR.R"
+          },
+          {
+            "$type": "Keyword",
             "value": "XRI"
           },
           {
@@ -605,6 +585,14 @@ export const MinasmModelGrammar = (): Grammar => loadedMinasmModelGrammar ?? (lo
           {
             "$type": "Keyword",
             "value": "XR.B"
+          },
+          {
+            "$type": "Keyword",
+            "value": "XR.T"
+          },
+          {
+            "$type": "Keyword",
+            "value": "XR.R"
           },
           {
             "$type": "Keyword",
@@ -696,11 +684,27 @@ export const MinasmModelGrammar = (): Grammar => loadedMinasmModelGrammar ?? (lo
           },
           {
             "$type": "Keyword",
+            "value": "RTS"
+          },
+          {
+            "$type": "Keyword",
+            "value": "PHS"
+          },
+          {
+            "$type": "Keyword",
+            "value": "PLS"
+          },
+          {
+            "$type": "Keyword",
             "value": "LDS"
           },
           {
             "$type": "Keyword",
-            "value": "STS"
+            "value": "SDS"
+          },
+          {
+            "$type": "Keyword",
+            "value": "RDB"
           },
           {
             "$type": "Keyword",
@@ -709,6 +713,14 @@ export const MinasmModelGrammar = (): Grammar => loadedMinasmModelGrammar ?? (lo
           {
             "$type": "Keyword",
             "value": "RAP"
+          },
+          {
+            "$type": "Keyword",
+            "value": "RZP"
+          },
+          {
+            "$type": "Keyword",
+            "value": "WDB"
           },
           {
             "$type": "Keyword",
@@ -744,19 +756,131 @@ export const MinasmModelGrammar = (): Grammar => loadedMinasmModelGrammar ?? (lo
           },
           {
             "$type": "Keyword",
-            "value": "STZ"
+            "value": "LZP"
           },
           {
             "$type": "Keyword",
-            "value": "STB"
+            "value": "LZB"
           },
           {
             "$type": "Keyword",
-            "value": "STT"
+            "value": "SDZ"
           },
           {
             "$type": "Keyword",
-            "value": "STR"
+            "value": "SDB"
+          },
+          {
+            "$type": "Keyword",
+            "value": "SDT"
+          },
+          {
+            "$type": "Keyword",
+            "value": "SDR"
+          },
+          {
+            "$type": "Keyword",
+            "value": "SZP"
+          },
+          {
+            "$type": "Keyword",
+            "value": "MIZ"
+          },
+          {
+            "$type": "Keyword",
+            "value": "MIB"
+          },
+          {
+            "$type": "Keyword",
+            "value": "MIT"
+          },
+          {
+            "$type": "Keyword",
+            "value": "MIR"
+          },
+          {
+            "$type": "Keyword",
+            "value": "MIV"
+          },
+          {
+            "$type": "Keyword",
+            "value": "MIW"
+          },
+          {
+            "$type": "Keyword",
+            "value": "MZZ"
+          },
+          {
+            "$type": "Keyword",
+            "value": "MZB"
+          },
+          {
+            "$type": "Keyword",
+            "value": "MZT"
+          },
+          {
+            "$type": "Keyword",
+            "value": "MZR"
+          },
+          {
+            "$type": "Keyword",
+            "value": "MBZ"
+          },
+          {
+            "$type": "Keyword",
+            "value": "MBB"
+          },
+          {
+            "$type": "Keyword",
+            "value": "MBT"
+          },
+          {
+            "$type": "Keyword",
+            "value": "MBR"
+          },
+          {
+            "$type": "Keyword",
+            "value": "MTZ"
+          },
+          {
+            "$type": "Keyword",
+            "value": "MTB"
+          },
+          {
+            "$type": "Keyword",
+            "value": "MTT"
+          },
+          {
+            "$type": "Keyword",
+            "value": "MTR"
+          },
+          {
+            "$type": "Keyword",
+            "value": "MRZ"
+          },
+          {
+            "$type": "Keyword",
+            "value": "MRB"
+          },
+          {
+            "$type": "Keyword",
+            "value": "MRT"
+          },
+          {
+            "$type": "Keyword",
+            "value": "MRR"
+          },
+          {
+            "$type": "Keyword",
+            "value": "MVV"
+          },
+          {
+            "$type": "Keyword",
+            "value": "MWV"
+          },
+          {
+            "$type": "Keyword",
+            "value": "CLD"
           },
           {
             "$type": "Keyword",
@@ -784,6 +908,14 @@ export const MinasmModelGrammar = (): Grammar => loadedMinasmModelGrammar ?? (lo
           },
           {
             "$type": "Keyword",
+            "value": "CL5"
+          },
+          {
+            "$type": "Keyword",
+            "value": "INC"
+          },
+          {
+            "$type": "Keyword",
             "value": "INZ"
           },
           {
@@ -804,7 +936,7 @@ export const MinasmModelGrammar = (): Grammar => loadedMinasmModelGrammar ?? (lo
           },
           {
             "$type": "Keyword",
-            "value": "INL"
+            "value": "DEC"
           },
           {
             "$type": "Keyword",
@@ -825,10 +957,6 @@ export const MinasmModelGrammar = (): Grammar => loadedMinasmModelGrammar ?? (lo
           {
             "$type": "Keyword",
             "value": "DEQ"
-          },
-          {
-            "$type": "Keyword",
-            "value": "DEL"
           },
           {
             "$type": "Keyword",
@@ -880,7 +1008,67 @@ export const MinasmModelGrammar = (): Grammar => loadedMinasmModelGrammar ?? (lo
           },
           {
             "$type": "Keyword",
-            "value": "ADL"
+            "value": "AIZ"
+          },
+          {
+            "$type": "Keyword",
+            "value": "AIB"
+          },
+          {
+            "$type": "Keyword",
+            "value": "AIT"
+          },
+          {
+            "$type": "Keyword",
+            "value": "AIR"
+          },
+          {
+            "$type": "Keyword",
+            "value": "AIV"
+          },
+          {
+            "$type": "Keyword",
+            "value": "AIW"
+          },
+          {
+            "$type": "Keyword",
+            "value": "AIQ"
+          },
+          {
+            "$type": "Keyword",
+            "value": "AZZ"
+          },
+          {
+            "$type": "Keyword",
+            "value": "AZT"
+          },
+          {
+            "$type": "Keyword",
+            "value": "AZV"
+          },
+          {
+            "$type": "Keyword",
+            "value": "AZQ"
+          },
+          {
+            "$type": "Keyword",
+            "value": "ABB"
+          },
+          {
+            "$type": "Keyword",
+            "value": "ABW"
+          },
+          {
+            "$type": "Keyword",
+            "value": "ATZ"
+          },
+          {
+            "$type": "Keyword",
+            "value": "ATT"
+          },
+          {
+            "$type": "Keyword",
+            "value": "AVV"
           },
           {
             "$type": "Keyword",
@@ -932,234 +1120,6 @@ export const MinasmModelGrammar = (): Grammar => loadedMinasmModelGrammar ?? (lo
           },
           {
             "$type": "Keyword",
-            "value": "SUL"
-          },
-          {
-            "$type": "Keyword",
-            "value": "CPI"
-          },
-          {
-            "$type": "Keyword",
-            "value": "CPZ"
-          },
-          {
-            "$type": "Keyword",
-            "value": "CPB"
-          },
-          {
-            "$type": "Keyword",
-            "value": "CPT"
-          },
-          {
-            "$type": "Keyword",
-            "value": "CPR"
-          },
-          {
-            "$type": "Keyword",
-            "value": "ACI"
-          },
-          {
-            "$type": "Keyword",
-            "value": "ACZ"
-          },
-          {
-            "$type": "Keyword",
-            "value": "ACB"
-          },
-          {
-            "$type": "Keyword",
-            "value": "AC.Z"
-          },
-          {
-            "$type": "Keyword",
-            "value": "AC.B"
-          },
-          {
-            "$type": "Keyword",
-            "value": "ACV"
-          },
-          {
-            "$type": "Keyword",
-            "value": "ACW"
-          },
-          {
-            "$type": "Keyword",
-            "value": "SCI"
-          },
-          {
-            "$type": "Keyword",
-            "value": "SCZ"
-          },
-          {
-            "$type": "Keyword",
-            "value": "SCB"
-          },
-          {
-            "$type": "Keyword",
-            "value": "SC.Z"
-          },
-          {
-            "$type": "Keyword",
-            "value": "SC.B"
-          },
-          {
-            "$type": "Keyword",
-            "value": "SCV"
-          },
-          {
-            "$type": "Keyword",
-            "value": "SCW"
-          },
-          {
-            "$type": "Keyword",
-            "value": "RDB"
-          },
-          {
-            "$type": "Keyword",
-            "value": "WDB"
-          },
-          {
-            "$type": "Keyword",
-            "value": "LZP"
-          },
-          {
-            "$type": "Keyword",
-            "value": "LZB"
-          },
-          {
-            "$type": "Keyword",
-            "value": "SZP"
-          },
-          {
-            "$type": "Keyword",
-            "value": "MIZ"
-          },
-          {
-            "$type": "Keyword",
-            "value": "MIB"
-          },
-          {
-            "$type": "Keyword",
-            "value": "MIT"
-          },
-          {
-            "$type": "Keyword",
-            "value": "MIR"
-          },
-          {
-            "$type": "Keyword",
-            "value": "MIV"
-          },
-          {
-            "$type": "Keyword",
-            "value": "MIW"
-          },
-          {
-            "$type": "Keyword",
-            "value": "MZZ"
-          },
-          {
-            "$type": "Keyword",
-            "value": "MZB"
-          },
-          {
-            "$type": "Keyword",
-            "value": "MBZ"
-          },
-          {
-            "$type": "Keyword",
-            "value": "MBB"
-          },
-          {
-            "$type": "Keyword",
-            "value": "MVV"
-          },
-          {
-            "$type": "Keyword",
-            "value": "MWV"
-          },
-          {
-            "$type": "Keyword",
-            "value": "AIZ"
-          },
-          {
-            "$type": "Keyword",
-            "value": "AIB"
-          },
-          {
-            "$type": "Keyword",
-            "value": "AIT"
-          },
-          {
-            "$type": "Keyword",
-            "value": "AIR"
-          },
-          {
-            "$type": "Keyword",
-            "value": "AIV"
-          },
-          {
-            "$type": "Keyword",
-            "value": "AIW"
-          },
-          {
-            "$type": "Keyword",
-            "value": "AIQ"
-          },
-          {
-            "$type": "Keyword",
-            "value": "AIL"
-          },
-          {
-            "$type": "Keyword",
-            "value": "AZZ"
-          },
-          {
-            "$type": "Keyword",
-            "value": "AZB"
-          },
-          {
-            "$type": "Keyword",
-            "value": "AZV"
-          },
-          {
-            "$type": "Keyword",
-            "value": "AZW"
-          },
-          {
-            "$type": "Keyword",
-            "value": "AZQ"
-          },
-          {
-            "$type": "Keyword",
-            "value": "AZL"
-          },
-          {
-            "$type": "Keyword",
-            "value": "ABZ"
-          },
-          {
-            "$type": "Keyword",
-            "value": "ABB"
-          },
-          {
-            "$type": "Keyword",
-            "value": "ABV"
-          },
-          {
-            "$type": "Keyword",
-            "value": "ABW"
-          },
-          {
-            "$type": "Keyword",
-            "value": "ABQ"
-          },
-          {
-            "$type": "Keyword",
-            "value": "AVV"
-          },
-          {
-            "$type": "Keyword",
             "value": "SIZ"
           },
           {
@@ -1188,15 +1148,11 @@ export const MinasmModelGrammar = (): Grammar => loadedMinasmModelGrammar ?? (lo
           },
           {
             "$type": "Keyword",
-            "value": "SIL"
-          },
-          {
-            "$type": "Keyword",
             "value": "SZZ"
           },
           {
             "$type": "Keyword",
-            "value": "SZB"
+            "value": "SZT"
           },
           {
             "$type": "Keyword",
@@ -1204,19 +1160,7 @@ export const MinasmModelGrammar = (): Grammar => loadedMinasmModelGrammar ?? (lo
           },
           {
             "$type": "Keyword",
-            "value": "SZW"
-          },
-          {
-            "$type": "Keyword",
             "value": "SZQ"
-          },
-          {
-            "$type": "Keyword",
-            "value": "SZL"
-          },
-          {
-            "$type": "Keyword",
-            "value": "SBZ"
           },
           {
             "$type": "Keyword",
@@ -1224,19 +1168,39 @@ export const MinasmModelGrammar = (): Grammar => loadedMinasmModelGrammar ?? (lo
           },
           {
             "$type": "Keyword",
-            "value": "SBV"
-          },
-          {
-            "$type": "Keyword",
             "value": "SBW"
           },
           {
             "$type": "Keyword",
-            "value": "SBQ"
+            "value": "STZ"
+          },
+          {
+            "$type": "Keyword",
+            "value": "STT"
           },
           {
             "$type": "Keyword",
             "value": "SVV"
+          },
+          {
+            "$type": "Keyword",
+            "value": "CPI"
+          },
+          {
+            "$type": "Keyword",
+            "value": "CPZ"
+          },
+          {
+            "$type": "Keyword",
+            "value": "CPB"
+          },
+          {
+            "$type": "Keyword",
+            "value": "CPT"
+          },
+          {
+            "$type": "Keyword",
+            "value": "CPR"
           },
           {
             "$type": "Keyword",
@@ -1256,15 +1220,19 @@ export const MinasmModelGrammar = (): Grammar => loadedMinasmModelGrammar ?? (lo
           },
           {
             "$type": "Keyword",
+            "value": "CIV"
+          },
+          {
+            "$type": "Keyword",
+            "value": "CIW"
+          },
+          {
+            "$type": "Keyword",
             "value": "CZZ"
           },
           {
             "$type": "Keyword",
-            "value": "CZB"
-          },
-          {
-            "$type": "Keyword",
-            "value": "CBZ"
+            "value": "CZT"
           },
           {
             "$type": "Keyword",
@@ -1272,7 +1240,39 @@ export const MinasmModelGrammar = (): Grammar => loadedMinasmModelGrammar ?? (lo
           },
           {
             "$type": "Keyword",
-            "value": "RZP"
+            "value": "CTZ"
+          },
+          {
+            "$type": "Keyword",
+            "value": "CTT"
+          },
+          {
+            "$type": "Keyword",
+            "value": "CVV"
+          },
+          {
+            "$type": "Keyword",
+            "value": "ACI"
+          },
+          {
+            "$type": "Keyword",
+            "value": "ACZ"
+          },
+          {
+            "$type": "Keyword",
+            "value": "AC.Z"
+          },
+          {
+            "$type": "Keyword",
+            "value": "SCI"
+          },
+          {
+            "$type": "Keyword",
+            "value": "SCZ"
+          },
+          {
+            "$type": "Keyword",
+            "value": "SC.Z"
           }
         ]
       },
@@ -1609,14 +1609,14 @@ export const MinasmModelGrammar = (): Grammar => loadedMinasmModelGrammar ?? (lo
                 {
                   "$type": "RuleCall",
                   "rule": {
-                    "$ref": "#/rules@20"
+                    "$ref": "#/rules@21"
                   },
                   "arguments": []
                 },
                 {
                   "$type": "RuleCall",
                   "rule": {
-                    "$ref": "#/rules@21"
+                    "$ref": "#/rules@22"
                   },
                   "arguments": []
                 }
@@ -1652,7 +1652,7 @@ export const MinasmModelGrammar = (): Grammar => loadedMinasmModelGrammar ?? (lo
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@19"
+                "$ref": "#/rules@20"
               },
               "arguments": []
             }
@@ -1689,7 +1689,7 @@ export const MinasmModelGrammar = (): Grammar => loadedMinasmModelGrammar ?? (lo
         "terminal": {
           "$type": "RuleCall",
           "rule": {
-            "$ref": "#/rules@23"
+            "$ref": "#/rules@19"
           },
           "arguments": []
         }
@@ -1697,6 +1697,17 @@ export const MinasmModelGrammar = (): Grammar => loadedMinasmModelGrammar ?? (lo
       "entry": false,
       "fragment": false,
       "parameters": []
+    },
+    {
+      "$type": "TerminalRule",
+      "name": "STRING",
+      "definition": {
+        "$type": "RegexToken",
+        "regex": "/\\"([^\\"])*\\"|'([^'])*'/",
+        "parenthesized": false
+      },
+      "fragment": false,
+      "hidden": false
     },
     {
       "$type": "TerminalRule",
@@ -1749,17 +1760,6 @@ export const MinasmModelGrammar = (): Grammar => loadedMinasmModelGrammar ?? (lo
       "definition": {
         "$type": "RegexToken",
         "regex": "/;[^\\\\n]*/",
-        "parenthesized": false
-      },
-      "fragment": false,
-      "hidden": false
-    },
-    {
-      "$type": "TerminalRule",
-      "name": "STRING",
-      "definition": {
-        "$type": "RegexToken",
-        "regex": "/\\"(\\\\\\\\.|[^\\"])*\\"|'(\\\\\\\\.|[^'])*'/",
         "parenthesized": false
       },
       "fragment": false,

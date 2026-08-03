@@ -9,6 +9,7 @@ import {
   type LangiumServices,
   type LangiumSharedServices,
   type PartialLangiumServices,
+  type PartialLangiumSharedServices,
   createDefaultModule,
   createDefaultSharedModule,
 } from "langium/lsp";
@@ -17,6 +18,7 @@ import { MinasmValidator, registerValidationChecks } from "./minasm-validator.js
 // import { MinasmScopeComputation } from "./minasm-scope.js";
 import { MinasmConverter } from "./minasm-value.js";
 import { MinasmHoverProvider } from "./minasm-hover.js";
+import { MinasmWorkspaceManager } from "./minasm-workspace.js";
 
 /**
  * Declaration of custom services - add your own service classes here.
@@ -54,6 +56,12 @@ const MinasmModule: Module<MinasmServices, PartialLangiumServices & MinasmAddedS
   },
 };
 
+const MinasmSharedModule: Module<LangiumSharedServices, PartialLangiumSharedServices> = {
+  workspace: {
+    WorkspaceManager: (services) => new MinasmWorkspaceManager(services),
+  },
+};
+
 /**
  * Create the full set of services required by Langium.
  *
@@ -73,7 +81,7 @@ export async function createMinasmServices(context: DefaultSharedModuleContext):
   shared: LangiumSharedServices;
   minasm: MinasmServices;
 }> {
-  const shared = inject(createDefaultSharedModule(context), MinasmGeneratedSharedModule);
+  const shared = inject(createDefaultSharedModule(context), MinasmGeneratedSharedModule, MinasmSharedModule);
   const minasm = inject(createDefaultModule({ shared }), MinasmModelGeneratedModule, MinasmModule);
   shared.ServiceRegistry.register(minasm);
   registerValidationChecks(minasm);

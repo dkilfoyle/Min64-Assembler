@@ -9,7 +9,7 @@ import { MinasmModelGrammar } from './grammar.js';
 
 export const MinasmModelLanguageMetaData = {
     languageId: 'minasm',
-    fileExtensions: ['.minasm'],
+    fileExtensions: ['.asm'],
     caseInsensitive: false,
     mode: 'development'
 } as const satisfies LanguageMetaData;

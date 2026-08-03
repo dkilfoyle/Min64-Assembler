@@ -33,6 +33,7 @@ import type { RegisterLocalProcessExtensionResult } from "@codingame/monaco-vsco
 import { minasmExtensionConfig } from "../minasm/config/extensionConfig";
 import { minminExtensionConfig } from "../minmin/config/extensionConfig";
 import { createFileSystem, workspaceFileUri } from "./filesystem";
+import { DslLibraryFileSystemProvider } from "./DslFileSystemProvider";
 
 export type ConfigResult = {
   vscodeApiConfig: MonacoVscodeApiConfig;
@@ -135,6 +136,11 @@ export const configure = async (htmlContainer?: HTMLElement): Promise<ConfigResu
 export const configurePostStart = async (apiWrapper: MonacoVscodeApiWrapper, configResult: ConfigResult) => {
   const result = apiWrapper.getExtensionRegisterResult("min-ide") as RegisterLocalProcessExtensionResult;
   await result.setAsDefaultApi();
+
+  vscode.workspace.registerFileSystemProvider("builtin", new DslLibraryFileSystemProvider(), {
+    isReadonly: true,
+    isCaseSensitive: false,
+  });
 
   // await Promise.all([
   //   vscode.workspace.openTextDocument(vscode.Uri.file("/Min64/asm/test.asm")),

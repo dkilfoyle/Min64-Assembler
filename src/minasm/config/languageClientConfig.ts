@@ -8,7 +8,10 @@ const lspWorker = new Worker(new URL("../worker/minasm-server.ts", import.meta.u
 export const asmLanguageClientConfig: LanguageClientConfig = {
   languageId: "minasm",
   clientOptions: {
-    documentSelector: ["minasm"],
+    documentSelector: [
+      { scheme: "file", language: "minasm" },
+      { scheme: "builtin", language: "minasm" },
+    ],
   },
   connection: {
     options: {

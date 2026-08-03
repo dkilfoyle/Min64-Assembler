@@ -1,5 +1,6 @@
 import { InMemoryFileSystemProvider, registerFileSystemOverlay, type IFileWriteOptions } from "@codingame/monaco-vscode-files-service-override";
 import * as vscode from "vscode";
+import { DslLibraryFileSystemProvider } from "./DslFileSystemProvider";
 
 export const workspaceFileUri = vscode.Uri.file("/workspace.code-workspace");
 

@@ -2,9 +2,9 @@ import { type AstNode, DefaultWorkspaceManager, type LangiumDocument, type Langi
 import type { LangiumSharedServices } from "langium/lsp";
 import { WorkspaceFolder } from "vscode-languageserver";
 import { URI } from "vscode-uri";
-import stdLib from "../builtin/std.min?raw";
+import os from "../builtin/os.asm?raw";
 
-export class MinminWorkspaceManager extends DefaultWorkspaceManager {
+export class MinasmWorkspaceManager extends DefaultWorkspaceManager {
   private documentFactory: LangiumDocumentFactory;
 
   constructor(services: LangiumSharedServices) {
@@ -18,6 +18,6 @@ export class MinminWorkspaceManager extends DefaultWorkspaceManager {
   ): Promise<void> {
     await super.loadAdditionalDocuments(folders, collector);
     // Load our library using the `builtin` URI schema
-    collector(this.documentFactory.fromString(stdLib, URI.parse("builtin:///std.min")));
+    collector(this.documentFactory.fromString(os, URI.parse("builtin:///os.asm")));
   }
 }

@@ -125,9 +125,6 @@ export class MinAsmDebugSession extends DebugSession {
     const clientbps = args.breakpoints || [];
     runtime.breakpoints.set(path, []);
 
-    console.log("client bps", clientbps);
-    // todo handle breakpoints with column info, for now just use line numbers
-
     // set and verify breakpoint locations
     const actualBreakpoints = clientbps.map((bp) => {
       // calculate the PC @ the breakpoint
@@ -360,9 +357,7 @@ export class MinAsmDebugSession extends DebugSession {
   }
 
   protected async nextRequest(response: DebugProtocol.NextResponse, _args: DebugProtocol.NextArguments): Promise<void> {
-    // asmRuntime.step({ running: false, showStages: true, mode: "next" });
     await runtime.step({ stepType: "stepOver" });
-    console.log("nextRequest done", runtime.emulationState);
     this.sendResponse(response);
   }
 
@@ -372,7 +367,6 @@ export class MinAsmDebugSession extends DebugSession {
     _request?: DebugProtocol.Request,
   ): Promise<void> {
     await runtime.step({ stepType: "stepInto" });
-    console.log("stepInRequest done", runtime.emulationState);
     this.sendResponse(response);
   }
 

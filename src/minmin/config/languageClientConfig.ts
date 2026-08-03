@@ -8,7 +8,10 @@ const lspWorker = new Worker(new URL("../worker/minmin-server.ts", import.meta.u
 export const minLanguageClientConfig: LanguageClientConfig = {
   languageId: "minmin",
   clientOptions: {
-    documentSelector: ["minmin"],
+    documentSelector: [
+      { scheme: "file", language: "minmin" },
+      { scheme: "builtin", language: "minmin" },
+    ],
   },
   connection: {
     options: {

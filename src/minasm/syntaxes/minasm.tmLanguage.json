@@ -16,9 +16,16 @@
       "name": "string.quoted.double.minasm",
       "begin": "\"",
       "end": "\"",
+      "beginCaptures": {
+        "0": { "name": "punctuation.definition.string.begin.example" }
+      },
+      "endCaptures": {
+        "0": { "name": "punctuation.definition.string.end.example" }
+      },
       "patterns": [
         {
-          "include": "#string-character-escape"
+          "name": "constant.character.escape.example",
+          "match": "\\\\"
         }
       ]
     },
@@ -26,17 +33,18 @@
       "name": "string.quoted.single.minasm",
       "begin": "'",
       "end": "'",
+      "beginCaptures": {
+        "0": { "name": "punctuation.definition.string.begin.example" }
+      },
+      "endCaptures": {
+        "0": { "name": "punctuation.definition.string.end.example" }
+      },
       "patterns": [
         {
-          "include": "#string-character-escape"
+          "name": "constant.character.escape.example",
+          "match": "\\\\"
         }
       ]
     }
-  ],
-  "repository": {
-    "string-character-escape": {
-      "name": "constant.character.escape.minasm",
-      "match": "\\\\(x[0-9A-Fa-f]{2}|u[0-9A-Fa-f]{4}|u\\{[0-9A-Fa-f]+\\}|[0-2][0-7]{0,2}|3[0-6][0-7]?|37[0-7]?|[4-7][0-7]?|.|$)"
-    }
-  }
+  ]
 }

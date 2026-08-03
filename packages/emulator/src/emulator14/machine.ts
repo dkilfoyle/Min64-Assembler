@@ -174,12 +174,13 @@ export class Machine {
         break;
       case "stepOver":
         const opcode = this.mem.read(this.cpu.pc);
-        if (opcode === 0x67 || opcode === 0x68)
+        if (opcode === 0x69 || opcode === 0x6a) {
           this.breakpoints.push({
             stackPtr: this.mem.read(0xffff) - 1,
             onceOnly: true,
           });
-        this.runType = "continue";
+          this.runType = "continue";
+        } else this.runType = "stepInto";
         break;
       case "stepOut":
         throw Error("stepOut not implemented");
