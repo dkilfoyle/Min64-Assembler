@@ -82,7 +82,6 @@ void getApi().then(async (debuggerVscodeApi) => {
       targetResource = debuggerVscodeApi.window.activeTextEditor.document.uri;
       fn = debuggerVscodeApi.window.activeTextEditor.document.uri.toString();
     }
-    console.log(targetResource, fn);
     if (targetResource && fn) {
       debuggerVscodeApi.debug.startDebugging(
         undefined,

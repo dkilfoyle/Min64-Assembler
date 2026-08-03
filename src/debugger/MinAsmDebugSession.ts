@@ -44,23 +44,12 @@ export class MinAsmDebugSession extends DebugSession {
     this.setDebuggerLinesStartAt1(false);
     this.setDebuggerColumnsStartAt1(false);
     runtime.registerDebugSession(this);
-    console.log("MinAsmDebugSession initialized");
   }
 
   getEmulationState(response: DebugProtocol.Response) {
     const es = runtime.emulationState;
     if (!es) {
-      const errorResponse = response as DebugProtocol.ErrorResponse;
-      errorResponse.success = false;
-      errorResponse.message = "No emulation state";
-      errorResponse.body = {
-        error: {
-          id: 1001,
-          format: "No emulation state",
-          showUser: true,
-        },
-      };
-      this.sendResponse(errorResponse);
+      this.sendErrorResponse(response, 1002, "No emulation state");
     }
     return es;
   }
@@ -68,7 +57,7 @@ export class MinAsmDebugSession extends DebugSession {
   getCompileState(response: DebugProtocol.Response) {
     const cr = runtime.compileResult;
     if (!cr) {
-      this.sendErrorResponse(response, 1002, "No compile result", undefined, ErrorDestination.User);
+      this.sendErrorResponse(response, 1002, "No compile result");
     }
     return cr;
   }
@@ -136,22 +125,25 @@ export class MinAsmDebugSession extends DebugSession {
     const clientbps = args.breakpoints || [];
     runtime.breakpoints.set(path, []);
 
+    console.log("client bps", clientbps);
+    // todo handle breakpoints with column info, for now just use line numbers
+
     // set and verify breakpoint locations
     const actualBreakpoints = clientbps.map((bp) => {
       // calculate the PC @ the breakpoint
       const valid = Object.entries(cs.locations).find(([pc, loc]) => {
-        if (
-          loc.start.line == this.convertClientLineToDebugger(bp.line) &&
-          loc.start.character == this.convertClientColumnToDebugger(bp.column || -1)
-        ) {
-          return true;
+        if (loc.start.line == this.convertClientLineToDebugger(bp.line)) {
+          if (bp.column == undefined) {
+            return true;
+          } else {
+            return loc.start.character == this.convertClientColumnToDebugger(bp.column);
+          }
         }
       });
       if (valid) {
         runtime.breakpoints.get(path)!.push(parseInt(valid[0]));
       }
-
-      const breakpoint = new Breakpoint(true, this.convertDebuggerLineToClient(bp.line), this.convertDebuggerColumnToClient(bp.column || 0));
+      const breakpoint = new Breakpoint(true, bp.line, bp.column);
       // breakpoint.setId(id);
       return breakpoint;
     });
@@ -163,28 +155,39 @@ export class MinAsmDebugSession extends DebugSession {
     this.sendResponse(response);
   }
 
-  // protected breakpointLocationsRequest(
-  //   response: DebugProtocol.BreakpointLocationsResponse,
-  //   args: DebugProtocol.BreakpointLocationsArguments,
-  //   request?: DebugProtocol.Request
-  // ): void {
-  //   if (args.source.path) {
-  //     const bps = asmRuntime.getBreakpoints(args.source.path, this.convertClientLineToDebugger(args.line));
-  //     response.body = {
-  //       breakpoints: bps.map((col) => {
-  //         return {
-  //           line: args.line,
-  //           column: this.convertDebuggerColumnToClient(col),
-  //         };
-  //       }),
-  //     };
-  //   } else {
-  //     response.body = {
-  //       breakpoints: [],
-  //     };
-  //   }
-  //   this.sendResponse(response);
-  // }
+  protected breakpointLocationsRequest(
+    response: DebugProtocol.BreakpointLocationsResponse,
+    args: DebugProtocol.BreakpointLocationsArguments,
+    request?: DebugProtocol.Request,
+  ): void {
+    const cs = this.getCompileState(response); // ensure we have a compile state
+    if (!cs) return;
+    if (args.source.path) {
+      response.body = {
+        breakpoints: Object.values(cs.locations)
+          .filter((loc) => {
+            if (args.endLine != undefined && loc.end.line > this.convertClientLineToDebugger(args.endLine)) return false;
+            if (loc.start.line < this.convertClientLineToDebugger(args.line)) return false;
+            if (args.endColumn != undefined && loc.end.character > this.convertClientColumnToDebugger(args.endColumn)) return false;
+            if (args.column != undefined && loc.start.character < this.convertClientColumnToDebugger(args.column)) return false;
+            return true;
+          })
+          .map((loc) => {
+            return {
+              line: this.convertDebuggerLineToClient(loc.start.line),
+              column: this.convertDebuggerColumnToClient(loc.start.character),
+              endLine: this.convertDebuggerLineToClient(loc.end.line),
+              endColumn: this.convertDebuggerColumnToClient(loc.end.character),
+            };
+          }),
+      };
+    } else {
+      response.body = {
+        breakpoints: [],
+      };
+    }
+    this.sendResponse(response);
+  }
 
   protected stackTraceRequest(response: DebugProtocol.StackTraceResponse, _args: DebugProtocol.StackTraceArguments): void {
     // const startFrame = typeof args.startFrame === "number" ? args.startFrame : 0;

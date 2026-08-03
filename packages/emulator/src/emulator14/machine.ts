@@ -169,14 +169,7 @@ export class Machine {
         }
         break;
       case "stepInto":
-        console.log("debugPreStep", this.cpu.pc.toString(16));
-        console.log("next opcode", this.mem.bank, this.mem.read(this.cpu.pc).toString(16));
-        console.log(
-          `EMULATOR RAM:`,
-          Array.from(this.mem.ram.slice(0x100, 0x100 + 6)).map((b: number) => b.toString(16).padStart(2, "0")),
-        );
         this.debugStep();
-        console.log("debugPostStep", this.cpu.pc.toString(16));
         this.runType = "stop";
         break;
       case "stepOver":

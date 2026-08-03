@@ -843,7 +843,6 @@ export class CPU {
       // ============================================================ 0x76-0x7e: load into A
       case 0x76:
         this.a = this.fetch8();
-        console.log(`post LDI pc = `, this.pc);
         break; // LDI
       case 0x77:
         this.a = this.zpTarget().get();

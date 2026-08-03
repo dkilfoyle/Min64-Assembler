@@ -6,7 +6,6 @@
 import { LogLevel } from "@codingame/monaco-vscode-api";
 import getEnvironmentServiceOverride from "@codingame/monaco-vscode-environment-service-override";
 import getExplorerServiceOverride from "@codingame/monaco-vscode-explorer-service-override";
-import { InMemoryFileSystemProvider, registerFileSystemOverlay, type IFileWriteOptions } from "@codingame/monaco-vscode-files-service-override";
 import getKeybindingsServiceOverride from "@codingame/monaco-vscode-keybindings-service-override";
 import getLifecycleServiceOverride from "@codingame/monaco-vscode-lifecycle-service-override";
 import getLocalizationServiceOverride from "@codingame/monaco-vscode-localization-service-override";
@@ -30,26 +29,17 @@ import { createDefaultLocaleConfiguration } from "monaco-languageclient/vscodeAp
 import { MonacoVscodeApiWrapper, type MonacoVscodeApiConfig } from "monaco-languageclient/vscodeApiWrapper";
 import { configureDefaultWorkerFactory } from "monaco-languageclient/workerFactory";
 
-import blocksMinCode from "../minmin/examples/blocks.min?raw";
-import stdMinCode from "../minmin/examples/std.min?raw";
-import testminCode from "../minmin/examples/test.min?raw";
-import testasmCode from "../minasm/examples/test.masm?raw";
-
 import type { RegisterLocalProcessExtensionResult } from "@codingame/monaco-vscode-api/extensions";
 import { minasmExtensionConfig } from "../minasm/config/extensionConfig";
 import { minminExtensionConfig } from "../minmin/config/extensionConfig";
+import { createFileSystem, workspaceFileUri } from "./filesystem";
 
 export type ConfigResult = {
   vscodeApiConfig: MonacoVscodeApiConfig;
   workspaceFileUri: vscode.Uri;
-  stdminUri: vscode.Uri;
-  blocksminUri: vscode.Uri;
-  testminUri: vscode.Uri;
 };
 
 export const configure = async (htmlContainer?: HTMLElement): Promise<ConfigResult> => {
-  const workspaceFileUri = vscode.Uri.file("/workspace.code-workspace");
-
   const vscodeApiConfig: MonacoVscodeApiConfig = {
     $type: "extended",
     logLevel: LogLevel.Info,
@@ -134,62 +124,25 @@ export const configure = async (htmlContainer?: HTMLElement): Promise<ConfigResu
     monacoWorkerFactory: configureDefaultWorkerFactory,
   };
 
-  const minDir = vscode.Uri.file("/min");
-  const stdminUri = vscode.Uri.file("/min/std.min");
-  const blocksminUri = vscode.Uri.file("/min/blocks.min");
-  const testminUri = vscode.Uri.file("/min/test.min");
-
-  const asmDir = vscode.Uri.file("/asm");
-  const testasmUri = vscode.Uri.file("/asm/test.masm");
-
-  const fileSystemProvider = new InMemoryFileSystemProvider();
-  const textEncoder = new TextEncoder();
-
-  const options: IFileWriteOptions = {
-    atomic: false,
-    unlock: false,
-    create: true,
-    overwrite: true,
-  };
-  await fileSystemProvider.mkdir(minDir);
-  await fileSystemProvider.mkdir(asmDir);
-  await fileSystemProvider.writeFile(stdminUri, textEncoder.encode(stdMinCode), options);
-  await fileSystemProvider.writeFile(blocksminUri, textEncoder.encode(blocksMinCode), options);
-  await fileSystemProvider.writeFile(testminUri, textEncoder.encode(testminCode), options);
-  await fileSystemProvider.writeFile(testasmUri, textEncoder.encode(testasmCode), options);
-
-  await fileSystemProvider.writeFile(workspaceFileUri, textEncoder.encode(createDefaultWorkspaceContent("/min")), options);
-  await fileSystemProvider.writeFile(workspaceFileUri, textEncoder.encode(createDefaultWorkspaceContent("/asm")), options);
-  registerFileSystemOverlay(1, fileSystemProvider);
+  createFileSystem();
 
   return {
     vscodeApiConfig,
     workspaceFileUri,
-    stdminUri,
-    blocksminUri,
-    testminUri,
   };
-};
-
-const createDefaultWorkspaceContent = (workspacePath: string) => {
-  return JSON.stringify(
-    {
-      folders: [
-        {
-          path: workspacePath,
-        },
-      ],
-    },
-    null,
-    2,
-  );
 };
 
 export const configurePostStart = async (apiWrapper: MonacoVscodeApiWrapper, configResult: ConfigResult) => {
   const result = apiWrapper.getExtensionRegisterResult("min-ide") as RegisterLocalProcessExtensionResult;
   await result.setAsDefaultApi();
 
-  await Promise.all([vscode.workspace.openTextDocument(configResult.testminUri), vscode.workspace.openTextDocument(configResult.stdminUri)]);
+  // await Promise.all([
+  //   vscode.workspace.openTextDocument(vscode.Uri.file("/Min64/asm/test.asm")),
+  //   vscode.workspace.openTextDocument(configResult.stdminUri),
+  // ]);
 
-  await Promise.all([vscode.window.showTextDocument(configResult.testminUri)]);
+  // await Promise.all([
+  //   vscode.window.showTextDocument(vscode.Uri.file("/Min64/asm/test.asm"), { viewColumn: vscode.ViewColumn.Active }),
+  //   vscode.window.showTextDocument(configResult.stdminUri, { viewColumn: vscode.ViewColumn.Active }),
+  // ]);
 };

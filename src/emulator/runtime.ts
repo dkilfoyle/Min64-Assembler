@@ -64,13 +64,17 @@ class Runtime {
     this.emulationState = await messenger.sendRequest(EmulationStateRequest, { type: "webview", webviewType: "emulatorPanel" });
     const pc = this.emulationState.pc;
     const loc = this.compileResult.locations[pc];
-    console.log(pc, loc, this.compileResult.locations);
-    if (!loc) throw Error(`No source location for pc=${pc.toString(16)}`);
-    this.stack[0].line = loc.start.line + 1;
-    this.stack[0].column = loc.start.character + 1;
-    this.stack[0].endLine = loc.end.line + 1;
-    this.stack[0].endColumn = loc.end.character + 1;
-    this.stack[0].path = this.compileResult.uri;
+    if (loc) {
+      this.stack[0].line = loc.start.line + 1;
+      this.stack[0].column = loc.start.character + 1;
+      this.stack[0].endLine = loc.end.line + 1;
+      this.stack[0].endColumn = loc.end.character + 1;
+      this.stack[0].path = this.compileResult.uri;
+      return true;
+    } else {
+      console.warn(`No source location for pc=${pc.toString(16)}`);
+      return false;
+    }
   }
 
   setSource(source: string, stopOnEntry: boolean) {
@@ -90,7 +94,7 @@ class Runtime {
 
   public async step(stepParams: IStepParams) {
     this.emulationState = await messenger.sendRequest(StepRequest, { type: "webview", webviewType: "emulatorPanel" }, stepParams);
-    this.stop("step", `Step completed`);
+    this.stop("step");
   }
 
   public setBreakpoints(path: string) {
@@ -137,9 +141,9 @@ class Runtime {
     }
   }
 
-  async stop(type: "step" | "hlt" | "breakpoint" | "entry", output: string): Promise<IStepResult> {
-    await this.updateState();
-    console.log(`Runtime stop type=${type}`, this.stack[0]);
+  async stop(type: "step" | "hlt" | "breakpoint" | "entry", output?: string): Promise<IStepResult> {
+    const more = await this.updateState();
+    if (!more) type = "hlt";
     switch (type) {
       case "entry":
         this.debugSession!.sendEvent(new StoppedEvent("entry", MinAsmDebugSession.THREAD_ID));
@@ -156,7 +160,9 @@ class Runtime {
         this.debugSession!.sendEvent(new StoppedEvent("breakpoint", MinAsmDebugSession.THREAD_ID));
         break;
     }
-    this.debugSession!.sendEvent(new OutputEvent(`${output}\n`));
+    if (output) {
+      this.debugSession!.sendEvent(new OutputEvent(`${output}\n`));
+    }
     return "stop";
   }
 }

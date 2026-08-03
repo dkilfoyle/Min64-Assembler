@@ -18,7 +18,7 @@ export const minasmExtensionConfig: ExtensionConfig = {
       languages: [
         {
           id: "minasm",
-          extensions: [".masm"],
+          extensions: [".asm"],
           aliases: ["minasm", "Minasm"],
           configuration: `./minasm-configuration.json`,
         },

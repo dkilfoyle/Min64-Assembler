@@ -32,7 +32,7 @@ export default function App() {
         if (!minasm) throw Error("No minasm");
 
         minlsp.onNotification("minminlsp/docChange", async (data: MinDocChangeNotification) => {
-          const uri = vscode.Uri.file(data.uri.replace(".min", ".masm").replace("file:///", ""));
+          const uri = vscode.Uri.file(data.uri.replace("file:///", ""));
           const content = new TextEncoder().encode(data.asm);
           try {
             await vscode.workspace.fs.writeFile(uri, content);

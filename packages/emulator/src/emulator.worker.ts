@@ -48,22 +48,17 @@ const api = {
     keyPressedState[key] = false; // reset key press
   },
   run: async (params: IRunParams) => {
-    if (params.reset) {
-      console.log("resetting emulator -------------------------");
-      await machine.reset();
-      lastTime = performance.now();
-      runLoop();
-    }
+    // if (params.reset) {
+    //   await machine.reset();
+    //   lastTime = performance.now();
+    //   runLoop();
+    // }
     if (params.hex) {
       const totalBytes = machine.loadHexIntoRam(params.hex);
       console.info(`EMULATOR received ${totalBytes} bytes`);
-      console.log(
-        `EMULATOR RAM:`,
-        Array.from(machine.mem.ram.slice(0x100, 0x100 + 6)).map((b: number) => b.toString(16).padStart(2, "0")),
-      );
     }
     if (params.pc != undefined) machine.cpu.pc = params.pc;
-    machine.mem.bank = 0xff;
+    // machine.mem.bank = 0xff;
     machine.runType = params.runType;
   },
   step: async (params: IStepParams) => {
