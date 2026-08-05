@@ -38,6 +38,7 @@ export class Machine {
   runType: RunTypes | StepTypes = "run";
   // callStack: ICallStackEntry[] = [];
   breakpoints: IBreakpoint[] = [];
+  stopStepOverPC = -1;
 
   /** Resets the CPU (PC=0, BANK=0) and clears pending I/O, ready to boot from FLASH bank 0. */
   async reset() {
@@ -45,6 +46,7 @@ export class Machine {
     this.cpu.reset();
     this.io.reset();
     this.runType = "run";
+    this.stopStepOverPC = -1;
     // this.callStack = [];
   }
 
@@ -161,11 +163,12 @@ export class Machine {
         }
         break;
       case "continue":
-        while (haveClocks > 0 && !this.isBreakpoint(this.cpu.pc)) {
+        while (haveClocks > 0 && !this.isBreakpoint(this.cpu.pc) && this.cpu.pc !== this.stopStepOverPC) {
           haveClocks -= this.debugStep();
         }
-        if (this.isBreakpoint(this.cpu.pc)) {
+        if (this.isBreakpoint(this.cpu.pc) || this.cpu.pc === this.stopStepOverPC) {
           this.runType = "stop";
+          this.stopStepOverPC = -1;
         }
         break;
       case "stepInto":
@@ -175,10 +178,6 @@ export class Machine {
       case "stepOver":
         const opcode = this.mem.read(this.cpu.pc);
         if (opcode === 0x69 || opcode === 0x6a) {
-          this.breakpoints.push({
-            stackPtr: this.mem.read(0xffff) - 1,
-            onceOnly: true,
-          });
           this.runType = "continue";
         } else this.runType = "stepInto";
         break;

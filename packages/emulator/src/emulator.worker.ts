@@ -55,16 +55,19 @@ const api = {
     // }
     if (params.hex) {
       const totalBytes = machine.loadHexIntoRam(params.hex);
-      console.info(`EMULATOR received ${totalBytes} bytes`);
+      const pc = parseInt(params.hex.slice(3, 7), 16);
+      console.info(`EMULATOR received ${totalBytes} bytes, starting at PC=${pc.toString(16).padStart(4, "0")}`);
+      machine.cpu.pc = pc;
+    } else {
+      if (params.pc != undefined) machine.cpu.pc = params.pc;
     }
-    if (params.pc != undefined) machine.cpu.pc = params.pc;
-    // machine.mem.bank = 0xff;
     machine.runType = params.runType;
   },
   step: async (params: IStepParams) => {
     cancelAnimationFrame(animationFrameId!);
     animationFrameId = null;
     machine.runType = params.stepType;
+    if (params.nextPC != undefined) machine.stopStepOverPC = params.nextPC;
     lastTime = performance.now();
     return await runLoop();
   },

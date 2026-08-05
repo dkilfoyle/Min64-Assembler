@@ -116,7 +116,8 @@ class Assembler {
   hex: IntelHex = new IntelHex();
   curInstr: Instruction | null = null;
   labels: Record<string, { address: number; sourceLocation: SourceLocation }> = {};
-  locations: Record<number, SourceLocation> = {};
+  locations: Record<number, { sourceLocation: SourceLocation; nextPC: number }> = {};
+  lastPC = 0;
 
   reset(pass: 1 | 2) {
     this.mc = 0x2000;
@@ -127,6 +128,7 @@ class Assembler {
     if (pass == 1) {
       this.labels = {};
       this.locations = {};
+      this.lastPC = this.pc;
     }
   }
 
@@ -216,7 +218,12 @@ class Assembler {
 
   processInstruction(instr: Instruction) {
     const info = instructionInfo[instr.op];
-    this.locations[this.pc] = { ...instr.$cstNode!.range };
+
+    // this allows the debugger to find the return instruction after a JPS when the function modifies the return address eg PRINT followed by data arguments
+    if (this.locations[this.lastPC]) this.locations[this.lastPC].nextPC = this.pc;
+    this.locations[this.pc] = { sourceLocation: { ...instr.$cstNode!.range }, nextPC: -1 };
+    this.lastPC = this.pc;
+
     this.advanceBytes(1);
     if (info.argSize.length) this.curInstr = instr; // the next Data will be arguments for this instruction
   }

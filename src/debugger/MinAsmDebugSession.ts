@@ -129,11 +129,11 @@ export class MinAsmDebugSession extends DebugSession {
     const actualBreakpoints = clientbps.map((bp) => {
       // calculate the PC @ the breakpoint
       const valid = Object.entries(cs.locations).find(([pc, loc]) => {
-        if (loc.start.line == this.convertClientLineToDebugger(bp.line)) {
+        if (loc.sourceLocation.start.line == this.convertClientLineToDebugger(bp.line)) {
           if (bp.column == undefined) {
             return true;
           } else {
-            return loc.start.character == this.convertClientColumnToDebugger(bp.column);
+            return loc.sourceLocation.start.character == this.convertClientColumnToDebugger(bp.column);
           }
         }
       });
@@ -163,18 +163,19 @@ export class MinAsmDebugSession extends DebugSession {
       response.body = {
         breakpoints: Object.values(cs.locations)
           .filter((loc) => {
-            if (args.endLine != undefined && loc.end.line > this.convertClientLineToDebugger(args.endLine)) return false;
-            if (loc.start.line < this.convertClientLineToDebugger(args.line)) return false;
-            if (args.endColumn != undefined && loc.end.character > this.convertClientColumnToDebugger(args.endColumn)) return false;
-            if (args.column != undefined && loc.start.character < this.convertClientColumnToDebugger(args.column)) return false;
+            if (args.endLine != undefined && loc.sourceLocation.end.line > this.convertClientLineToDebugger(args.endLine)) return false;
+            if (loc.sourceLocation.start.line < this.convertClientLineToDebugger(args.line)) return false;
+            if (args.endColumn != undefined && loc.sourceLocation.end.character > this.convertClientColumnToDebugger(args.endColumn))
+              return false;
+            if (args.column != undefined && loc.sourceLocation.start.character < this.convertClientColumnToDebugger(args.column)) return false;
             return true;
           })
           .map((loc) => {
             return {
-              line: this.convertDebuggerLineToClient(loc.start.line),
-              column: this.convertDebuggerColumnToClient(loc.start.character),
-              endLine: this.convertDebuggerLineToClient(loc.end.line),
-              endColumn: this.convertDebuggerColumnToClient(loc.end.character),
+              line: this.convertDebuggerLineToClient(loc.sourceLocation.start.line),
+              column: this.convertDebuggerColumnToClient(loc.sourceLocation.start.character),
+              endLine: this.convertDebuggerLineToClient(loc.sourceLocation.end.line),
+              endColumn: this.convertDebuggerColumnToClient(loc.sourceLocation.end.character),
             };
           }),
       };

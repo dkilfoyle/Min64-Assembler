@@ -13,6 +13,7 @@ export interface IRunParams {
 
 export interface IStepParams {
   stepType: StepTypes;
+  nextPC?: number;
 }
 
 export const RunNotification: NotificationType<IRunParams> = { method: "minasm/run" };

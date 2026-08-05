@@ -13,7 +13,7 @@ export interface AsmCompileResult {
   uri: string;
   hex: string;
   // JSON-RPC friendly types instead of Map
-  locations: Record<number, SourceLocation>;
+  locations: Record<number, { sourceLocation: SourceLocation; nextPC: number }>;
   labels: Record<string, { address: number; sourceLocation: SourceLocation }>;
 }
 

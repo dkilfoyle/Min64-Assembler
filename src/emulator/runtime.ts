@@ -65,10 +65,10 @@ class Runtime {
     const pc = this.emulationState.pc;
     const loc = this.compileResult.locations[pc];
     if (loc) {
-      this.stack[0].line = loc.start.line + 1;
-      this.stack[0].column = loc.start.character + 1;
-      this.stack[0].endLine = loc.end.line + 1;
-      this.stack[0].endColumn = loc.end.character + 1;
+      this.stack[0].line = loc.sourceLocation.start.line + 1;
+      this.stack[0].column = loc.sourceLocation.start.character + 1;
+      this.stack[0].endLine = loc.sourceLocation.end.line + 1;
+      this.stack[0].endColumn = loc.sourceLocation.end.character + 1;
       this.stack[0].path = this.compileResult.uri;
       return true;
     } else {
@@ -93,7 +93,15 @@ class Runtime {
   }
 
   public async step(stepParams: IStepParams) {
-    this.emulationState = await messenger.sendRequest(StepRequest, { type: "webview", webviewType: "emulatorPanel" }, stepParams);
+    if (!this.compileResult) throw Error("No source");
+    if (!this.emulationState) throw Error("No emulation state");
+    const nextPC = stepParams.stepType == "stepOver" ? this.compileResult.locations[this.emulationState.pc]?.nextPC : undefined;
+
+    this.emulationState = await messenger.sendRequest(
+      StepRequest,
+      { type: "webview", webviewType: "emulatorPanel" },
+      { ...stepParams, nextPC },
+    );
     this.stop("step");
   }
 

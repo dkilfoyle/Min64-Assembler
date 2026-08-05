@@ -41,6 +41,7 @@ export const start = async (port: MessagePort | DedicatedWorkerGlobalScope, name
     const doc = shared.workspace.LangiumDocuments.getDocument(URI.parse(params.uri));
     if (doc && isProgram(doc.parseResult.value) && doc.diagnostics?.length == 0) {
       assembler.assemble(doc.parseResult.value);
+      console.log("Locations:", assembler.locations);
       return { uri: params.uri, hex: assembler.hex.toString(), locations: assembler.locations, labels: assembler.labels };
     } else {
       console.error("Document not found for URI:", params.uri);

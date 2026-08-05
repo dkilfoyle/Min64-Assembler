@@ -176,6 +176,12 @@ export class CPU {
     this.c = carry;
   }
 
+  private setFlagsWord16(result16: number, carry: boolean): void {
+    this.n = (result16 & 0x8000) !== 0;
+    this.z = (result16 & 0xffff) === 0;
+    this.c = carry;
+  }
+
   // ---------------------------------------------------------------------------------
   // Stack helpers. Stack page is fixed at 0xff00-0xffff; SP (at 0xffff) grows downward.
   // ---------------------------------------------------------------------------------
@@ -1741,14 +1747,14 @@ export class CPU {
         const imm = this.fetch16();
         const t = this.zpWordTarget();
         const r = this.sub16(t.get16(), imm, 1);
-        this.setFlagsWordMsb(r.result, r.carry);
+        this.setFlagsWord16(r.result, r.carry);
         break;
       } // CIV (A unchanged)
       case 0xf2: {
         const imm = this.fetch16();
         const t = this.absWordTarget();
         const r = this.sub16(t.get16(), imm, 1);
-        this.setFlagsWordMsb(r.result, r.carry);
+        this.setFlagsWord16(r.result, r.carry);
         break;
       } // CIW
       case 0xf3: {
@@ -1800,7 +1806,7 @@ export class CPU {
         const t1 = this.zpWordTarget();
         const t2 = this.zpWordTarget();
         const r = this.sub16(t2.get16(), t1.get16(), 1);
-        this.setFlagsWordMsb(r.result, r.carry);
+        this.setFlagsWord16(r.result, r.carry);
         break;
       } // CVV (A unchanged)
 
