@@ -154,7 +154,10 @@ export class Machine {
     // }
   }
 
-  run(dt: number) {
+  frame(dt: number) {
+    // run 1 frame of emulation, consuming up to 8MHz * dt milliseconds of CPU time = up 10 133,333 cycles
+    // or until a breakpoint is hit or the runType changes to "stop"
+    this.mem.frame();
     let haveClocks = dt * 8000; // 8MHz clock
     switch (this.runType) {
       case "run":

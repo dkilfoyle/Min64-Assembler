@@ -18,9 +18,9 @@ import {
   type Instruction,
   type Program,
 } from "../ls/generated/ast";
-import type { SourceLocation } from "../worker/api";
 import { instructionInfo } from "./instructionInfo14";
 import { getExpressionSize } from "./utils";
+import { type Range } from "vscode-languageserver-textdocument";
 
 interface IRecord {
   bytes: Uint8Array;
@@ -109,14 +109,36 @@ class IntelHex {
   }
 }
 
+export interface ICodeLocation {
+  line: number;
+  endLine: number;
+  column: number;
+  endColumn: number;
+}
+const sourceLocation2codeLocation = (loc: Range): ICodeLocation => {
+  return {
+    line: loc.start.line + 1,
+    column: loc.start.character + 1,
+    endLine: loc.end.line + 1,
+    endColumn: loc.end.character + 1,
+  };
+};
+export interface ILabelLocation extends ICodeLocation {
+  address: number;
+}
+
+export interface IPCLocation extends ICodeLocation {
+  nextPC: number;
+}
+
 class Assembler {
   public mc = 0x2000;
   public pc = 0x2000;
   public isEmit = true;
   hex: IntelHex = new IntelHex();
   curInstr: Instruction | null = null;
-  labels: Record<string, { address: number; sourceLocation: SourceLocation }> = {};
-  locations: Record<number, { sourceLocation: SourceLocation; nextPC: number }> = {};
+  labels: Record<string, ILabelLocation> = {};
+  locations: Record<number, IPCLocation> = {};
   lastPC = 0;
 
   reset(pass: 1 | 2) {
@@ -213,7 +235,7 @@ class Assembler {
   }
 
   processLabel(label: Label) {
-    this.labels[label.name] = { address: this.pc, sourceLocation: { ...label.$cstNode!.range } };
+    this.labels[label.name] = { address: this.pc, ...sourceLocation2codeLocation(label.$cstNode!.range) };
   }
 
   processInstruction(instr: Instruction) {
@@ -221,7 +243,10 @@ class Assembler {
 
     // this allows the debugger to find the return instruction after a JPS when the function modifies the return address eg PRINT followed by data arguments
     if (this.locations[this.lastPC]) this.locations[this.lastPC].nextPC = this.pc;
-    this.locations[this.pc] = { sourceLocation: { ...instr.$cstNode!.range }, nextPC: -1 };
+    this.locations[this.pc] = {
+      ...sourceLocation2codeLocation(instr.$cstNode!.range),
+      nextPC: -1,
+    };
     this.lastPC = this.pc;
 
     this.advanceBytes(1);

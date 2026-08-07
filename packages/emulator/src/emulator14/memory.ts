@@ -54,6 +54,8 @@ type FlashState =
 export class Memory {
   readonly ram = new Uint8Array(RAM_SIZE);
   readonly flash = new Uint8Array(FLASH_SIZE).fill(0xff);
+  nibbleRead = new Array<number>(0x1000).fill(0);
+  nibbleWrite = new Array<number>(0x1000).fill(0);
 
   /** BANK register: 0..127 selects a FLASH bank for the 0x0000-0x0fff window, >=128 = RAM. */
   bank = 0x00;
@@ -75,6 +77,11 @@ export class Memory {
     this.ram.fill(0xcd);
   }
 
+  frame() {
+    this.nibbleRead.fill(0);
+    this.nibbleWrite.fill(0);
+  }
+
   /** Load a raw flash image (e.g. the 512KB SSD image) starting at a given bank/offset. */
   loadFlashImage(bytes: Uint8Array, startBank = 0, offset = 0): void {
     const base = startBank * BANK_SIZE + offset;
@@ -92,6 +99,7 @@ export class Memory {
     if (addr < BANK_SIZE && this.flashWindowActive()) {
       return this.flash[this.bank * BANK_SIZE + addr];
     }
+    this.nibbleRead[addr >> 4]++;
     return this.ram[addr];
   }
 
@@ -103,6 +111,7 @@ export class Memory {
       this.handleFlashWrite(this.bank * BANK_SIZE + addr, value);
       return;
     }
+    this.nibbleWrite[addr >> 4]++;
     this.ram[addr] = value;
   }
 

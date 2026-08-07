@@ -14,6 +14,7 @@ import {
 } from "../../packages/emulator/src/api";
 import * as vscode from "vscode";
 import { type IRunParams } from "../../packages/emulator/src/api";
+import { osLocations } from "./osLocations";
 
 const messenger = new Messenger();
 
@@ -65,16 +66,26 @@ class Runtime {
     const pc = this.emulationState.pc;
     const loc = this.compileResult.locations[pc];
     if (loc) {
-      this.stack[0].line = loc.sourceLocation.start.line + 1;
-      this.stack[0].column = loc.sourceLocation.start.character + 1;
-      this.stack[0].endLine = loc.sourceLocation.end.line + 1;
-      this.stack[0].endColumn = loc.sourceLocation.end.character + 1;
+      this.stack[0].line = loc.line;
+      this.stack[0].column = loc.column;
+      this.stack[0].endLine = loc.endLine;
+      this.stack[0].endColumn = loc.endColumn;
       this.stack[0].path = this.compileResult.uri;
       return true;
-    } else {
-      console.warn(`No source location for pc=${pc.toString(16)}`);
-      return false;
     }
+
+    const osloc = osLocations[pc];
+    if (osloc) {
+      this.stack[0].line = osloc.line;
+      this.stack[0].column = osloc.column;
+      this.stack[0].endLine = osloc.endLine;
+      this.stack[0].endColumn = osloc.endColumn;
+      this.stack[0].path = "builtin:/os.asm";
+      return true;
+    }
+
+    console.warn(`No source location for pc=${pc.toString(16)}`);
+    return false;
   }
 
   setSource(source: string, stopOnEntry: boolean) {

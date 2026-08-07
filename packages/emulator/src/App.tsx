@@ -3,7 +3,7 @@ import * as Comlink from "comlink";
 import { transfer } from "comlink";
 import { Messenger } from "vscode-messenger-webview";
 import { type IRunParams, type IStepParams, EmulationStateRequest, RunNotification, StepRequest } from "./api";
-import type { IEmulationState } from "./emulator14/machine";
+import { type IEmulationState } from "./emulator14/machine";
 import "./App.css";
 
 const vscode =

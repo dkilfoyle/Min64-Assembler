@@ -92,7 +92,7 @@ async function runLoop() {
     // Prevent giant jumps if the user leaves the tab and comes back
     const dt = Math.min(deltaTime, 100);
 
-    machine.run(dt);
+    machine.frame(dt);
 
     const pixelData = machine.vga.getScreenPixelData();
     const imageData = new ImageData(pixelData, 400, 240); // 512, 256);
@@ -101,6 +101,22 @@ async function runLoop() {
     ctx.fillStyle = "#ff4500";
     ctx.textAlign = "right";
     ctx.fillText((1000 / deltaAverage).toFixed(2), 395, 10);
+    ctx.fillText(machine.runType, 395, 30);
+
+    // const screenImage = ctx.getImageData(0, 0, 400, 240);
+    // const maxNibbleWrite = Math.max(...machine.mem.nibbleWrite);
+    // const maxNibbleRead = Math.max(...machine.mem.nibbleRead);
+    // const maxNibble = Math.max(maxNibbleWrite, maxNibbleRead, 1);
+    // for (let i = 0; i < 0x1000; i++) {
+    //   const y = (i % 10) + 230;
+    //   const x = Math.floor(i / 10);
+    //   const index = (y * 400 + x) * 4;
+    //   screenImage.data[index] = machine.mem.nibbleWrite[i] & 0xff;
+    //   screenImage.data[index + 1] = 0;
+    //   screenImage.data[index + 2] = machine.mem.nibbleRead[i] & 0xff;
+    //   screenImage.data[index + 3] = 200;
+    // }
+    // ctx.putImageData(screenImage, 0, 0);
 
     await nextFrame();
   }

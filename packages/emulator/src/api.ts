@@ -1,8 +1,8 @@
 import type { IEmulationState } from "./emulator14/machine";
 import type { NotificationType, RequestType } from "vscode-messenger-common";
 
-export type RunTypes = "run" | "stop" | "reset" | "continue";
-export type StepTypes = "stepInto" | "stepOver" | "stepOut";
+export type RunTypes = "run" | "stop" | "reset";
+export type StepTypes = "stepInto" | "stepOver" | "stepOut" | "continue";
 
 export interface IRunParams {
   runType: RunTypes;

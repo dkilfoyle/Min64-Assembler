@@ -129,11 +129,11 @@ export class MinAsmDebugSession extends DebugSession {
     const actualBreakpoints = clientbps.map((bp) => {
       // calculate the PC @ the breakpoint
       const valid = Object.entries(cs.locations).find(([pc, loc]) => {
-        if (loc.sourceLocation.start.line == this.convertClientLineToDebugger(bp.line)) {
+        if (loc.line == bp.line) {
           if (bp.column == undefined) {
             return true;
           } else {
-            return loc.sourceLocation.start.character == this.convertClientColumnToDebugger(bp.column);
+            return loc.column == bp.column;
           }
         }
       });
@@ -161,23 +161,13 @@ export class MinAsmDebugSession extends DebugSession {
     if (!cs) return;
     if (args.source.path) {
       response.body = {
-        breakpoints: Object.values(cs.locations)
-          .filter((loc) => {
-            if (args.endLine != undefined && loc.sourceLocation.end.line > this.convertClientLineToDebugger(args.endLine)) return false;
-            if (loc.sourceLocation.start.line < this.convertClientLineToDebugger(args.line)) return false;
-            if (args.endColumn != undefined && loc.sourceLocation.end.character > this.convertClientColumnToDebugger(args.endColumn))
-              return false;
-            if (args.column != undefined && loc.sourceLocation.start.character < this.convertClientColumnToDebugger(args.column)) return false;
-            return true;
-          })
-          .map((loc) => {
-            return {
-              line: this.convertDebuggerLineToClient(loc.sourceLocation.start.line),
-              column: this.convertDebuggerColumnToClient(loc.sourceLocation.start.character),
-              endLine: this.convertDebuggerLineToClient(loc.sourceLocation.end.line),
-              endColumn: this.convertDebuggerColumnToClient(loc.sourceLocation.end.character),
-            };
-          }),
+        breakpoints: Object.values(cs.locations).filter((loc) => {
+          if (args.endLine != undefined && loc.endLine > args.endLine) return false;
+          if (loc.line < args.line) return false;
+          if (args.endColumn != undefined && loc.endColumn > args.endColumn) return false;
+          if (args.column != undefined && loc.column < args.column) return false;
+          return true;
+        }),
       };
     } else {
       response.body = {
@@ -208,7 +198,6 @@ export class MinAsmDebugSession extends DebugSession {
   }
 
   protected scopesRequest(response: DebugProtocol.ScopesResponse, _args: DebugProtocol.ScopesArguments): void {
-    console.log("scopesRequest", _args);
     response.body = {
       scopes: [
         new Scope("Registers", this._variableHandles.create("Registers"), false),
@@ -224,7 +213,6 @@ export class MinAsmDebugSession extends DebugSession {
     args: DebugProtocol.VariablesArguments,
     _request?: DebugProtocol.Request,
   ) {
-    console.log("variablesRequest", args);
     const es = this.getEmulationState(response);
     if (!es) return;
     const cs = this.getCompileState(response);
@@ -353,7 +341,7 @@ export class MinAsmDebugSession extends DebugSession {
   }
 
   protected async continueRequest(response: DebugProtocol.ContinueResponse, _args: DebugProtocol.ContinueArguments): Promise<void> {
-    await runtime.run({ runType: "continue" });
+    await runtime.step({ stepType: "continue" });
     this.sendResponse(response);
   }
 

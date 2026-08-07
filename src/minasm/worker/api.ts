@@ -1,9 +1,5 @@
 import { RequestType } from "vscode-languageserver-protocol";
-
-export interface SourceLocation {
-  start: { line: number; character: number };
-  end: { line: number; character: number };
-}
+import type { ILabelLocation, IPCLocation } from "../assembler/assembler";
 
 export interface AsmCompileParams {
   uri: string;
@@ -12,9 +8,8 @@ export interface AsmCompileParams {
 export interface AsmCompileResult {
   uri: string;
   hex: string;
-  // JSON-RPC friendly types instead of Map
-  locations: Record<number, { sourceLocation: SourceLocation; nextPC: number }>;
-  labels: Record<string, { address: number; sourceLocation: SourceLocation }>;
+  locations: Record<number, IPCLocation>;
+  labels: Record<string, ILabelLocation>;
 }
 
 export const AsmCompileRequest = new RequestType<AsmCompileParams, AsmCompileResult, void>("app/minasm-compile");
