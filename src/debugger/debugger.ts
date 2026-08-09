@@ -1,4 +1,7 @@
-import { ExtensionHostKind, registerExtension } from "@codingame/monaco-vscode-api/extensions";
+import {
+  ExtensionHostKind,
+  registerExtension,
+} from "@codingame/monaco-vscode-api/extensions";
 import * as vscode from "vscode";
 import { MinAsmDebugSession } from "./MinAsmDebugSession.ts";
 import type { DebugConfiguration, WorkspaceFolder } from "vscode";
@@ -23,9 +26,21 @@ const { getApi, registerFileUrl } = registerExtension(
             launch: {
               required: ["path"],
               properties: {
-                path: { type: "string", description: "Asm source file path", default: "${workspaceFolder}/ummmm" },
-                stopOnEntry: { type: "boolean", description: "Stop after launch", default: true },
-                trace: { type: "boolean", description: "Enable logging of debug adapter protocol", default: true },
+                path: {
+                  type: "string",
+                  description: "Asm source file path",
+                  default: "${workspaceFolder}/ummmm",
+                },
+                stopOnEntry: {
+                  type: "boolean",
+                  description: "Stop after launch",
+                  default: true,
+                },
+                trace: {
+                  type: "boolean",
+                  description: "Enable logging of debug adapter protocol",
+                  default: true,
+                },
               },
             },
           },
@@ -50,12 +65,6 @@ const { getApi, registerFileUrl } = registerExtension(
             when: "resourceLangId == minasm",
           },
         ],
-        "debug/variables/context": [
-          {
-            command: "extension.mock-debug.toggleFormatting",
-            when: "debugType == 'mock' && debugProtocolVariableMenuContext == 'simple'",
-          },
-        ],
       },
       commands: [
         {
@@ -71,35 +80,44 @@ const { getApi, registerFileUrl } = registerExtension(
   ExtensionHostKind.LocalProcess,
 );
 
-registerFileUrl("./extension.js", "data:text/javascript;base64," + window.btoa("// nothing"));
+registerFileUrl(
+  "./extension.js",
+  "data:text/javascript;base64," + window.btoa("// nothing"),
+);
 
 void getApi().then(async (debuggerVscodeApi) => {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  debuggerVscodeApi.commands.registerCommand("extension.minasm-debug.runEditorContents", (_resource: vscode.Uri) => {
-    let targetResource; // = resource;
-    let fn: string | undefined;
-    if (!targetResource && debuggerVscodeApi.window.activeTextEditor) {
-      targetResource = debuggerVscodeApi.window.activeTextEditor.document.uri;
-      fn = debuggerVscodeApi.window.activeTextEditor.document.uri.toString();
-    }
-    if (targetResource && fn) {
-      debuggerVscodeApi.debug.startDebugging(
-        undefined,
-        {
-          type: "minasm",
-          name: "Run File",
-          request: "launch",
-          path: targetResource.toString(),
-          // linkerInfo: compiledDocs[fn].linkerInfo,
-          stopOnEntry: true,
-        },
-        // { noDebug: true },
-      );
-    }
-  });
+  debuggerVscodeApi.commands.registerCommand(
+    "extension.minasm-debug.runEditorContents",
+    (_resource: vscode.Uri) => {
+      let targetResource; // = resource;
+      let fn: string | undefined;
+      if (!targetResource && debuggerVscodeApi.window.activeTextEditor) {
+        targetResource = debuggerVscodeApi.window.activeTextEditor.document.uri;
+        fn = debuggerVscodeApi.window.activeTextEditor.document.uri.toString();
+      }
+      if (targetResource && fn) {
+        debuggerVscodeApi.debug.startDebugging(
+          undefined,
+          {
+            type: "minasm",
+            name: "Run File",
+            request: "launch",
+            path: targetResource.toString(),
+            // linkerInfo: compiledDocs[fn].linkerInfo,
+            stopOnEntry: true,
+          },
+          // { noDebug: true },
+        );
+      }
+    },
+  );
 
   debuggerVscodeApi.debug.registerDebugConfigurationProvider("minasm", {
-    resolveDebugConfiguration(folder: WorkspaceFolder | undefined, config: DebugConfiguration) {
+    resolveDebugConfiguration(
+      folder: WorkspaceFolder | undefined,
+      config: DebugConfiguration,
+    ) {
       const editor = debuggerVscodeApi.window.activeTextEditor;
       if (!(editor && editor.document.languageId == "minasm")) return undefined;
       return {
@@ -115,7 +133,9 @@ void getApi().then(async (debuggerVscodeApi) => {
 
   debuggerVscodeApi.debug.registerDebugAdapterDescriptorFactory("minasm", {
     async createDebugAdapterDescriptor() {
-      return new debuggerVscodeApi.DebugAdapterInlineImplementation(new MinAsmDebugSession());
+      return new debuggerVscodeApi.DebugAdapterInlineImplementation(
+        new MinAsmDebugSession(),
+      );
     },
   });
 });

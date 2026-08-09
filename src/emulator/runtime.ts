@@ -96,7 +96,7 @@ class Runtime {
     }
     this.compileResult = result;
     console.log("Runtime setSource", source, stopOnEntry, result);
-    this.run({ runType: stopOnEntry ? "stop" : "continue", pc: 0x100, hex: result.hex, reset: true });
+    this.run({ runType: stopOnEntry ? "stop" : "run", pc: 0x100, hex: result.hex, reset: true });
   }
 
   public run(runParams: IRunParams) {
@@ -113,7 +113,14 @@ class Runtime {
       { type: "webview", webviewType: "emulatorPanel" },
       { ...stepParams, nextPC },
     );
-    this.stop("step");
+
+    console.log("Runtime step", stepParams, nextPC, this.emulationState);
+
+    if (this.emulationState.pc == 0xf135) {
+      this.stop("hlt");
+    } else {
+      this.stop("step");
+    }
   }
 
   public setBreakpoints(path: string) {
@@ -171,7 +178,9 @@ class Runtime {
         this.debugSession!.sendEvent(new StoppedEvent("step", MinAsmDebugSession.THREAD_ID));
         break;
       case "hlt":
+        console.log("Runtime stop: hlt");
         this.debugSession!.sendEvent(new TerminatedEvent());
+        this.run({ runType: "run" }); // let the emulator carry on running until it stops naturally, so that the user can see the final state of the program
         // this.isDebugging = false;
         vscode.commands.executeCommand("workbench.view.explorer");
         break;

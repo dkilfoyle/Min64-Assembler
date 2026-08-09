@@ -1,8 +1,14 @@
-import React, { useEffect, useRef } from "react";
+import { useRef, useEffect } from "preact/hooks";
 import * as Comlink from "comlink";
 import { transfer } from "comlink";
 import { Messenger } from "vscode-messenger-webview";
-import { type IRunParams, type IStepParams, EmulationStateRequest, RunNotification, StepRequest } from "./api";
+import {
+  type IRunParams,
+  type IStepParams,
+  EmulationStateRequest,
+  RunNotification,
+  StepRequest,
+} from "./api";
 import { type IEmulationState } from "./emulator14/machine";
 import "./App.css";
 
@@ -16,7 +22,7 @@ const vscode =
       };
 const webview_messenger = new Messenger(vscode);
 
-export const App: React.FC = () => {
+export const App = () => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const divRef = useRef<HTMLDivElement | null>(null);
   const workerRef = useRef<Worker | null>(null);
@@ -25,7 +31,10 @@ export const App: React.FC = () => {
     if (!canvasRef.current) return;
 
     // 1. Initialize Worker using standard Vite / Webpack 5 URL syntax
-    const worker = new Worker(new URL("./emulator.worker.ts", import.meta.url), { type: "module" });
+    const worker = new Worker(
+      new URL("./emulator.worker.ts", import.meta.url),
+      { type: "module" },
+    );
     workerRef.current = worker;
 
     const worker_api = Comlink.wrap<{
@@ -57,11 +66,11 @@ export const App: React.FC = () => {
       return state;
     });
 
-    webview_messenger.onNotification(RunNotification, (params) => {
+    webview_messenger.onNotification(RunNotification, (params:IRunParams) => {
       return worker_api.run(params);
     });
 
-    webview_messenger.onRequest(StepRequest, async (params) => {
+    webview_messenger.onRequest(StepRequest, async (params: IStepParams) => {
       return await worker_api.step(params);
     });
 

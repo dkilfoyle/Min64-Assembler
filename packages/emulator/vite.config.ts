@@ -1,10 +1,9 @@
 import { defineConfig } from "vite";
-import react from "@vitejs/plugin-react";
+import preact from "@preact/preset-vite";
 
-// https://vite.dev/config/
+// https://vitejs.dev/config/
 export default defineConfig({
-  logLevel: "error",
-  plugins: [react()],
+  plugins: [preact()],
   build: {
     outDir: "../../public",
     rollupOptions: {

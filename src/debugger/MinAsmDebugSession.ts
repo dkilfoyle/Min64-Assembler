@@ -375,8 +375,10 @@ export class MinAsmDebugSession extends DebugSession {
   }
 
   protected async terminateRequest(response: DebugProtocol.TerminateResponse, _args: DebugProtocol.TerminateArguments): Promise<void> {
+    console.log("terminateRequest");
     this.sendResponse(response);
     this.sendEvent(new TerminatedEvent());
+    runtime.run({ runType: "run" }); // let the emulator carry on running until it stops naturally, so that the user can see the final state of the program
   }
 
   private createSource(filePath: string): Source {

@@ -1,6 +1,6 @@
 import type { ExtensionConfig } from "monaco-languageclient/vscodeApiWrapper";
 import minasmLanguageConfig from "./language-config.json?raw";
-import minasmTextmate from "../syntaxes/minasm.tmLanguage.json?raw";
+import minasmTextmate from "../syntaxes/minasm14.tmLanguage.json?raw";
 
 const extensionFilesOrContents = new Map<string, string | URL>();
 extensionFilesOrContents.set(`/minasm-configuration.json`, minasmLanguageConfig);

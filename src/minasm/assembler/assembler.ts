@@ -256,6 +256,7 @@ class Assembler {
   processArgs(data: Data) {
     // found the instruction arguments (Data) - check match expected and consume
     const info = instructionInfo[this.curInstr!.op];
+    if (info.instr == "STZ") debugger
     let size = 0;
     let dataIndex = 0;
     for (let argIndex = 0; argIndex < info.argType.length; argIndex++) {
@@ -283,7 +284,7 @@ class Assembler {
       }
     }
 
-    if (dataIndex != data.items.length) throw Error(`More data items than expected arguments`);
+    if (dataIndex != data.items.length) throw Error(`More data items than expected arguments for entry ${data.$cstNode!.text}`);
     if (size != info.totalSize) throw Error("Data does not match expected argument size");
     this.advanceBytes(size);
     this.curInstr = null;

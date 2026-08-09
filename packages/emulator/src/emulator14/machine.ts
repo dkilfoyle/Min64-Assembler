@@ -155,9 +155,9 @@ export class Machine {
   }
 
   frame(dt: number) {
-    // run 1 frame of emulation, consuming up to 8MHz * dt milliseconds of CPU time = up 10 133,333 cycles
+    // run 1 frame of emulation, consuming up to 8MHz * dt milliseconds of CPU time = up to 133,333 cycles
     // or until a breakpoint is hit or the runType changes to "stop"
-    this.mem.frame();
+    // this.mem.frame();
     let haveClocks = dt * 8000; // 8MHz clock
     switch (this.runType) {
       case "run":
@@ -166,10 +166,12 @@ export class Machine {
         }
         break;
       case "continue":
-        while (haveClocks > 0 && !this.isBreakpoint(this.cpu.pc) && this.cpu.pc !== this.stopStepOverPC) {
+        let isTimeToStop = this.isBreakpoint(this.cpu.pc) || this.cpu.pc == this.stopStepOverPC || this.cpu.pc == 0xf135; // 0xf135 is OS_Prompt, which is a good place to stop after a continue
+        while (haveClocks > 0 && !isTimeToStop) {
           haveClocks -= this.debugStep();
+          isTimeToStop = this.isBreakpoint(this.cpu.pc) || this.cpu.pc === this.stopStepOverPC || this.cpu.pc == 0xf135;
         }
-        if (this.isBreakpoint(this.cpu.pc) || this.cpu.pc === this.stopStepOverPC) {
+        if (isTimeToStop) {
           this.runType = "stop";
           this.stopStepOverPC = -1;
         }

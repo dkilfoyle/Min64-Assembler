@@ -3,7 +3,10 @@ import minminLanguageConfig from "./language-config.json?raw";
 import minminTextmate from "../syntaxes/minmin.tmLanguage.json?raw";
 
 const extensionFilesOrContents = new Map<string, string | URL>();
-extensionFilesOrContents.set(`/minmin-configuration.json`, minminLanguageConfig);
+extensionFilesOrContents.set(
+  `/minmin-configuration.json`,
+  minminLanguageConfig,
+);
 extensionFilesOrContents.set(`/minmin-grammar.json`, minminTextmate);
 
 // this will be injected into shared vscodeApiConfig
@@ -37,11 +40,11 @@ export const minminExtensionConfig: ExtensionConfig = {
           title: "Compile",
           icon: "$(build)",
         },
-        {
-          command: "minmin-autocompile",
-          title: "Toggle auto compile",
-          icon: "$(sync)",
-        },
+        // {
+        //   command: "minmin-autocompile",
+        //   title: "Toggle auto compile",
+        //   icon: "$(sync)",
+        // },
       ],
       menus: {
         "editor/title": [
@@ -50,10 +53,10 @@ export const minminExtensionConfig: ExtensionConfig = {
             command: "minmin-compile",
             group: "navigation",
           },
-          {
-            when: "editorLangId == minmin",
-            command: "minmin-autocompile",
-          },
+          //   {
+          //     when: "editorLangId == minmin",
+          //     command: "minmin-autocompile",
+          //   },
         ],
       },
     },

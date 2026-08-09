@@ -3,7 +3,7 @@ import type { Hover, HoverParams } from "vscode-languageserver";
 import { AstNodeHoverProvider, type LangiumServices } from "langium/lsp";
 import { isExpression, isInstruction, isLabel, isLabelReference } from "./generated/ast.js";
 import { CstUtils } from "langium";
-import { instructionInfo } from "../assembler/instructionInfo11.js";
+import { instructionInfo } from "../assembler/instructionInfo14.js";
 
 export class MinasmHoverProvider extends AstNodeHoverProvider {
   documentationProvider: DocumentationProvider;
