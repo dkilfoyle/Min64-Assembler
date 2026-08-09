@@ -24,7 +24,6 @@ export default function App() {
     <MonacoEditorReactComp
       vscodeApiConfig={config.vscodeApiConfig}
       onVscodeApiInitDone={async (apiWrapper) => {
-        debugger;
         const lcsManager = await initLanguageClients();
         const minmin = lcsManager.getLanguageClient("minmin");
         const minasm = lcsManager.getLanguageClient("minasm");
@@ -126,6 +125,7 @@ export default function App() {
         });
 
         outputChannel = vscode.window.createOutputChannel("Minimal Emulator");
+        vscode.commands.executeCommand("workbench.action.focusAuxiliaryBar");
 
         await vscode.commands.executeCommand("show-emulator");
 

@@ -110,7 +110,7 @@ async function runLoop() {
     ctx.fillStyle = "#ff4500";
     ctx.textAlign = "right";
     ctx.fillText((1000 / deltaAverage).toFixed(2), 395, 10);
-    ctx.fillText(machine.runType, 395, 30);
+    // ctx.fillText(machine.runType, 395, 30);
 
     // const screenImage = ctx.getImageData(0, 0, 400, 240);
     // const maxNibbleWrite = Math.max(...machine.mem.nibbleWrite);
