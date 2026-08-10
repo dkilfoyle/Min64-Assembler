@@ -125,9 +125,21 @@ export default function App() {
         });
 
         outputChannel = vscode.window.createOutputChannel("Minimal Emulator");
-        vscode.commands.executeCommand("workbench.action.focusAuxiliaryBar");
+        // vscode.commands.executeCommand("workbench.action.focusAuxiliaryBar");
+
+        var VIEW_MEMORY_ID = "workbench.debug.viewlet.action.viewMemory";
+        vscode.commands.registerCommand(VIEW_MEMORY_ID, async (arg) => {
+          if (arg.variable.memoryReference)
+            runtime.showMemory(arg.variable.memoryReference);
+          console.log("memory view command called", arg);
+        });
 
         await vscode.commands.executeCommand("show-emulator");
+
+        // await vscode.commands.executeCommand(
+        //   "workbench.extensions.installExtension",
+        //   vscode.Uri.file("./mcu-debug.memory-view-0.0.29.vsix"),
+        // );
 
         await configurePostStart(apiWrapper, config);
       }}

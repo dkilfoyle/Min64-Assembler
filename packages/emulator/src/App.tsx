@@ -66,7 +66,7 @@ export const App = () => {
       return state;
     });
 
-    webview_messenger.onNotification(RunNotification, (params:IRunParams) => {
+    webview_messenger.onNotification(RunNotification, (params: IRunParams) => {
       return worker_api.run(params);
     });
 
@@ -90,8 +90,10 @@ export const App = () => {
   }, []);
 
   return (
-    <div ref={divRef} className="canvas-container">
-      <canvas ref={canvasRef} width={400} height={240} className="screen" />
-    </div>
+    <>
+      <div ref={divRef} className="canvas-container">
+        <canvas ref={canvasRef} width={400} height={240} className="screen" />
+      </div>
+    </>
   );
 };

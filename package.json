@@ -12,6 +12,7 @@
     "langium:minmin": "langium generate -f src/minmin/config/langium-config.json"
   },
   "dependencies": {
+    "@codingame/monaco-vscode-rollup-vsix-plugin": "^25.1.2",
     "@codingame/esbuild-import-meta-url-plugin": "^1.0.3",
     "@codingame/monaco-vscode-debug-service-override": "^25.1.2",
     "@codingame/monaco-vscode-environment-service-override": "^25.1.2",

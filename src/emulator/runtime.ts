@@ -4,16 +4,21 @@ import type { IEmulationState } from "../../packages/emulator/src/emulator14/mac
 import { MinAsmDebugSession } from "../debugger/MinAsmDebugSession";
 import type { AsmCompileResult } from "../minasm/worker/api";
 import { useDocStore } from "../store/myStore";
-import { BreakpointEvent, OutputEvent, StoppedEvent, TerminatedEvent } from "../debugger/dap/events";
+import {
+  OutputEvent,
+  StoppedEvent,
+  TerminatedEvent,
+} from "../debugger/dap/events";
 import {
   BreakpointsNotification,
   EmulationStateRequest,
+  MemoryViewerNotification,
   RunNotification,
   StepRequest,
   type IStepParams,
-} from "../../packages/emulator/src/api";
+} from "../../packages/emulator-react/src/api";
 import * as vscode from "vscode";
-import { type IRunParams } from "../../packages/emulator/src/api";
+import { type IRunParams } from "../../packages/emulator-react/src/api";
 import { osLocations } from "./osLocations";
 
 const messenger = new Messenger();
@@ -62,7 +67,10 @@ class Runtime {
 
   async updateState() {
     if (!this.compileResult) throw Error("No compile result");
-    this.emulationState = await messenger.sendRequest(EmulationStateRequest, { type: "webview", webviewType: "emulatorPanel" });
+    this.emulationState = await messenger.sendRequest(EmulationStateRequest, {
+      type: "webview",
+      webviewType: "emulatorPanel",
+    });
     const pc = this.emulationState.pc;
     const loc = this.compileResult.locations[pc];
     if (loc) {
@@ -96,17 +104,38 @@ class Runtime {
     }
     this.compileResult = result;
     console.log("Runtime setSource", source, stopOnEntry, result);
-    this.run({ runType: stopOnEntry ? "stop" : "run", pc: 0x100, hex: result.hex, reset: true });
+    this.run({
+      runType: stopOnEntry ? "stop" : "run",
+      pc: 0x100,
+      hex: result.hex,
+      reset: true,
+    });
+  }
+
+  public showMemory(memoryReference: string) {
+    console.log("Runtime showMemory", memoryReference);
+    messenger.sendNotification(
+      MemoryViewerNotification,
+      { type: "webview", webviewType: "emulatorPanel" },
+      { startAddress: parseInt(memoryReference, 16) },
+    );
   }
 
   public run(runParams: IRunParams) {
-    messenger.sendNotification(RunNotification, { type: "webview", webviewType: "emulatorPanel" }, runParams);
+    messenger.sendNotification(
+      RunNotification,
+      { type: "webview", webviewType: "emulatorPanel" },
+      runParams,
+    );
   }
 
   public async step(stepParams: IStepParams) {
     if (!this.compileResult) throw Error("No source");
     if (!this.emulationState) throw Error("No emulation state");
-    const nextPC = stepParams.stepType == "stepOver" ? this.compileResult.locations[this.emulationState.pc]?.nextPC : undefined;
+    const nextPC =
+      stepParams.stepType == "stepOver"
+        ? this.compileResult.locations[this.emulationState.pc]?.nextPC
+        : undefined;
 
     this.emulationState = await messenger.sendRequest(
       StepRequest,
@@ -126,18 +155,21 @@ class Runtime {
   public setBreakpoints(path: string) {
     const bps = this.breakpoints.get(path);
     if (!bps) return;
-    messenger.sendNotification(BreakpointsNotification, { type: "webview", webviewType: "emulatorPanel" }, bps);
+    messenger.sendNotification(
+      BreakpointsNotification,
+      { type: "webview", webviewType: "emulatorPanel" },
+      bps,
+    );
   }
 
   getMemory(memoryReference: string) {
     if (!this.emulationState) throw Error("No emulation state");
-    if (memoryReference == "ram") {
-      return Array.from(this.emulationState.memory.slice(0x0000, 0xffff));
-    }
-    if (memoryReference == "sp") {
-      return Array.from(this.emulationState.memory.slice(this.emulationState.sp, 0xffff));
-    }
-    return [];
+    return Array.from(
+      this.emulationState.memory.slice(
+        parseInt(memoryReference, 16),
+        parseInt(memoryReference, 16) + 256,
+      ),
+    );
   }
 
   start(stopOnEntry: boolean) {
@@ -167,15 +199,22 @@ class Runtime {
     }
   }
 
-  async stop(type: "step" | "hlt" | "breakpoint" | "entry", output?: string): Promise<IStepResult> {
+  async stop(
+    type: "step" | "hlt" | "breakpoint" | "entry",
+    output?: string,
+  ): Promise<IStepResult> {
     const more = await this.updateState();
     if (!more) type = "hlt";
     switch (type) {
       case "entry":
-        this.debugSession!.sendEvent(new StoppedEvent("entry", MinAsmDebugSession.THREAD_ID));
+        this.debugSession!.sendEvent(
+          new StoppedEvent("entry", MinAsmDebugSession.THREAD_ID),
+        );
         break;
       case "step":
-        this.debugSession!.sendEvent(new StoppedEvent("step", MinAsmDebugSession.THREAD_ID));
+        this.debugSession!.sendEvent(
+          new StoppedEvent("step", MinAsmDebugSession.THREAD_ID),
+        );
         break;
       case "hlt":
         console.log("Runtime stop: hlt");
@@ -185,7 +224,9 @@ class Runtime {
         vscode.commands.executeCommand("workbench.view.explorer");
         break;
       case "breakpoint":
-        this.debugSession!.sendEvent(new StoppedEvent("breakpoint", MinAsmDebugSession.THREAD_ID));
+        this.debugSession!.sendEvent(
+          new StoppedEvent("breakpoint", MinAsmDebugSession.THREAD_ID),
+        );
         break;
     }
     if (output) {

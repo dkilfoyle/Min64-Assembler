@@ -262,6 +262,7 @@ export class MinAsmDebugSession extends DebugSession {
         type: "integer",
         value: `${hex16(es.pc)}, ${pcLabel ? pcLabel[0] : ""}`,
         variablesReference: 0,
+        memoryReference: "0x" + es.pc.toString(16).padStart(4, "0"), // allow the user to read memory at this address
       });
       variables.push({
         name: "a",
@@ -292,6 +293,7 @@ export class MinAsmDebugSession extends DebugSession {
         type: "integer",
         value: `${hex8(es.sp)}, ${es.sp}`,
         variablesReference: 0,
+        memoryReference: "0x" + es.sp.toString(16).padStart(4, "0"), // allow the user to read memory at this address
       });
     } else if (id == "Labels") {
       Object.entries(cs.labels).forEach(([labelname, labelinfo]) => {
@@ -332,24 +334,28 @@ export class MinAsmDebugSession extends DebugSession {
         type: "integer",
         value: `${hex16(mem16(es.memory, 0))}, ${mem16(es.memory, 0)}`,
         variablesReference: 0,
+        memoryReference: "0x00", // allow the user to read memory at this address
       });
       variables.push({
         name: "z_B (0x2)",
         type: "integer",
         value: `${hex16(mem16(es.memory, 2))}, ${mem16(es.memory, 2)}`,
         variablesReference: 0,
+        memoryReference: "0x02",
       });
       variables.push({
         name: "z_C (0x4)",
         type: "integer",
         value: `${hex16(mem16(es.memory, 4))}, ${mem16(es.memory, 4)}`,
         variablesReference: 0,
+        memoryReference: "0x04",
       });
       variables.push({
         name: "z_D (0x6)",
         type: "integer",
         value: `${hex16(mem16(es.memory, 6))}, ${mem16(es.memory, 6)}`,
         variablesReference: 0,
+        memoryReference: "0x06",
       });
     }
 
@@ -439,6 +445,8 @@ export class MinAsmDebugSession extends DebugSession {
         ),
       ),
     };
+    console.log("readMemoryRequest", args, response.body);
+    runtime.showMemory(args.memoryReference);
     this.sendResponse(response);
   }
 

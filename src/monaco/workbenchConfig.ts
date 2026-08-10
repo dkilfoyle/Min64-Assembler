@@ -21,12 +21,16 @@ import getWorkbenchServiceOverride from "@codingame/monaco-vscode-workbench-serv
 import getMarkersServiceOverride from "@codingame/monaco-vscode-markers-service-override";
 import getDebugServiceOverride from "@codingame/monaco-vscode-debug-service-override";
 import getOutputServiceOverride from "@codingame/monaco-vscode-output-service-override";
+import getExtensionsServiceOverride from "@codingame/monaco-vscode-extensions-service-override";
 import * as vscode from "vscode";
 
 import "@codingame/monaco-vscode-search-result-default-extension";
 
 import { createDefaultLocaleConfiguration } from "monaco-languageclient/vscodeApiLocales";
-import { MonacoVscodeApiWrapper, type MonacoVscodeApiConfig } from "monaco-languageclient/vscodeApiWrapper";
+import {
+  MonacoVscodeApiWrapper,
+  type MonacoVscodeApiConfig,
+} from "monaco-languageclient/vscodeApiWrapper";
 import { configureDefaultWorkerFactory } from "monaco-languageclient/workerFactory";
 
 import type { RegisterLocalProcessExtensionResult } from "@codingame/monaco-vscode-api/extensions";
@@ -40,7 +44,9 @@ export type ConfigResult = {
   workspaceFileUri: vscode.Uri;
 };
 
-export const configure = async (htmlContainer?: HTMLElement): Promise<ConfigResult> => {
+export const configure = async (
+  htmlContainer?: HTMLElement,
+): Promise<ConfigResult> => {
   const vscodeApiConfig: MonacoVscodeApiConfig = {
     $type: "extended",
     logLevel: LogLevel.Info,
@@ -62,6 +68,7 @@ export const configure = async (htmlContainer?: HTMLElement): Promise<ConfigResu
       ...getMarkersServiceOverride(),
       ...getDebugServiceOverride(),
       ...getOutputServiceOverride(),
+      ...getExtensionsServiceOverride(),
     },
     viewsConfig: {
       $type: "WorkbenchService",
@@ -133,14 +140,23 @@ export const configure = async (htmlContainer?: HTMLElement): Promise<ConfigResu
   };
 };
 
-export const configurePostStart = async (apiWrapper: MonacoVscodeApiWrapper, configResult: ConfigResult) => {
-  const result = apiWrapper.getExtensionRegisterResult("min-ide") as RegisterLocalProcessExtensionResult;
+export const configurePostStart = async (
+  apiWrapper: MonacoVscodeApiWrapper,
+  configResult: ConfigResult,
+) => {
+  const result = apiWrapper.getExtensionRegisterResult(
+    "min-ide",
+  ) as RegisterLocalProcessExtensionResult;
   await result.setAsDefaultApi();
 
-  vscode.workspace.registerFileSystemProvider("builtin", new DslLibraryFileSystemProvider(), {
-    isReadonly: true,
-    isCaseSensitive: false,
-  });
+  vscode.workspace.registerFileSystemProvider(
+    "builtin",
+    new DslLibraryFileSystemProvider(),
+    {
+      isReadonly: true,
+      isCaseSensitive: false,
+    },
+  );
 
   // await Promise.all([
   //   vscode.workspace.openTextDocument(vscode.Uri.file("/Min64/asm/test.asm")),
