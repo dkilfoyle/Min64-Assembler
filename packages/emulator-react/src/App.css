@@ -1,3 +1,11 @@
+body {
+  margin: 0;
+  padding: 0;
+  font-family: sans-serif;
+  background-color: var(--bk-color-background-secondary);
+  color: var(--bk-color-foreground-muted);
+}
+
 .app-container {
   display: flex;
   flex-direction: column;
@@ -6,7 +14,6 @@
   width: 100%;
   height: 100%;
   gap: 20px;
-  background-color: #1f1f1f;
 }
 
 .canvas-container {
@@ -25,29 +32,45 @@
   margin-top: 20px;
 }
 
-.memory-view-container {
+.emulation-state-container {
   display: flex;
   flex-direction: column;
   width: auto;
+  align-items: center;
   font-family: monospace;
+  gap: 20px;
 }
 
 .memory-view-table {
   display: flex;
   flex-direction: column;
   width: auto;
-  font-family: monospace;
 }
 
 .memory-row {
   display: flex;
   flex-direction: row;
   gap: 10px;
+  padding-bottom: 4px;
+}
+
+.memory-cell {
+  cursor: pointer;
+}
+
+.memory-cell-target {
+  background-color: #cddc39;
+  color: rgb(38, 38, 38);
+  border-radius: var(--bk-radius-sm);
+}
+
+.memory-cell-hover {
+  background-color: #4caf50;
+  color: rgb(38, 38, 38);
+  border-radius: var(--bk-radius-sm);
 }
 
 .memory-row-address {
-  color: #fff;
-  padding: 4px;
   color: #cccccc;
 }
 
@@ -55,7 +78,6 @@
   color: #dcdcaa;
   display: flex;
   flex-direction: row;
-  align-items: center;
   gap: 4px;
   padding-left: 4px;
   padding-right: 4px;
@@ -70,13 +92,59 @@
   display: flex;
   flex-direction: row;
   width: 100%;
-  margin-top: 15px;
   align-items: center;
   gap: 10px;
+  margin-bottom: 0px !important;
 }
 
 .label {
   padding: 5px;
+}
+
+.emulation-state {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+}
+
+.hover-info-container {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-family: monospace;
+}
+
+.hover-info-line {
+  display: flex;
+  flex-direction: row;
+  width: 100%;
+  gap: 10px;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.info-field {
+  display: flex;
+  flex-direction: row;
+  gap: 10px;
+  align-items: baseline;
+}
+
+.info-label {
+}
+
+.info-value {
+  background-color: var(--bk-color-secondary);
+  color: var(--bk-color-secondary-foreground);
+  width: 50px;
+  text-align: center;
+  font-size: var(--bk-font-size-md);
+  min-height: var(--bk-size-sm);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--bk-radius-sm);
 }
 
 /* .memory-minimap {

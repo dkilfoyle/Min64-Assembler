@@ -106,9 +106,10 @@ class Runtime {
     console.log("Runtime setSource", source, stopOnEntry, result);
     this.run({
       runType: stopOnEntry ? "stop" : "run",
-      pc: 0x100,
+      pc: result.startAddress,
       hex: result.hex,
       reset: true,
+      locations: result.locations,
     });
   }
 

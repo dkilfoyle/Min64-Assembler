@@ -41,12 +41,16 @@ class IntelHex {
   }
   flush() {
     if (this.buffer.length > 0) {
-      this.records.push({ bytes: new Uint8Array(this.buffer), address: this.address });
+      this.records.push({
+        bytes: new Uint8Array(this.buffer),
+        address: this.address,
+      });
       this.buffer = [];
     }
   }
   setAddress(addr: number) {
-    if (addr < 0 || addr > 0xffff) throw Error("Address must be between 0 and 0xffff");
+    if (addr < 0 || addr > 0xffff)
+      throw Error("Address must be between 0 and 0xffff");
     this.flush();
     this.address = addr;
   }
@@ -55,14 +59,19 @@ class IntelHex {
     for (let i = 0; i < bytes.length; i++) {
       this.buffer.push(bytes[i]);
       if (this.buffer.length == 16) {
-        this.records.push({ bytes: new Uint8Array(this.buffer), address: this.address });
+        this.records.push({
+          bytes: new Uint8Array(this.buffer),
+          address: this.address,
+        });
         this.buffer = [];
         this.address += 16;
       }
     }
   }
   replaceValue(mc: number, value: number, size: number) {
-    const recordIndex = this.records.findIndex((r) => mc >= r.address && mc < r.address + r.bytes.length);
+    const recordIndex = this.records.findIndex(
+      (r) => mc >= r.address && mc < r.address + r.bytes.length,
+    );
     // replace the lo byte
     let r = this.records[recordIndex];
     const offset = mc - r.address;
@@ -78,15 +87,19 @@ class IntelHex {
       r.bytes[offset] = (value >> 8) & 0xff;
     }
   }
-  toString(): string {
+  compile(): { hex: string; startAddress: number } {
     if (this.buffer.length > 0) {
-      this.records.push({ bytes: new Uint8Array(this.buffer), address: this.address });
+      this.records.push({
+        bytes: new Uint8Array(this.buffer),
+        address: this.address,
+      });
       this.buffer = [];
     }
     let hex = "";
     for (const record of this.records) {
       let checksum = record.bytes.reduce((acc, byte) => acc + byte, 0);
-      checksum += record.bytes.length + (record.address >> 8) + (record.address & 0xff);
+      checksum +=
+        record.bytes.length + (record.address >> 8) + (record.address & 0xff);
       hex += `:${record.bytes.length.toString(16).padStart(2, "0")}${record.address.toString(16).padStart(4, "0")}00`;
       for (const byte of record.bytes) {
         hex += byte.toString(16).padStart(2, "0");
@@ -96,7 +109,10 @@ class IntelHex {
       hex += "\n";
     }
     hex += ":00000001FF\n";
-    return hex.toUpperCase();
+    return {
+      hex: hex.toUpperCase(),
+      startAddress: this.records.length > 0 ? this.records[0].address : 0,
+    };
   }
 
   debug() {
@@ -129,6 +145,7 @@ export interface ILabelLocation extends ICodeLocation {
 
 export interface IPCLocation extends ICodeLocation {
   nextPC: number;
+  label: string;
 }
 
 class Assembler {
@@ -140,6 +157,7 @@ class Assembler {
   labels: Record<string, ILabelLocation> = {};
   locations: Record<number, IPCLocation> = {};
   lastPC = 0;
+  curLabel = "";
 
   reset(pass: 1 | 2) {
     this.mc = 0x2000;
@@ -209,7 +227,8 @@ class Assembler {
 
   processDirective(dir: Directive): void {
     const setAddress = (addr: number) => {
-      if (addr < 0 || addr > 0xffff) throw Error("Address must be between 0 and 0xffff");
+      if (addr < 0 || addr > 0xffff)
+        throw Error("Address must be between 0 and 0xffff");
       this.pc = addr;
       if (this.isEmit) {
         this.mc = this.pc;
@@ -235,17 +254,23 @@ class Assembler {
   }
 
   processLabel(label: Label) {
-    this.labels[label.name] = { address: this.pc, ...sourceLocation2codeLocation(label.$cstNode!.range) };
+    this.curLabel = label.name;
+    this.labels[label.name] = {
+      address: this.pc,
+      ...sourceLocation2codeLocation(label.$cstNode!.range),
+    };
   }
 
   processInstruction(instr: Instruction) {
     const info = instructionInfo[instr.op];
 
     // this allows the debugger to find the return instruction after a JPS when the function modifies the return address eg PRINT followed by data arguments
-    if (this.locations[this.lastPC]) this.locations[this.lastPC].nextPC = this.pc;
+    if (this.locations[this.lastPC])
+      this.locations[this.lastPC].nextPC = this.pc;
     this.locations[this.pc] = {
       ...sourceLocation2codeLocation(instr.$cstNode!.range),
       nextPC: -1,
+      label: `${this.curLabel}+${this.pc - this.labels[this.curLabel].address}`,
     };
     this.lastPC = this.pc;
 
@@ -256,7 +281,7 @@ class Assembler {
   processArgs(data: Data) {
     // found the instruction arguments (Data) - check match expected and consume
     const info = instructionInfo[this.curInstr!.op];
-    if (info.instr == "STZ") debugger
+    if (info.instr == "STZ") debugger;
     let size = 0;
     let dataIndex = 0;
     for (let argIndex = 0; argIndex < info.argType.length; argIndex++) {
@@ -276,16 +301,26 @@ class Assembler {
         if (curDataSize == 1) {
           const nextDataItem = data.items[dataIndex++];
           const nextDataSize = getExpressionSize(nextDataItem);
-          if (nextDataSize !== 1) throw Error("expectedArgSize is 2 and should have received two consecutive bytes");
+          if (nextDataSize !== 1)
+            throw Error(
+              "expectedArgSize is 2 and should have received two consecutive bytes",
+            );
           size += 2; // 2 consecutive bytes
         } else if (curDataSize == 2) {
           size += 2;
-        } else throw Error(`Invalid data item size ${curDataSize} at entry ${data.$containerIndex}`);
+        } else
+          throw Error(
+            `Invalid data item size ${curDataSize} at entry ${data.$containerIndex}`,
+          );
       }
     }
 
-    if (dataIndex != data.items.length) throw Error(`More data items than expected arguments for entry ${data.$cstNode!.text}`);
-    if (size != info.totalSize) throw Error("Data does not match expected argument size");
+    if (dataIndex != data.items.length)
+      throw Error(
+        `More data items than expected arguments for entry ${data.$cstNode!.text}`,
+      );
+    if (size != info.totalSize)
+      throw Error("Data does not match expected argument size");
     this.advanceBytes(size);
     this.curInstr = null;
   }
@@ -365,7 +400,8 @@ class Assembler {
       if (expr.operator == "<") return { result: x & 0xff, size: 1 };
       else return { result: (x >> 8) & 0xff, size: 1 };
     } else if (isStringLiteral(expr)) {
-      if (expr.value.length != 1) throw Error(`processExpression should only be char literal`);
+      if (expr.value.length != 1)
+        throw Error(`processExpression should only be char literal`);
       return { result: expr.value.charCodeAt(0), size: 1 };
     } else if (isImmediateByteLiteral(expr)) {
       return { result: expr.neg ? -expr.value : expr.value, size: 1 };

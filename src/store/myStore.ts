@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { immer } from "zustand/middleware/immer";
 import { devtools } from "zustand/middleware";
-import type { AsmCompileResult } from "../minasm/worker/minasm-server-start.js";
+import type { AsmCompileResult } from "../minasm/worker/api";
 
 interface State {
   compiledAsm: Record<string, AsmCompileResult>;

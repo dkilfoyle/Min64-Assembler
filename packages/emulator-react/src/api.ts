@@ -9,6 +9,7 @@ export interface IRunParams {
   hex?: string;
   pc?: number;
   reset?: boolean;
+  labels?: Record<number, string>;
 }
 
 export interface IStepParams {
@@ -17,7 +18,8 @@ export interface IStepParams {
 }
 
 export interface IMemoryViewerParams {
-  startAddress: number;
+  addrTarget: number;
+  addrTargetEnd: number;
 }
 
 export const RunNotification: NotificationType<IRunParams> = {

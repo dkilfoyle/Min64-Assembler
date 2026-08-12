@@ -5,6 +5,10 @@ import react from "@vitejs/plugin-react";
 export default defineConfig({
   logLevel: "error",
   plugins: [react()],
+  server: {
+    host: "127.0.0.1", // Forces explicit IPv4 local address
+    port: 8080, // Sets your desired port
+  },
   build: {
     outDir: "../../public",
     rollupOptions: {

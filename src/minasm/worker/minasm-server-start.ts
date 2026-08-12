@@ -5,9 +5,20 @@
 
 /// <reference lib="WebWorker" />
 
-import { DocumentState, EmptyFileSystem, URI, type AstNode, type LangiumDocument } from "langium";
+import {
+  DocumentState,
+  EmptyFileSystem,
+  URI,
+  type AstNode,
+  type LangiumDocument,
+} from "langium";
 import { startLanguageServer } from "langium/lsp";
-import { BrowserMessageReader, BrowserMessageWriter, createConnection, NotificationType } from "vscode-languageserver/browser";
+import {
+  BrowserMessageReader,
+  BrowserMessageWriter,
+  createConnection,
+  NotificationType,
+} from "vscode-languageserver/browser";
 import { createMinasmServices } from "../ls/minasm-module.js";
 import { assembler } from "../assembler/assembler.js";
 import { isProgram } from "../ls/generated/ast.js";
@@ -19,7 +30,10 @@ let messageWriter: BrowserMessageWriter | undefined;
 const buildTimers = new Map<string, number>();
 const DEBOUNCE_DELAY_MS = 500; // Adjust as needed
 
-export const start = async (port: MessagePort | DedicatedWorkerGlobalScope, name: string) => {
+export const start = async (
+  port: MessagePort | DedicatedWorkerGlobalScope,
+  name: string,
+) => {
   console.log(`Starting ${name}...`);
   /* browser specific setup code */
   messageReader = new BrowserMessageReader(port);
@@ -32,17 +46,33 @@ export const start = async (port: MessagePort | DedicatedWorkerGlobalScope, name
   const connection = createConnection(messageReader, messageWriter);
 
   // Inject the shared services and language-specific services
-  const { shared } = await createMinasmServices({ connection, ...EmptyFileSystem });
+  const { shared } = await createMinasmServices({
+    connection,
+    ...EmptyFileSystem,
+  });
 
   // Start the language server with the shared services
   startLanguageServer(shared);
 
   connection.onRequest(AsmCompileRequest, async (params) => {
-    const doc = shared.workspace.LangiumDocuments.getDocument(URI.parse(params.uri));
-    if (doc && isProgram(doc.parseResult.value) && doc.diagnostics?.length == 0) {
+    const doc = shared.workspace.LangiumDocuments.getDocument(
+      URI.parse(params.uri),
+    );
+    if (
+      doc &&
+      isProgram(doc.parseResult.value) &&
+      doc.diagnostics?.length == 0
+    ) {
       assembler.assemble(doc.parseResult.value);
       // console.log("Locations:", assembler.locations);
-      return { uri: params.uri, hex: assembler.hex.toString(), locations: assembler.locations, labels: assembler.labels };
+      const { hex, startAddress } = assembler.hex.compile();
+      return {
+        uri: params.uri,
+        hex,
+        startAddress,
+        locations: assembler.locations,
+        labels: assembler.labels,
+      };
     } else {
       console.error("Document not found for URI:", params.uri);
       throw Error();
