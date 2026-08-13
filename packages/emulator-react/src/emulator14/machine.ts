@@ -36,6 +36,7 @@ export class Machine {
   readonly vga = new Vga(this.mem);
   isTracing = false;
   runType: RunTypes | StepTypes = "run";
+  speed = 0;
   // callStack: ICallStackEntry[] = [];
   breakpoints: IBreakpoint[] = [];
   stopStepOverPC = -1;
@@ -68,7 +69,8 @@ export class Machine {
     const records = parseIntelHex(hexText);
     for (const rec of records) {
       const flatAddr = startBank * BANK_SIZE + rec.address;
-      if (flatAddr < 0 || flatAddr + rec.data.length > this.mem.flash.length) continue;
+      if (flatAddr < 0 || flatAddr + rec.data.length > this.mem.flash.length)
+        continue;
       this.mem.flash.set(rec.data, flatAddr);
     }
   }
@@ -129,7 +131,9 @@ export class Machine {
     // if (this.cpu.pc == 0xf7df + 2) debugger;
 
     if (this.isTracing) {
-      msg(`${this.cpu.pc.toString(16).padStart(4, "0")}: ${disassembleOne(this.mem, this.cpu.pc).text}`);
+      msg(
+        `${this.cpu.pc.toString(16).padStart(4, "0")}: ${disassembleOne(this.mem, this.cpu.pc).text}`,
+      );
       // console.log(disassembleRange(this.mem, 0xf4a5, 20));
     }
   }
@@ -161,15 +165,25 @@ export class Machine {
     let haveClocks = dt * 8000; // 8MHz clock
     switch (this.runType) {
       case "run":
+        if (this.speed) {
+          this.cpu.step();
+          break;
+        }
         while (haveClocks > 0) {
           haveClocks -= this.cpu.step();
         }
         break;
       case "continue":
-        let isTimeToStop = this.isBreakpoint(this.cpu.pc) || this.cpu.pc == this.stopStepOverPC || this.cpu.pc == 0xf135; // 0xf135 is OS_Prompt, which is a good place to stop after a continue
+        let isTimeToStop =
+          this.isBreakpoint(this.cpu.pc) ||
+          this.cpu.pc == this.stopStepOverPC ||
+          this.cpu.pc == 0xf135; // 0xf135 is OS_Prompt, which is a good place to stop after a continue
         while (haveClocks > 0 && !isTimeToStop) {
           haveClocks -= this.debugStep();
-          isTimeToStop = this.isBreakpoint(this.cpu.pc) || this.cpu.pc === this.stopStepOverPC || this.cpu.pc == 0xf135;
+          isTimeToStop =
+            this.isBreakpoint(this.cpu.pc) ||
+            this.cpu.pc === this.stopStepOverPC ||
+            this.cpu.pc == 0xf135;
         }
         if (isTimeToStop) {
           this.runType = "stop";

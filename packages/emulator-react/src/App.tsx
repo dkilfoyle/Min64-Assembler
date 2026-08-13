@@ -17,7 +17,9 @@ import "baukasten-ui/dist/baukasten-web.css";
 import {
   Badge,
   Button,
+  Divider,
   Heading,
+  Icon,
   Input,
   Select,
   Slider,
@@ -36,6 +38,15 @@ const vscode =
         setState: (state: any) => console.log("vscode.setState", state),
       };
 const webview_messenger = new Messenger(vscode);
+
+let worker_api: Comlink.Remote<{
+  init(canvas: OffscreenCanvas): Promise<void>;
+  keyDown(key: string): Promise<void>;
+  keyUp(key: string): Promise<void>;
+  getEmulationState(): Promise<IEmulationState>;
+  run(params: IRunParams): Promise<void>;
+  step(params: IStepParams): Promise<IEmulationState>;
+}>;
 
 export const App: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -83,7 +94,7 @@ export const App: React.FC = () => {
     );
     workerRef.current = worker;
 
-    const worker_api = Comlink.wrap<{
+    worker_api = Comlink.wrap<{
       init(canvas: OffscreenCanvas): Promise<void>;
       keyDown(key: string): Promise<void>;
       keyUp(key: string): Promise<void>;
@@ -149,8 +160,18 @@ export const App: React.FC = () => {
       <div ref={divRef} className="canvas-container">
         <canvas ref={canvasRef} width={400} height={240} className="screen" />
       </div>
+      <Divider label="Controls" spacing="4px" />
+      <div className="emulation-controls-container">
+        <Button size="xs" variant="secondary">
+          Slow
+        </Button>
+        <Button size="md">
+          <Icon name="refresh"></Icon>
+        </Button>
+      </div>
       {emulationState && (
         <>
+          <Divider label="State" spacing="4px" />
           <div className="emulation-state-container">
             <div className="emulation-state">
               <span>PC</span>
@@ -165,19 +186,13 @@ export const App: React.FC = () => {
               >
                 {emulationState.pc.toString(16).padStart(4, "0").toUpperCase()}
               </Button>
-              <Button
-                variant="secondary"
-                style={{ width: "80px", textAlign: "center" }}
-              >
+              <div className="info-label" style={{ width: "100px" }}>
                 {labels[emulationState.pc] || "-"}
-              </Button>
+              </div>
               <span>A</span>
-              <Button
-                variant="secondary"
-                style={{ width: "30px", textAlign: "center" }}
-              >
+              <div className="info-value-byte">
                 {emulationState.a.toString(16).padStart(2, "0").toUpperCase()}
-              </Button>
+              </div>
               <Badge variant={emulationState.n ? "error" : "default"}>N</Badge>
               <Badge variant={emulationState.z ? "error" : "default"}>Z</Badge>
               <Badge variant={emulationState.c ? "error" : "default"}>C</Badge>
@@ -342,11 +357,12 @@ export const App: React.FC = () => {
             </div>
           </div>
 
+          <Divider label="Hover" spacing="4px" />
           <div className="hover-info-container">
             <div className="hover-info-line">
               <div className="info-field">
-                <span>Hover address:</span>
-                <span className="info-value">
+                <span>Address:</span>
+                <span className="info-value-word">
                   {addrHover !== null
                     ? addrHover.toString(16).padStart(4, "0").toUpperCase()
                     : "-"}
@@ -354,27 +370,27 @@ export const App: React.FC = () => {
               </div>
               <div className="info-field">
                 <span>Label:</span>
-                <span className="info-value" style={{ width: "100px" }}>
+                <span className="info-label" style={{ width: "100px" }}>
                   {addrHover !== null ? labels[addrHover] || "-" : "-"}
                 </span>
               </div>
             </div>
             <div className="hover-info-line">
               <div className="info-field">
-                <span>Decimal:</span>
-                <span className="info-value">
+                <span>Dec:</span>
+                <span className="info-value-byte">
                   {addrHover !== null ? hoverByte : 0}
                 </span>
               </div>
               <div className="info-field">
-                <span>DecimalWord:</span>
-                <span className="info-value">
+                <span>DecWord:</span>
+                <span className="info-value-word">
                   {(hoverWord !== null ? hoverWord : 0).toString(10)}
                 </span>
               </div>
               <div className="info-field">
                 <span>HexWord:</span>
-                <span className="info-value">
+                <span className="info-value-word">
                   {(hoverWord !== null ? hoverWord : 0)
                     .toString(16)
                     .padStart(4, "0")
