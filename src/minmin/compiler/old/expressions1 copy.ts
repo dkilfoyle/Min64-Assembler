@@ -11,9 +11,9 @@ import {
   UnaryExpression,
   VariableReference,
   type Expression,
-} from "../ls/generated/ast";
-import type { MinCompiler } from "./compiler";
-import { hexByte, hexWord } from "./utils";
+} from "../../ls/generated/ast";
+import type { MinCompiler } from "./compiler1";
+import { hexByte, hexWord } from "../utils";
 
 const runtime2 = import.meta.glob("./runtime/*.asm", {
   query: "?raw",

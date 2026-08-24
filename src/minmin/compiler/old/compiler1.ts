@@ -16,10 +16,10 @@ import {
   isWhile,
   PrintStatement,
   type Program,
-} from "../ls/generated/ast";
-import { osAddr } from "./oslabels";
-import { highOperand, lowOperand } from "./utils";
-import { ExpressionCompiler } from "./expressions";
+} from "../../ls/generated/ast";
+import { osAddr } from "../oslabels";
+import { highOperand, lowOperand } from "../utils";
+import { ExpressionCompiler } from "./expressions1";
 
 type ScopeSymbol = VariableSymbol | FunctionSymbol;
 

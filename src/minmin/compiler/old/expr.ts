@@ -11,7 +11,7 @@ import {
   LogicExpression,
   type Expression,
 } from "../../ls/generated/ast";
-import type { MinCompiler, Width } from "../compiler";
+import type { MinCompiler, Width } from "./compiler1";
 import { hexByte, hexWord, highOperand, immByte, immWord, lowOperand, type Addr } from "../utils";
 
 export class ExpressionCompiler {

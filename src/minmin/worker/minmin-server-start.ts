@@ -7,14 +7,10 @@
 
 import { EmptyFileSystem, URI } from "langium";
 import { startLanguageServer } from "langium/lsp";
-import {
-  BrowserMessageReader,
-  BrowserMessageWriter,
-  createConnection,
-} from "vscode-languageserver/browser";
+import { BrowserMessageReader, BrowserMessageWriter, createConnection } from "vscode-languageserver/browser";
 import { createMinminServices } from "../ls/minmin-module.js";
 import { isProgram, Program } from "../ls/generated/ast.js";
-import { minCompiler } from "../compiler/compiler.js";
+import { minCompiler } from "../compiler/old/compiler1.js";
 import { MinCompileRequest } from "./api.js";
 
 // export interface MinDocChangeNotification {
@@ -29,10 +25,7 @@ let messageWriter: BrowserMessageWriter | undefined;
 const buildTimers = new Map<string, number>();
 const DEBOUNCE_DELAY_MS = 1000; // Adjust as needed
 
-export const start = async (
-  port: MessagePort | DedicatedWorkerGlobalScope,
-  name: string,
-) => {
+export const start = async (port: MessagePort | DedicatedWorkerGlobalScope, name: string) => {
   console.log(`Starting ${name}...`);
   /* browser specific setup code */
   messageReader = new BrowserMessageReader(port);
@@ -54,18 +47,22 @@ export const start = async (
   startLanguageServer(shared);
 
   connection.onRequest(MinCompileRequest, async (params) => {
-    const doc = shared.workspace.LangiumDocuments.getDocument(
-      URI.parse(params.uri),
-    );
-    if (
-      doc &&
-      isProgram(doc.parseResult.value) &&
-      doc.diagnostics?.length == 0
-    ) {
-      const asm = minCompiler.generate(
-        doc.uri.toString(),
-        doc.parseResult.value,
-      );
+    if (minCompiler.stdLib == null) {
+      const stdmin = shared.workspace.LangiumDocuments.getDocument(URI.parse("builtin:///std.min"));
+      if (stdmin && isProgram(stdmin.parseResult.value)) {
+        minCompiler.stdLib = stdmin.parseResult.value;
+      } else {
+        return {
+          uri: params.uri,
+          asm: "",
+          status: "error",
+          errors: ["Builtin std.min not found or has errors"],
+        };
+      }
+    }
+    const doc = shared.workspace.LangiumDocuments.getDocument(URI.parse(params.uri));
+    if (doc && isProgram(doc.parseResult.value) && doc.diagnostics?.length == 0) {
+      const asm = minCompiler.generate(doc.uri.toString(), doc.parseResult.value);
       return { uri: params.uri, asm, status: "ok", errors: [] };
     } else {
       return {

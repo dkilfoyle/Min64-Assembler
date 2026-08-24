@@ -2,29 +2,14 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import * as Comlink from "comlink";
 import { transfer } from "comlink";
 import { Messenger } from "vscode-messenger-webview";
-import {
-  type IRunParams,
-  type IStepParams,
-  EmulationStateRequest,
-  RunNotification,
-  StepRequest,
-  MemoryViewerNotification,
-} from "./api";
+import { type IRunParams, type IStepParams, EmulationStateRequest, RunNotification, StepRequest, MemoryViewerNotification } from "./api";
 import { type IEmulationState } from "./emulator14/machine";
 import "baukasten-ui/dist/baukasten-base.css";
 // import "baukasten-ui/dist/baukasten-vscode.css";
 import "baukasten-ui/dist/baukasten-web.css";
-import {
-  Badge,
-  Button,
-  Divider,
-  Heading,
-  Icon,
-  Input,
-  Select,
-  Slider,
-} from "baukasten-ui/core";
+import { Badge, Button, Divider, Heading, Icon, Input, Select, Slider } from "baukasten-ui/core";
 import clsx from "clsx";
+import { getScrollbarSize, List, type RowComponentProps } from "react-window";
 import "./App.css";
 
 import { osShortLabels } from "./emulator14/oslabels";
@@ -52,16 +37,15 @@ export const App: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const divRef = useRef<HTMLDivElement | null>(null);
   const workerRef = useRef<Worker | null>(null);
-  const [emulationState, setEmulationState] =
-    React.useState<IEmulationState | null>({
-      memory: new Uint8Array(0xffff + 1),
-      pc: 0,
-      sp: 0,
-      c: false,
-      z: false,
-      n: false,
-      a: 0,
-    });
+  const [emulationState, setEmulationState] = React.useState<IEmulationState | null>({
+    memory: new Uint8Array(0xffff + 1),
+    pc: 0,
+    sp: 0,
+    c: false,
+    z: false,
+    n: false,
+    a: 0,
+  });
 
   const [addrTarget, setAddrTarget] = useState<number>(0);
   const [addrTargetEnd, setAddrTargetEnd] = useState<number>(1);
@@ -71,16 +55,9 @@ export const App: React.FC = () => {
   const addrStart = useMemo(() => addrTarget & 0xfff0, [addrTarget]);
   const addrPage = useMemo(() => (addrStart >> 8) & 0xff, [addrStart]);
   const addrOffset = useMemo(() => addrStart & 0xff, [addrStart]);
-  const hoverByte = useMemo(
-    () => (addrHover !== null ? emulationState?.memory[addrHover] : null),
-    [addrHover, emulationState],
-  );
+  const hoverByte = useMemo(() => (addrHover !== null ? emulationState?.memory[addrHover] : null), [addrHover, emulationState]);
   const hoverWord = useMemo(
-    () =>
-      addrHover !== null && emulationState
-        ? (emulationState.memory[addrHover + 1] << 8) |
-          emulationState.memory[addrHover]
-        : null,
+    () => (addrHover !== null && emulationState ? (emulationState.memory[addrHover + 1] << 8) | emulationState.memory[addrHover] : null),
     [addrHover, emulationState],
   );
 
@@ -88,10 +65,7 @@ export const App: React.FC = () => {
     if (!canvasRef.current) return;
 
     // 1. Initialize Worker using standard Vite / Webpack 5 URL syntax
-    const worker = new Worker(
-      new URL("./emulator.worker.ts", import.meta.url),
-      { type: "module" },
-    );
+    const worker = new Worker(new URL("./emulator.worker.ts", import.meta.url), { type: "module" });
     workerRef.current = worker;
 
     worker_api = Comlink.wrap<{
@@ -155,23 +129,44 @@ export const App: React.FC = () => {
     };
   }, []);
 
+  const memoryRow = ({ index, style }: RowComponentProps) => {
+    const rowAddress = addrStart + index * 16;
+    return (
+      <div key={"row-" + rowAddress} className="memory-row" style={style}>
+        <div className="memory-row-address">{rowAddress.toString(16).padStart(4, "0").toUpperCase()}</div>
+        <div className="memory-row-bytes">
+          {Array.from(emulationState!.memory.slice(rowAddress, rowAddress + 16)).map((byte, index) => (
+            <div
+              key={index}
+              onMouseEnter={() => {
+                setAddrHover(rowAddress + index);
+              }}
+              className={clsx("memory-cell", {
+                "memory-cell-target": rowAddress + index >= addrTarget && rowAddress + index <= addrTargetEnd,
+                "memory-cell-hover": addrHover !== null && rowAddress + index === addrHover,
+              })}>
+              {byte.toString(16).padStart(2, "0").toUpperCase()}
+            </div>
+          ))}
+        </div>
+        <div className="memory-row-chars">
+          {Array.from(emulationState!.memory.slice(rowAddress, rowAddress + 16)).map((byte, index) => (
+            <div key={index} className="memory-cell">
+              {String.fromCharCode(byte || 46)}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="app-container">
       <div ref={divRef} className="canvas-container">
         <canvas ref={canvasRef} width={400} height={240} className="screen" />
       </div>
-      <Divider label="Controls" spacing="4px" />
-      <div className="emulation-controls-container">
-        <Button size="xs" variant="secondary">
-          Slow
-        </Button>
-        <Button size="md">
-          <Icon name="refresh"></Icon>
-        </Button>
-      </div>
       {emulationState && (
         <>
-          <Divider label="State" spacing="4px" />
           <div className="emulation-state-container">
             <div className="emulation-state">
               <span>PC</span>
@@ -182,17 +177,14 @@ export const App: React.FC = () => {
                   const newStartAddress = emulationState.pc & 0xfff0;
                   setAddrTarget(newStartAddress);
                   setAddrTargetEnd(newStartAddress + 15); // Assuming a 16-byte range
-                }}
-              >
+                }}>
                 {emulationState.pc.toString(16).padStart(4, "0").toUpperCase()}
               </Button>
               <div className="info-label" style={{ width: "100px" }}>
                 {labels[emulationState.pc] || "-"}
               </div>
               <span>A</span>
-              <div className="info-value-byte">
-                {emulationState.a.toString(16).padStart(2, "0").toUpperCase()}
-              </div>
+              <div className="info-value-byte">{emulationState.a.toString(16).padStart(2, "0").toUpperCase()}</div>
               <Badge variant={emulationState.n ? "error" : "default"}>N</Badge>
               <Badge variant={emulationState.z ? "error" : "default"}>Z</Badge>
               <Badge variant={emulationState.c ? "error" : "default"}>C</Badge>
@@ -204,198 +196,91 @@ export const App: React.FC = () => {
                   const newStartAddress = emulationState.sp & 0xfff0;
                   setAddrTarget(newStartAddress);
                   setAddrTargetEnd(newStartAddress + 15); // Assuming a 16-byte range
-                }}
-              >
+                }}>
                 {emulationState.sp.toString(16).padStart(4, "0").toUpperCase()}
               </Button>
+              <Button size="sm">
+                <Icon name="refresh" />
+              </Button>
             </div>
-            <div className="memory-view-table">
-              {Array.from({ length: 16 }, (_, i) => addrStart + i * 16).map(
-                (rowAddress) => (
-                  <div key={"row-" + rowAddress} className="memory-row">
-                    <div className="memory-row-address">
-                      {rowAddress.toString(16).padStart(4, "0").toUpperCase()}
-                    </div>
-                    <div className="memory-row-bytes">
-                      {Array.from(
-                        emulationState.memory.slice(
-                          rowAddress,
-                          rowAddress + 16,
-                        ),
-                      ).map((byte, index) => (
-                        <div
-                          key={index}
-                          onMouseEnter={() => {
-                            setAddrHover(rowAddress + index);
-                          }}
-                          onMouseLeave={() => {
-                            setAddrHover(null);
-                          }}
-                          className={clsx("memory-cell", {
-                            "memory-cell-target":
-                              rowAddress + index >= addrTarget &&
-                              rowAddress + index <= addrTargetEnd,
-                            "memory-cell-hover":
-                              addrHover !== null &&
-                              rowAddress + index === addrHover,
-                          })}
-                        >
-                          {byte.toString(16).padStart(2, "0").toUpperCase()}
-                        </div>
-                      ))}
-                    </div>
-                    <div className="memory-row-chars">
-                      {Array.from(
-                        emulationState.memory.slice(
-                          rowAddress,
-                          rowAddress + 16,
-                        ),
-                      ).map((byte, index) => (
-                        <div key={index} className="memory-cell">
-                          {String.fromCharCode(byte || 46)}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ),
-              )}
+            <div
+              className="memory-view-table"
+              onMouseLeave={() => {
+                setAddrHover(null);
+              }}>
+              <List rowComponent={memoryRow} rowCount={256} rowHeight={20} rowProps={{}}></List>
             </div>
-            <div className="memory-slider-container">
-              <span
-                style={{
-                  textAlign: "right",
-                  width: "60px",
-                  display: "inline-block",
-                }}
-              >
-                Page
-              </span>
-              <Input
-                value={addrPage.toString(16).padStart(2, "0").toUpperCase()}
-                style={{
-                  width: "40px",
-                  textAlign: "center",
-                  marginRight: "10px",
-                }}
-              ></Input>
-              <Slider
-                min={0}
-                max={255}
-                step={1}
-                fullWidth
-                // }}
-                value={addrPage}
-                onChange={(page) => {
-                  const newStartAddress =
-                    ((Number(page) & 0xff) << 8) | (addrOffset & 0xff);
-                  setAddrTarget(newStartAddress);
-                  setAddrTargetEnd(newStartAddress + 1); // Assuming a 16-byte range
-                }}
-                style={{ display: "inline-block" }}
-              />
-            </div>
-            <div className="memory-slider-container">
-              <span
-                style={{
-                  textAlign: "right",
-                  width: "60px",
-                  display: "inline-block",
-                }}
-              >
-                Offset
-              </span>
-              <Input
-                value={addrOffset.toString(16).padStart(2, "0").toUpperCase()}
-                style={{
-                  width: "40px",
-                  textAlign: "center",
-                  marginRight: "10px",
-                }}
-              ></Input>
-              <Slider
-                min={0}
-                max={0xf0}
-                step={16}
-                fullWidth
-                value={addrOffset}
-                onChange={(offset) => {
-                  const newTargetAddress =
-                    ((addrPage & 0xff) << 8) | (Number(offset) & 0xff);
-                  setAddrTarget(newTargetAddress);
-                  setAddrTargetEnd(newTargetAddress + 1); // Assuming a 16-byte range
-                }}
-                style={{
-                  marginBottom: "0px !important",
-                  display: "inline-block",
-                }}
-              />
-            </div>
-            <div className="emulation-state">
-              <span>Labels</span>
-              <Select
-                placeholder=""
-                options={Object.entries(labels).map(([address, label]) => ({
-                  value: address,
-                  label,
-                }))}
-                onChange={(value) => {
-                  const newTargetAddress = parseInt(value, 10);
-                  setAddrTarget(newTargetAddress);
-                  setAddrTargetEnd(newTargetAddress + 1);
-                }}
-              ></Select>
-              <span style={{ marginLeft: "10px" }}>Address:</span>
-              <Input
-                value={addrTarget.toString(16).padStart(4, "0").toUpperCase()}
-                onChange={(e) => setAddrTarget(parseInt(e.target.value, 16))}
-                style={{
-                  width: "60px",
-                  textAlign: "center",
-                  marginLeft: "5px",
-                }}
-              ></Input>
-            </div>
-          </div>
 
-          <Divider label="Hover" spacing="4px" />
-          <div className="hover-info-container">
-            <div className="hover-info-line">
-              <div className="info-field">
-                <span>Address:</span>
-                <span className="info-value-word">
-                  {addrHover !== null
-                    ? addrHover.toString(16).padStart(4, "0").toUpperCase()
-                    : "-"}
-                </span>
-              </div>
-              <div className="info-field">
-                <span>Label:</span>
-                <span className="info-label" style={{ width: "100px" }}>
-                  {addrHover !== null ? labels[addrHover] || "-" : "-"}
-                </span>
+            <div className="line">
+              <span className="line-label">Page</span>
+              <div className="spread">
+                <Input
+                  value={addrPage.toString(16).padStart(2, "0").toUpperCase()}
+                  style={{
+                    width: "40px",
+                    textAlign: "center",
+                    marginRight: "10px",
+                  }}></Input>
+                <div style={{ marginTop: "-6px", width: "100%", display: "inline-block" }}>
+                  <Slider
+                    min={0}
+                    max={255}
+                    step={1}
+                    fullWidth
+                    // }}
+                    value={addrPage}
+                    onChange={(page) => {
+                      const newStartAddress = ((Number(page) & 0xff) << 8) | (addrOffset & 0xff);
+                      setAddrTarget(newStartAddress);
+                      setAddrTargetEnd(newStartAddress + 1); // Assuming a 16-byte range
+                    }}
+                  />
+                </div>
               </div>
             </div>
-            <div className="hover-info-line">
-              <div className="info-field">
-                <span>Dec:</span>
-                <span className="info-value-byte">
-                  {addrHover !== null ? hoverByte : 0}
-                </span>
+
+            <div className="line">
+              <span className="line-label">Goto</span>
+              <div className="spread">
+                <Select
+                  placeholder=""
+                  options={Object.entries(labels).map(([address, label]) => ({
+                    value: address,
+                    label,
+                  }))}
+                  onChange={(value) => {
+                    const newTargetAddress = parseInt(value, 10);
+                    setAddrTarget(newTargetAddress);
+                    setAddrTargetEnd(newTargetAddress + 1);
+                  }}></Select>
+                <div className="info-field">
+                  <span style={{ marginLeft: "10px" }}>Address:</span>
+                  <Input
+                    value={addrTarget.toString(16).padStart(4, "0").toUpperCase()}
+                    onChange={(e) => setAddrTarget(parseInt(e.target.value, 16))}
+                    style={{
+                      width: "60px",
+                      textAlign: "center",
+                      marginLeft: "5px",
+                    }}></Input>
+                </div>
               </div>
-              <div className="info-field">
-                <span>DecWord:</span>
-                <span className="info-value-word">
-                  {(hoverWord !== null ? hoverWord : 0).toString(10)}
-                </span>
-              </div>
-              <div className="info-field">
-                <span>HexWord:</span>
-                <span className="info-value-word">
-                  {(hoverWord !== null ? hoverWord : 0)
-                    .toString(16)
-                    .padStart(4, "0")
-                    .toUpperCase()}
-                </span>
+            </div>
+
+            <div className="line">
+              <span className="line-label">Hover</span>
+              <div className="spread">
+                <div className="collect">
+                  <span className="info-value-word">{addrHover !== null ? addrHover.toString(16).padStart(4, "0").toUpperCase() : "-"}</span>
+                  <span className="info-label" style={{ width: "100px" }}>
+                    {addrHover !== null ? labels[addrHover] || "-" : "-"}
+                  </span>
+                </div>
+                <div className="collect">
+                  <span className="info-value-word">{addrHover !== null ? hoverByte : 0}</span>
+                  <span className="info-value-word">{(hoverWord !== null ? hoverWord : 0).toString(10)}</span>
+                  <span className="info-value-word">{(hoverWord !== null ? hoverWord : 0).toString(16).padStart(4, "0").toUpperCase()}</span>
+                </div>
               </div>
             </div>
           </div>
