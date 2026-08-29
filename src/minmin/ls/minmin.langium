@@ -1,13 +1,16 @@
 grammar MinminModel
 
 entry Program:
-  elements+=Element*;
+  elements+=GlobalElement*;
 
-Element:
+LocalElement:
   SimpleStatement |
   ";" SimpleStatement |
   If |
-  While |
+  While;
+
+GlobalElement:
+  LocalElement | 
   Def | 
   Use;
 
@@ -33,15 +36,15 @@ fragment Block:
     block+=SimpleStatement (";" block+=SimpleStatement)* 
   ) |
   (
-    INDENT block+=Element+
+    INDENT block+=LocalElement+
     DEDENT
   );
 
 ParameterDeclaration returns NamedElement:
-  {infer ParameterDeclaration} type=("char"|"int") and?="&"? name=ID;
+  {infer ParameterDeclaration} type=("char"|"int") byRef?="&"? name=ID;
 
 Use:
-  'use' lib=STRING;
+  'use' libPath=STRING;
 
 SimpleStatement:
   VariableDeclaration |
@@ -54,19 +57,19 @@ SimpleStatement:
   PrintStatement;
 
 VariableDeclaration returns NamedElement:
-  {infer VariableDeclaration} type=("int"|"char") name=ID ("@" atexpr=Expression)? ("=" assignExpr=CompoundExpression)?;
+  {infer VariableDeclaration} type=("int"|"char") name=ID ("@" atExpr=Expression)? ("=" assignExpr=CompoundExpression)?;
 
 VariableAssignment:
-  {infer VariableAssignment} varName=[NamedElement:ID] (index=ArrayIndex)? "=" assignExpr=CompoundExpression;
+  varName=[NamedElement:ID] ArrayIndex? "=" assignExpr=CompoundExpression;
 
 VariableCalcAssignment:
-  varName=[NamedElement:ID] (index=ArrayIndex)? op=("+="|"-=") NumberLiteral;
+  varName=[NamedElement:ID] ArrayIndex? op=("+="|"-=") value=(HEXNUMBER|DECIMALNUMBER);
 
 ReturnStatement:
   "return" expr=CompoundExpression;
 
-BreakStatement returns string:
-  "break";
+BreakStatement:
+  break="break";
 
 CallStatement:
   "call" address=NumberLiteral;
@@ -74,9 +77,8 @@ CallStatement:
 PrintStatement:
   "print" "(" args+=CompoundExpression ("," args+=CompoundExpression)* ")";
 
-
-ArrayIndex:
-  "[" expr=Expression "]";
+fragment ArrayIndex:
+  "[" indexExpr=Expression "]";
 
 CompoundExpression:
   exprs+=Expression ("_" exprs+=Expression)*;
@@ -131,7 +133,7 @@ terminal INDENT: 'synthetic:indent';
 terminal DEDENT: 'synthetic:dedent';
 hidden terminal WS: /[\t ]+/;
 hidden terminal NL: /[\r\n]+/;
-hidden terminal COMMENT: /#[^\n]*/;
+hidden terminal COMMENT: /#[^\n\r]*/;
 // terminal US: /_/;
 terminal HEXNUMBER returns number: /0x[0-9A-Fa-f]+/;
 terminal DECIMALNUMBER returns number: /[0-9]+/;

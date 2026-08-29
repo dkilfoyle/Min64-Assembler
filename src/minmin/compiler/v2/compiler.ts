@@ -1,4 +1,27 @@
-import * as AST from "../ls/generated/ast";
+import type { AstNode } from "langium";
+import * as AST from "../../ls/generated/ast";
+import {
+  isBinaryExpression,
+  isComparisonExpression,
+  isUnaryExpression,
+  isVariableReference,
+  isNumberLiteral,
+  isStringLiteral,
+  isFunctionCall,
+  isIf,
+  isWhile,
+  isDef,
+  isUse,
+  isBreakStatement,
+  isCallStatement,
+  isPrintStatement,
+  isReturnStatement,
+  isVariableCalcAssignment,
+  isVariableAssignment,
+  isVariableDeclaration,
+} from "../../ls/generated/ast";
+import { CompileError } from "../utils";
+import { computeReachableDefs } from "../reachability";
 
 /**
  * Code generator: MIN AST -> Minimal 64x4 assembly text (fed to assembler.ts).
@@ -67,15 +90,6 @@ interface IStackFrame {
 // save each param = *fp + 2 + paramOffset
 // allocate each local to the stack = *fp + 2 + paramSize + localOffset
 
-export class CompileError extends Error {
-  public line: number;
-
-  constructor(message: string, line: number) {
-    super(`${message} (line ${line})`);
-    this.line = line;
-  }
-}
-
 type VarType = "int" | "char";
 
 interface VarInfo {
@@ -106,19 +120,19 @@ export class MinCompiler {
   private labelCounter = 0;
   private currentFunc: FuncInfo | null = null;
   private breakLabels: string[] = []; // stack, for `break` inside while loops
-  public stdLib: AST.Program | null = null;
 
   compile(mainProgram: AST.Program, libraries: AST.Program[]): string {
     // Collect all Def elements from libraries + main program (main's own defs may also
     // shadow/extend library defs - last one wins if duplicated, matching simple linking).
-    const allPrograms = [this.stdLib ?? { elements: [] }, ...libraries, mainProgram];
+    const allPrograms = [...libraries, mainProgram];
     for (const prog of allPrograms) {
       for (const el of prog.elements) {
-        if (AST.isDef(el)) this.functions.set(el.name, this.registerFunction(el));
+        if (AST.isDef(el))
+          this.functions.set(el.name, this.registerFunction(el));
       }
     }
 
-    this.lines.push("#org " + hex(CODE_BASE));
+    this.lines.push("#org " + hexWord(CODE_BASE));
     this.lines.push("__main_entry:");
 
     // Main program body: everything except Def/Use at top level.
@@ -136,11 +150,15 @@ export class MinCompiler {
     // Emit only the functions actually reachable from main (simple reachability pass),
     // so unused library functions (e.g. std.min's string helpers, if unused) don't need
     // to compile successfully.
-    const reachable = this.computeReachable(mainProgram);
-    for (const name of reachable) {
-      const fn = this.functions.get(name);
+    const reachable = computeReachableDefs(mainProgram, libraries);
+    for (const def of reachable) {
+      const fn = this.functions.get(def.name);
       if (fn) this.genFunction(fn);
     }
+
+    Object.entries(RESERVED_TEMPS).forEach(([name, addr]) => {
+      this.emit("#org " + hexWord(addr) + "    " + name + ":");
+    });
 
     return this.lines.join("\n") + "\n";
   }
@@ -155,24 +173,40 @@ export class MinCompiler {
     const params: VarInfo[] = [];
     const usedByRef: boolean[] = [];
     for (const p of def.params) {
-      const info = this.allocVar(p.type, p.name, 1, false);
+      const info = this.allocVar(def, p.type, p.name, 1, false);
       locals.set(p.name, info);
       params.push(info);
-      usedByRef.push(p.byRef);
+      if (AST.isParameterDeclaration(p)) {
+        usedByRef.push(p.byRef);
+      }
     }
     return { def, params, locals, entryLabel, usedByRef };
   }
 
-  private allocVar(type: VarType, name: string, length: number, pinned: boolean, atAddr?: number): VarInfo {
+  /** Assign a range of zero-page memory for a variable and return address */
+  private allocVar(
+    node: AstNode,
+    type: VarType,
+    name: string,
+    length: number,
+    pinned: boolean,
+    atAddr?: number,
+  ): VarInfo {
     if (pinned) {
-      return { type, address: atAddr!, isArray: length > 1, length, pinned: true };
+      return {
+        type,
+        address: atAddr!,
+        isArray: length > 1,
+        length,
+        pinned: true,
+      };
     }
     const size = elementSize(type) * length;
     if (this.zpNext + size > ZP_USER_END) {
       throw new CompileError(
         `out of zero-page space allocating '${name}' (${size} bytes needed, ` +
           `${ZP_USER_END - this.zpNext} available) - v1 only supports zero-page storage`,
-        0,
+        node,
       );
     }
     const address = this.zpNext;
@@ -192,29 +226,10 @@ export class MinCompiler {
   }
 
   // ---------------------------------------------------------------------------------
-  // Reachability (only compile functions actually called, transitively, from main)
-  // ---------------------------------------------------------------------------------
-
-  private computeReachable(mainProgram: AST.Program): Set<string> {
-    const reachable = new Set<string>();
-    const visit = (elements: AST.Element[]): void => {
-      for (const el of elements)
-        walkForCalls(el, (name) => {
-          if (reachable.has(name)) return;
-          reachable.add(name);
-          const fn = this.functions.get(name);
-          if (fn) visit(fn.def.block);
-        });
-    };
-    visit(mainProgram.elements);
-    return reachable;
-  }
-
-  // ---------------------------------------------------------------------------------
   // Statements
   // ---------------------------------------------------------------------------------
 
-  private genStatement(el: AST.Element): void {
+  private genStatement(el: AST.GlobalElement): void {
     switch (true) {
       case AST.isVariableDeclaration(el):
         return this.genVariableDeclaration(el);
@@ -230,7 +245,7 @@ export class MinCompiler {
       case AST.isBreakStatement(el):
         return this.genBreak(el);
       case AST.isCallStatement(el):
-        this.emit(`JPS ${hex(el.address.value)}`);
+        this.emit(`JPS ${hexWord(el.address.value)}`);
         return;
       case AST.isPrintStatement(el):
         return this.genPrint(el);
@@ -250,21 +265,25 @@ export class MinCompiler {
     let length = 1;
     let pinnedAddr: number | undefined;
     if (decl.atExpr) {
-      pinnedAddr = this.constEval(decl.atExpr, decl.line);
+      pinnedAddr = this.constEval(decl.atExpr);
     }
     const selfSizeRef =
       decl.assignExpr &&
       decl.assignExpr.exprs.length === 1 &&
-      decl.assignExpr.exprs[0].kind === "VariableReference" &&
-      (decl.assignExpr.exprs[0] as A.VariableReference).varName === decl.name &&
-      (decl.assignExpr.exprs[0] as A.VariableReference).index !== null;
+      isVariableReference(decl.assignExpr.exprs[0]) &&
+      decl.assignExpr.exprs[0].varName.$refText === decl.name &&
+      decl.assignExpr.exprs[0].index !== null; // of form type name = name[a|b]
 
     if (selfSizeRef) {
-      const idx = (decl.assignExpr!.exprs[0] as A.VariableReference).index!;
-      const start = idx.startExpr ? this.constEval(idx.startExpr, decl.line) : 0;
-      const end = idx.endExpr ? this.constEval(idx.endExpr, decl.line) : start;
+      const idx = (decl.assignExpr!.exprs[0] as AST.VariableReference).index!;
+      const start = idx.startExpr ? this.constEval(idx.startExpr) : 0;
+      const end = idx.endExpr ? this.constEval(idx.endExpr) : start;
       length = end - start + 1; // inclusive range, per fill.min's usage (a[0|24] -> 25 elems)
-      if (length < 1) throw new CompileError(`invalid array size [${start}|${end}]`, decl.line);
+      if (length < 1)
+        throw new CompileError(
+          `invalid array size [${start}|${end}]`,
+          decl.assignExpr!.exprs[0],
+        );
     } else if (decl.atExpr) {
       // A pinned variable with no explicit size (e.g. "char d @ 0x0080") is a raw
       // memory-address overlay: index it freely, with no compiler-tracked bounds
@@ -272,118 +291,168 @@ export class MinCompiler {
       length = 0xffff;
     }
 
-    const info = this.allocVar(decl.type, decl.name, length, !!decl.atExpr, pinnedAddr);
+    const info = this.allocVar(
+      decl,
+      decl.type,
+      decl.name,
+      length,
+      !!decl.atExpr,
+      pinnedAddr,
+    );
     this.declareVar(decl.name, info);
 
     if (decl.assignExpr && !selfSizeRef) {
-      this.genAssignInto(info, null, decl.assignExpr, decl.line);
+      this.genAssignInto(decl, info, null, decl.assignExpr);
     }
   }
+
+  /** Add the static variable to either function locals or globals */
 
   private declareVar(name: string, info: VarInfo): void {
     if (this.currentFunc) this.currentFunc.locals.set(name, info);
     else this.globals.set(name, info);
   }
 
-  private lookupVar(name: string, line: number): VarInfo {
-    if (this.currentFunc?.locals.has(name)) return this.currentFunc.locals.get(name)!;
+  private lookupVar(name: string, node: AstNode): VarInfo {
+    if (this.currentFunc?.locals.has(name))
+      return this.currentFunc.locals.get(name)!;
     if (this.globals.has(name)) return this.globals.get(name)!;
-    throw new CompileError(`undefined variable '${name}'`, line);
+    throw new CompileError(`undefined variable '${name}'`, node);
   }
 
   private genVariableAssignment(stmt: AST.VariableAssignment): void {
-    const info = this.lookupVar(stmt.varName, stmt.line);
-    this.genAssignInto(info, stmt.index, stmt.assignExpr, stmt.line);
+    const info = this.lookupVar(stmt.varName?.$refText!, stmt);
+    this.genAssignInto(stmt, info, stmt.indexExpr, stmt.assignExpr);
   }
 
-  private genAssignInto(info: VarInfo, indexExpr: AST.Expression | null, rhs: AST.CompoundExpression, line: number): void {
-    if (rhs.exprs.length > 1) {
-      throw new CompileError("concatenation (_) is not yet supported by this compiler", line);
-    }
-    const expr = rhs.exprs[0];
+  private genAssignInto(
+    stmt: AstNode,
+    lhsInfo: VarInfo,
+    lhsIndexExpr: AST.Expression | undefined | null,
+    rhs: AST.CompoundExpression,
+  ): void {
+    // generate x = rhs
 
-    if (indexExpr) {
+    if (rhs.exprs.length > 1) {
+      throw new CompileError(
+        "concatenation (_) is not yet supported by this compiler",
+        rhs,
+      );
+    }
+    const rhsExpr = rhs.exprs[0];
+
+    if (lhsIndexExpr) {
       // a[i] = expr : single element write
-      if (!info.isArray) throw new CompileError(`indexed assignment target is not an array`, line);
-      this.genEvalToTemp(expr, info.type, line, "T1");
-      this.genIndexAddressToPtr(info, indexExpr, line, "PTR1");
-      this.genStoreIndirect("PTR1", info.type, "T1");
+      if (!lhsInfo.isArray)
+        throw new CompileError(
+          `indexed assignment target is not an array`,
+          lhsIndexExpr,
+        );
+      this.genEvalToTemp(rhsExpr, lhsInfo.type, "T1"); // T1 = rhs()
+      this.genIndexAddressToPtr(lhsInfo, lhsIndexExpr, "PTR1"); // PTR1 = &(a[i])
+      this.genStoreIndirect("PTR1", lhsInfo.type, "T1"); // **PTR1 = *T1
       return;
     }
 
     // Whole-variable assignment. Special case: assigning ANOTHER whole array (e.g.
     // "video[i] = a" is index+array-source; "b = a" is whole-array copy) - handled by
     // checking whether the source expression is itself an array variable reference.
-    if (info.isArray && expr.kind === "VariableReference" && !expr.index) {
-      const src = this.lookupVar(expr.varName, line);
+    if (lhsInfo.isArray && isVariableReference(rhsExpr) && !rhsExpr.index) {
+      const src = this.lookupVar(rhsExpr.varName.$refText, rhsExpr);
       if (src.isArray) {
-        this.genArrayCopy(src, info, line);
+        this.genArrayCopy(src, lhsInfo);
         return;
       }
     }
-    if (info.isArray) {
-      throw new CompileError(`cannot assign a scalar expression to array '${info.address}'`, line);
+    if (lhsInfo.isArray) {
+      throw new CompileError(
+        `cannot assign a scalar expression to array '${lhsInfo.address}'`,
+        stmt,
+      );
     }
-    this.genEvalToVar(expr, info, line);
+    this.genEvalToVar(rhsExpr, lhsInfo);
   }
 
   /** Copies the whole content of `src` array into `dst` array (dst[i] = src[i % src.length]
    *  is NOT implemented - lengths must be compatible; used for e.g. fill.min's video[i]=a
    *  pattern via a byte-for-byte copy of min(src bytes, dst-remaining bytes)). */
-  private genArrayCopy(src: VarInfo, dst: VarInfo, line: number): void {
+  private genArrayCopy(src: VarInfo, dst: VarInfo): void {
     const srcBytes = elementSize(src.type) * src.length;
     // dst here is the SPECIFIC destination location (already offset if this was an
     // indexed whole-array store); copy exactly srcBytes bytes.
     for (let i = 0; i < srcBytes; i++) {
-      this.emit(`LDZ ${hex(src.address + i)}`);
-      this.emit(`SDZ ${hex(dst.address + i)}`);
+      this.emit(`LDZ ${hexByte(src.address + i)}`);
+      this.emit(`SDZ ${hexByte(dst.address + i)}`);
     }
   }
 
   private genVariableCalcAssignment(stmt: AST.VariableCalcAssignment): void {
-    const info = this.lookupVar(stmt.varName, stmt.line);
-    const amount = stmt.amount.value;
-    if (stmt.index) {
-      this.genIndexAddressToPtr(info, stmt.index, stmt.line, "PTR1");
-      if (info.type === "int") {
-        this.emit(`LDT ${zp("PTR1")}`);
-        // (LDT reads only 1 byte; for int element we need a 2-byte indirect op instead)
+    const lhsInfo = this.lookupVar(stmt.varName.$refText, stmt);
+    const rhsValue = stmt.value;
+    if (stmt.indexExpr) {
+      this.genIndexAddressToPtr(lhsInfo, stmt.indexExpr, "PTR1"); // ptr1 holds address of lhs[i]
+      // what value does a hold now after return from genIndexAddressToPtr
+      this.emit(`LDI ${rhsValue & 0xff}`); // RegA = lsb(rhsValue)
+      this.emit(`${stmt.op == "+=" ? "AD.T" : "SU.T"} PTR1+0`); // lhs[i] += RegA
+      if (lhsInfo.type === "int") {
+        this.emit(`LDI ${rhsValue >> 8}`); // RegA = msb(rhsValue)
+        this.emit(`${stmt.op == "+=" ? "AD.T" : "SU.T"} PTR1+1`); // lhs[i] += RegA
       }
-    }
-    if (!stmt.index) {
-      if (info.type === "int") {
-        this.emit(`${stmt.op === "+=" ? "AIV" : "SIV"} ${amount & 0xff},${hex(info.address)}`);
+    } else {
+      if (rhsValue & 0xff00)
+        throw new CompileError(
+          `rhsValue ${rhsValue} too large for byte assignment`,
+          stmt,
+        );
+      if (lhsInfo.type === "int") {
+        this.emit(
+          `${stmt.op === "+=" ? "AIV" : "SIV"} ${rhsValue & 0xff},${hexWord(lhsInfo.address)}`,
+        );
       } else {
-        this.emit(`${stmt.op === "+=" ? "AIZ" : "SIZ"} ${amount & 0xff},${hex(info.address)}`);
+        this.emit(
+          `${stmt.op === "+=" ? "AIZ" : "SIZ"} ${rhsValue & 0xff},${hexWord(lhsInfo.address)}`,
+        );
       }
       return;
     }
-    throw new CompileError("+=/-= on an indexed element is not yet supported", stmt.line);
   }
 
   private genReturn(stmt: AST.ReturnStatement): void {
-    if (!this.currentFunc) throw new CompileError("return outside function", stmt.line);
+    if (!this.currentFunc)
+      throw new CompileError("return outside function", stmt);
     if (stmt.expr.exprs.length > 1) {
-      throw new CompileError("concatenation (_) is not yet supported by this compiler", stmt.line);
+      throw new CompileError(
+        "concatenation (_) is not yet supported by this compiler",
+        stmt,
+      );
     }
     // Return value convention: leave result in A (char) or in the reserved __ret zero-page
     // word (int). Caller reads it from there immediately after the call.
     const expr = stmt.expr.exprs[0];
-    const retType = this.currentFunc.def.params.length > 0 ? undefined : undefined; // unused
-    this.genEvalGeneric(expr, stmt.line);
+    const retType =
+      this.currentFunc.def.params.length > 0 ? undefined : undefined; // unused
+    this.genEvalGeneric(expr);
     this.emit("RTS");
   }
 
   private genBreak(stmt: AST.BreakStatement): void {
-    if (this.breakLabels.length === 0) throw new CompileError("break outside while", stmt.line);
+    if (this.breakLabels.length === 0)
+      throw new CompileError("break outside while", stmt);
     this.emit(`FPA ${this.breakLabels[this.breakLabels.length - 1]}`);
   }
 
   private genIf(stmt: AST.If): void {
     const endLabel = this.newLabel("if_end");
-    const chain: { condLabel: string | null; falseLabel: string; block: A.Element[] }[] = [];
+    const chain: {
+      condLabel: string | null;
+      falseLabel: string;
+      block: AST.GlobalElement[];
+    }[] = [];
 
-    const branches: { condition: A.Expression; block: A.Element[] }[] = [
+    const branches: {
+      condition: AST.Expression;
+      block: AST.GlobalElement[];
+    }[] = [
       { condition: stmt.condition, block: stmt.block },
       ...stmt.elifs.map((e) => ({ condition: e.condition, block: e.block })),
     ];
@@ -396,7 +465,7 @@ export class MinCompiler {
       this.emitLabel(falseLabel);
     }
     if (stmt.elseBlock) {
-      for (const s of stmt.elseBlock) this.genStatement(s);
+      for (const s of stmt.elseBlock.block) this.genStatement(s);
     }
     this.emitLabel(endLabel);
   }
@@ -416,25 +485,28 @@ export class MinCompiler {
   private genPrint(stmt: AST.PrintStatement): void {
     for (const compound of stmt.args) {
       if (compound.exprs.length > 1) {
-        throw new CompileError("concatenation (_) is not yet supported by this compiler", stmt.line);
+        throw new CompileError(
+          "concatenation (_) is not yet supported by this compiler",
+          stmt,
+        );
       }
-      this.genPrintOne(compound.exprs[0], stmt.line);
+      this.genPrintOne(compound.exprs[0]);
     }
   }
 
-  private genPrintOne(expr: AST.Expression, line: number): void {
+  private genPrintOne(expr: AST.Expression): void {
     // String literal: use _Print's "immediate string trails the call" convention directly
     // - simplest and matches how the OS itself prints constant text.
-    if (expr.kind === "StringLiteral") {
-      this.emit(`JPS ${hex(OS_PRINT)}`);
+    if (AST.isStringLiteral(expr)) {
+      this.emit(`JPS OS_PRINT`);
       this.emit(`'${escapeForAsmString(expr.value)}', 0`);
       return;
     }
     // A char-array/string VARIABLE reference (whole, no index): print via _PrintPtr,
     // passing its address. Requires the array to be null-terminated by convention (v1
     // limitation - not yet enforced by the compiler).
-    if (expr.kind === "VariableReference" && !expr.index && !expr.isAddress) {
-      const info = this.lookupVar(expr.varName, line);
+    if (AST.isVariableReference(expr) && !expr.index && !expr.isAddress) {
+      const info = this.lookupVar(expr.varName.$refText, expr);
       if (info.type === "char" && info.isArray) {
         this.genCallPrintPtrLiteralAddr(info.address);
         return;
@@ -442,32 +514,32 @@ export class MinCompiler {
     }
     // Otherwise: evaluate as a general expression. char -> _PrintChar (one character);
     // int -> convert to decimal and _PrintPtr.
-    const type = this.inferType(expr, line);
+    const type = this.inferType(expr);
     if (type === "char") {
-      this.genEvalGeneric(expr, line);
+      this.genEvalGeneric(expr);
       this.emit(`LDZ ${zp("RESULTC")}`);
-      this.emit(`JPS ${hex(OS_PRINTCHAR)}`);
+      this.emit(`JPS OS_PRINTCHAR`);
       return;
     }
-    this.genEvalGeneric(expr, line);
+    this.genEvalGeneric(expr);
     this.genIntToDecimal();
     this.genCallPrintPtrFromZp(zp("NUMBUF"));
   }
 
   /** Best-effort static type inference for print()'s dispatch (char vs int). */
-  private inferType(expr: AST.Expression, line: number): VarType {
+  private inferType(expr: AST.Expression): VarType {
     switch (true) {
       case AST.isVariableReference(expr):
-        return this.lookupVar(expr.varName, line).type;
+        return this.lookupVar(expr.varName.$refText, expr).type;
       case AST.isNumberLiteral(expr):
         return "int";
       case AST.isUnaryExpression(expr):
-        return this.inferType(expr.inner, line);
+        return this.inferType(expr.inner);
       case AST.isBinaryExpression(expr):
       case AST.isComparisonExpression(expr):
         return "int"; // arithmetic/comparison results are always treated as int in v1
       case AST.isFunctionCall(expr): {
-        const fn = this.functions.get(expr.functionName);
+        const fn = this.functions.get(expr.functionName.$refText);
         return fn?.def.block.length ? "int" : "int"; // v1: function returns treated as int
       }
       default:
@@ -477,11 +549,11 @@ export class MinCompiler {
 
   /** Calls _PrintPtr with a compile-time-KNOWN zero-page address (e.g. a fixed array). */
   private genCallPrintPtrLiteralAddr(zpAddress: number): void {
-    this.emit(`LDI ${hex(zpAddress & 0xff)}`);
+    this.emit(`LDI ${hexByte(zpAddress & 0xff)}`);
     this.emit(`PHS`);
     this.emit(`LDI 0x00`); // MSB of a zero-page address is always 0
     this.emit(`PHS`);
-    this.emit(`JPS ${hex(OS_PRINTPTR)}`);
+    this.emit(`JPS OS_PRINTPTR`);
     this.emit(`PLS`);
     this.emit(`PLS`);
   }
@@ -492,7 +564,7 @@ export class MinCompiler {
     this.emit(`PHS`);
     this.emit(`LDZ ${ptrZp}+1`);
     this.emit(`PHS`);
-    this.emit(`JPS ${hex(OS_PRINTPTR)}`);
+    this.emit(`JPS OS_PRINTPTR`);
     this.emit(`PLS`);
     this.emit(`PLS`);
   }
@@ -510,7 +582,7 @@ export class MinCompiler {
     const lastByte = RESERVED_TEMPS.NUMBUF + 7;
     // Repeated divide-by-10, writing digits from the end of the buffer backward.
     this.emit(`MVV ${zp("RESULT")},${zp("LHS")}`); // LHS = remaining value to convert
-    this.emit(`MIV ${hex(lastByte)},${zp("PTR1")}`); // write cursor starts at the last byte
+    this.emit(`MIV ${hexByte(lastByte & 0xff)},${zp("PTR1")}`); // write cursor starts at the last byte
     this.emit(`MIT 0x00,${zp("PTR1")}`); // null terminator at the very end
     this.emitLabel(loopLabel);
     this.emit(`MIV 0x000a,${zp("RHS")}`); // divide by 10
@@ -525,22 +597,38 @@ export class MinCompiler {
     this.emit(`MVV ${zp("PTR1")},${zp("RESULT")}`); // RESULT = address of the first digit
   }
 
-  private genFunctionCall(call: AST.FunctionCall, resultVar: VarInfo | null): void {
+  private genFunctionCall(
+    call: AST.FunctionCall,
+    resultVar: VarInfo | null,
+  ): void {
     const fn = this.functions.get(call.functionName.$refText);
-    if (!fn) throw new CompileError(`undefined function '${call.functionName.$refText}'`, call.$cstNode?.range.start.line);
+    if (!fn)
+      throw new CompileError(
+        `undefined function '${call.functionName.$refText}'`,
+        call,
+      );
     if (call.args.length !== fn.params.length) {
-      throw new CompileError(`'${call.functionName.$refText}' expects ${fn.params.length} argument(s), got ${call.args.length}`, call.line);
+      throw new CompileError(
+        `'${call.functionName.$refText}' expects ${fn.params.length} argument(s), got ${call.args.length}`,
+        call,
+      );
     }
     for (let i = 0; i < call.args.length; i++) {
       const argCompound = call.args[i];
       if (argCompound.exprs.length > 1) {
-        throw new CompileError("concatenation (_) is not yet supported by this compiler", call.line);
+        throw new CompileError(
+          "concatenation (_) is not yet supported by this compiler",
+          call,
+        );
       }
       const param = fn.params[i];
       if (fn.usedByRef[i]) {
-        throw new CompileError("by-reference parameters are not yet supported by this compiler", call.line);
+        throw new CompileError(
+          "by-reference parameters are not yet supported by this compiler",
+          call,
+        );
       }
-      this.genEvalToVar(argCompound.exprs[0], param, call.line);
+      this.genEvalToVar(argCompound.exprs[0], param);
     }
     this.emit(`JPS ${fn.entryLabel}`);
   }
@@ -562,18 +650,26 @@ export class MinCompiler {
   // ---------------------------------------------------------------------------------
 
   /** Evaluates `expr` (must be int or char typed) and stores the result into `dest`. */
-  private genEvalToVar(expr: AST.Expression, dest: VarInfo, line: number): void {
-    if (dest.isArray) throw new CompileError("cannot assign a scalar to an array variable", line);
-    this.genEvalGeneric(expr, line);
+  private genEvalToVar(expr: AST.Expression, dest: VarInfo): void {
+    if (dest.isArray)
+      throw new CompileError(
+        "cannot assign a scalar to an array variable",
+        expr,
+      );
+    this.genEvalGeneric(expr);
     if (dest.type === "int") {
-      this.emit(`MVV ${zp("RESULT")},${hex(dest.address)}`);
+      this.emit(`MVV ${zp("RESULT")},${hexWord(dest.address)}`);
     } else {
-      this.emit(`MZZ ${zp("RESULTC")},${hex(dest.address)}`);
+      this.emit(`MZZ ${zp("RESULTC")},${hexWord(dest.address)}`);
     }
   }
 
-  private genEvalToTemp(expr: AST.Expression, type: VarType, line: number, tempName: string): void {
-    this.genEvalGeneric(expr, line);
+  private genEvalToTemp(
+    expr: AST.Expression,
+    type: VarType,
+    tempName: string,
+  ): void {
+    this.genEvalGeneric(expr);
     if (type === "int") this.emit(`MVV ${zp("RESULT")},${zp(tempName)}`);
     else this.emit(`MZZ ${zp("RESULTC")},${zp(tempName)}`);
   }
@@ -584,43 +680,50 @@ export class MinCompiler {
    * "spill to a fixed temp" strategy trades some performance for much simpler codegen,
    * appropriate for this compiler's scope.
    */
-  private genEvalGeneric(expr: AST.Expression, line: number): void {
-    switch (expr.kind) {
-      case "NumberLiteral":
-        this.emit(`MIV ${hex(expr.value)},${zp("RESULT")}`);
+  private genEvalGeneric(expr: AST.Expression): void {
+    switch (true) {
+      case isNumberLiteral(expr):
+        this.emit(`MIV ${hexWord(expr.value)},${zp("RESULT")}`);
         return;
-      case "StringLiteral":
-        throw new CompileError("string literals are not yet supported by this compiler", line);
-      case "VariableReference":
-        return this.genEvalVariableReference(expr, line);
-      case "FunctionCall": {
+      case isStringLiteral(expr):
+        throw new CompileError(
+          "string literals are not yet supported by this compiler",
+          expr,
+        );
+      case isVariableReference(expr):
+        return this.genEvalVariableReference(expr);
+      case isFunctionCall(expr): {
         this.genFunctionCall(expr, null);
         this.emit(`MVV ${zp("RETVAL")},${zp("RESULT")}`);
         return;
       }
-      case "UnaryExpression":
-        return this.genEvalUnary(expr, line);
-      case "BinaryExpression":
-        return this.genEvalBinary(expr, line);
-      case "ComparisonExpression":
-        return this.genEvalComparison(expr, line);
+      case isUnaryExpression(expr):
+        return this.genEvalUnary(expr);
+      case isBinaryExpression(expr):
+        return this.genEvalBinary(expr);
+      case isComparisonExpression(expr):
+        return this.genEvalComparison(expr);
     }
   }
 
-  private genEvalVariableReference(ref: AST.VariableReference, line: number): void {
+  private genEvalVariableReference(ref: AST.VariableReference): void {
     if (ref.isAddress) {
-      const info = this.lookupVar(ref.varName, line);
-      this.emit(`MIV ${hex(info.address)},${zp("RESULT")}`);
+      const info = this.lookupVar(ref.varName.$refText, ref.$container);
+      this.emit(`MIV ${hexWord(info.address)},${zp("RESULT")}`);
       return;
     }
-    const info = this.lookupVar(ref.varName, line);
+    const info = this.lookupVar(ref.varName.$refText, ref.$container);
     if (ref.index) {
       if (ref.index.endExpr) {
-        throw new CompileError("range slicing is not yet supported by this compiler", line);
+        throw new CompileError(
+          "range slicing is not yet supported by this compiler",
+          ref.index.endExpr,
+        );
       }
       const startExpr = ref.index.startExpr;
-      if (!startExpr) throw new CompileError("array reference needs an index", line);
-      this.genIndexAddressToPtr(info, startExpr, line, "PTR1");
+      if (!startExpr)
+        throw new CompileError("array reference needs an index", ref.index);
+      this.genIndexAddressToPtr(info, startExpr, "PTR1");
       if (info.type === "int") {
         this.emit(`LDT ${zp("PTR1")}`);
         this.emit(`SDZ ${zp("RESULT")}`);
@@ -634,18 +737,22 @@ export class MinCompiler {
       return;
     }
     if (info.type === "int") {
-      this.emit(`MVV ${hex(info.address)},${zp("RESULT")}`);
+      this.emit(`MVV ${hexWord(info.address)},${zp("RESULT")}`);
     } else {
-      this.emit(`MZZ ${hex(info.address)},${zp("RESULTC")}`);
+      this.emit(`MZZ ${hexByte(info.address)},${zp("RESULTC")}`);
       this.emit(`MZZ ${zp("RESULTC")},${zp("RESULT")}`); // zero-extend into RESULT low byte
       this.emit(`CLZ ${zp("RESULT")}+1`);
     }
   }
 
   /** Computes the runtime BYTE address of arr[indexExpr] into the given zero-page pointer. */
-  private genIndexAddressToPtr(info: VarInfo, indexExpr: AST.Expression, line: number, ptrName: string): void {
+  private genIndexAddressToPtr(
+    info: VarInfo,
+    indexExpr: AST.Expression,
+    ptrName: string,
+  ): void {
     const esize = elementSize(info.type);
-    this.genEvalGeneric(indexExpr, line); // index -> RESULT (int)
+    this.genEvalGeneric(indexExpr); // index -> RESULT (int)
     if (esize === 2) {
       this.emit(`MVV ${zp("RESULT")},${zp(ptrName)}`);
       this.emit(`LLV ${zp(ptrName)}`); // *2 (element size 2)
@@ -653,10 +760,14 @@ export class MinCompiler {
       this.emit(`MZZ ${zp("RESULT")},${zp(ptrName)}`);
       this.emit(`CLZ ${zp(ptrName)}+1`);
     }
-    this.emit(`AIV ${hex(info.address)},${zp(ptrName)}`);
+    this.emit(`AIV ${hexWord(info.address)},${zp(ptrName)}`);
   }
 
-  private genStoreIndirect(ptrName: string, type: VarType, tempName: string): void {
+  private genStoreIndirect(
+    ptrName: string,
+    type: VarType,
+    tempName: string,
+  ): void {
     if (type === "int") {
       this.emit(`LDZ ${zp(tempName)}`);
       this.emit(`SDT ${zp(ptrName)}`);
@@ -669,8 +780,8 @@ export class MinCompiler {
     }
   }
 
-  private genEvalUnary(expr: AST.UnaryExpression, line: number): void {
-    this.genEvalGeneric(expr.inner, line);
+  private genEvalUnary(expr: AST.UnaryExpression): void {
+    this.genEvalGeneric(expr.inner);
     if (expr.op === "-") {
       this.emit(`NEV ${zp("RESULT")}`);
     } else {
@@ -687,10 +798,10 @@ export class MinCompiler {
     }
   }
 
-  private genEvalBinary(expr: AST.BinaryExpression, line: number): void {
-    this.genEvalGeneric(expr.left, line);
+  private genEvalBinary(expr: AST.BinaryExpression): void {
+    this.genEvalGeneric(expr.left);
     this.emit(`MVV ${zp("RESULT")},${zp("LHS")}`);
-    this.genEvalGeneric(expr.right, line);
+    this.genEvalGeneric(expr.right);
     this.emit(`MVV ${zp("RESULT")},${zp("RHS")}`);
     switch (expr.op) {
       case "+":
@@ -718,7 +829,7 @@ export class MinCompiler {
         return;
       case "<<":
       case ">>":
-        this.emitShift(expr.op, line);
+        this.emitShift(expr.op, expr);
         return;
     }
   }
@@ -733,7 +844,7 @@ export class MinCompiler {
     }
   }
 
-  private emitShift(op: "<<" | ">>", line: number): void {
+  private emitShift(op: "<<" | ">>", node: AstNode): void {
     // Only constant small shift amounts are supported in v1 (compile-time loop unroll of
     // runtime shift-by-1, using the RHS value as a runtime loop count).
     const loopLabel = this.newLabel("shift_loop");
@@ -802,15 +913,15 @@ export class MinCompiler {
     this.emit(`MVV ${zp("DIVQ")},${zp("RESULT")}`);
   }
 
-  private genEvalComparison(expr: A.ComparisonExpression, line: number): void {
-    this.genEvalGeneric(expr.left, line);
+  private genEvalComparison(expr: AST.ComparisonExpression): void {
+    this.genEvalGeneric(expr.left);
     this.emit(`MVV ${zp("RESULT")},${zp("LHS")}`);
-    this.genEvalGeneric(expr.right, line);
+    this.genEvalGeneric(expr.right);
     this.emit(`MVV ${zp("RESULT")},${zp("RHS")}`);
     const trueLabel = this.newLabel("cmp_true");
     const endLabel = this.newLabel("cmp_end");
     this.emit(`CVV ${zp("RHS")},${zp("LHS")}`);
-    const branchMap: Record<A.ComparisonExpression["op"], string> = {
+    const branchMap: Record<AST.ComparisonExpression["op"], string> = {
       "<": "BCC",
       "<=": "BLE",
       ">": "BGT",
@@ -827,23 +938,26 @@ export class MinCompiler {
   }
 
   /** Evaluates a boolean expression and jumps to `falseLabel` if it's zero (false). */
-  private genConditionJumpIfFalse(expr: A.Expression, falseLabel: string): void {
-    this.genEvalGeneric(expr, 0);
+  private genConditionJumpIfFalse(
+    expr: AST.Expression,
+    falseLabel: string,
+  ): void {
+    this.genEvalGeneric(expr);
     this.emit(`CIV 0x0000,${zp("RESULT")}`);
     this.emit(`BEQ ${falseLabel}`);
   }
 
   /** Evaluates a constant (compile-time) expression - used for array sizes and @ addresses. */
-  private constEval(expr: A.Expression, line: number): number {
-    switch (expr.kind) {
-      case "NumberLiteral":
+  private constEval(expr: AST.Expression): number {
+    switch (true) {
+      case isNumberLiteral(expr):
         return expr.value;
-      case "UnaryExpression":
-        if (expr.op === "-") return -this.constEval(expr.inner, line);
-        throw new CompileError("unsupported constant expression", line);
-      case "BinaryExpression": {
-        const l = this.constEval(expr.left, line);
-        const r = this.constEval(expr.right, line);
+      case isUnaryExpression(expr):
+        if (expr.op === "-") return -this.constEval(expr.inner);
+        throw new CompileError("unsupported constant expression", expr);
+      case isBinaryExpression(expr): {
+        const l = this.constEval(expr.left);
+        const r = this.constEval(expr.right);
         switch (expr.op) {
           case "+":
             return l + r;
@@ -854,11 +968,11 @@ export class MinCompiler {
           case "/":
             return Math.floor(l / r);
           default:
-            throw new CompileError("unsupported constant expression", line);
+            throw new CompileError("unsupported constant expression", expr);
         }
       }
       default:
-        throw new CompileError("expected a constant expression", line);
+        throw new CompileError("expected a constant expression", expr);
     }
   }
 }
@@ -880,84 +994,17 @@ const RESERVED_TEMPS: Record<string, number> = {
 };
 
 function zp(name: string): string {
-  if (!(name in RESERVED_TEMPS)) throw new Error(`unknown compiler temp '${name}'`);
-  return hex(RESERVED_TEMPS[name]);
+  if (!(name in RESERVED_TEMPS))
+    throw new Error(`unknown compiler temp '${name}'`);
+  return name;
 }
 
-function hex(n: number): string {
-  return "0x" + (n & 0xffff).toString(16);
+function hexByte(n: number): string {
+  return "0x" + (n & 0xff).toString(16).padStart(2, "0");
 }
 
-/** Walks a statement/element (and everything nested inside it) looking for function calls,
- *  invoking `visit` with each called function's name. Used for reachability analysis. */
-function walkForCalls(el: A.Element, visit: (name: string) => void): void {
-  const walkExpr = (e: A.Expression): void => {
-    switch (e.kind) {
-      case "FunctionCall":
-        visit(e.functionName);
-        for (const arg of e.args) for (const sub of arg.exprs) walkExpr(sub);
-        return;
-      case "BinaryExpression":
-      case "ComparisonExpression":
-        walkExpr(e.left);
-        walkExpr(e.right);
-        return;
-      case "UnaryExpression":
-        walkExpr(e.inner);
-        return;
-      case "VariableReference":
-        if (e.index?.startExpr) walkExpr(e.index.startExpr);
-        if (e.index?.endExpr) walkExpr(e.index.endExpr);
-        return;
-      default:
-        return;
-    }
-  };
-  const walkCompound = (c: A.CompoundExpression): void => {
-    for (const e of c.exprs) walkExpr(e);
-  };
-
-  switch (el.kind) {
-    case "VariableDeclaration":
-      if (el.atExpr) walkExpr(el.atExpr);
-      if (el.assignExpr) walkCompound(el.assignExpr);
-      return;
-    case "VariableAssignment":
-      if (el.index) walkExpr(el.index);
-      walkCompound(el.assignExpr);
-      return;
-    case "VariableCalcAssignment":
-      if (el.index) walkExpr(el.index);
-      return;
-    case "FunctionCall":
-      visit(el.functionName);
-      for (const arg of el.args) walkCompound(arg);
-      return;
-    case "ReturnStatement":
-      walkCompound(el.expr);
-      return;
-    case "PrintStatement":
-      for (const arg of el.args) walkCompound(arg);
-      return;
-    case "BreakStatement":
-    case "CallStatement":
-    case "Use":
-    case "Def":
-      return;
-    case "If":
-      walkExpr(el.condition);
-      for (const s of el.block) walkForCalls(s, visit);
-      for (const e of el.elifs) {
-        walkExpr(e.condition);
-        for (const s of e.block) walkForCalls(s, visit);
-      }
-      if (el.elseBlock) for (const s of el.elseBlock) walkForCalls(s, visit);
-      return;
-    case "While":
-      walkExpr(el.condition);
-      for (const s of el.block) walkForCalls(s, visit);
-      return;
-  }
+function hexWord(n: number): string {
+  return "0x" + (n & 0xffff).toString(16).padStart(4, "0");
 }
 
 /** Escapes a string for embedding in a single-quoted assembly string literal. Since the
@@ -968,7 +1015,11 @@ function walkForCalls(el: A.Element, visit: (name: string) => void): void {
  *  containing a literal "'" are not yet supported by this compiler. */
 function escapeForAsmString(s: string): string {
   if (s.includes("'")) {
-    throw new Error(`string literals containing "'" are not yet supported by this compiler: ${JSON.stringify(s)}`);
+    throw new Error(
+      `string literals containing "'" are not yet supported by this compiler: ${JSON.stringify(s)}`,
+    );
   }
   return s;
 }
+
+export const minCompiler = new MinCompiler();

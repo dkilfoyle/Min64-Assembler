@@ -5,13 +5,19 @@
 
 /// <reference lib="WebWorker" />
 
-import { EmptyFileSystem, URI } from "langium";
+import { URI } from "langium";
 import { startLanguageServer } from "langium/lsp";
-import { BrowserMessageReader, BrowserMessageWriter, createConnection } from "vscode-languageserver/browser";
+import {
+  BrowserMessageReader,
+  BrowserMessageWriter,
+  createConnection,
+} from "vscode-languageserver/browser";
 import { createMinminServices } from "../ls/minmin-module.js";
+import { MinminBrowserFileSystemProvider } from "../ls/minmin-filesystem.js";
 import { isProgram, Program } from "../ls/generated/ast.js";
-import { minCompiler } from "../compiler/old/compiler1.js";
+import { minCompiler } from "../compiler/v3/compiler.js";
 import { MinCompileRequest } from "./api.js";
+import { resolveImportUri } from "../ls/minmin-import-utils.js";
 
 // export interface MinDocChangeNotification {
 //   uri: string;
@@ -25,7 +31,10 @@ let messageWriter: BrowserMessageWriter | undefined;
 const buildTimers = new Map<string, number>();
 const DEBOUNCE_DELAY_MS = 1000; // Adjust as needed
 
-export const start = async (port: MessagePort | DedicatedWorkerGlobalScope, name: string) => {
+export const start = async (
+  port: MessagePort | DedicatedWorkerGlobalScope,
+  name: string,
+) => {
   console.log(`Starting ${name}...`);
   /* browser specific setup code */
   messageReader = new BrowserMessageReader(port);
@@ -40,29 +49,40 @@ export const start = async (port: MessagePort | DedicatedWorkerGlobalScope, name
   // Inject the shared services and language-specific services
   const { shared } = await createMinminServices({
     connection,
-    ...EmptyFileSystem,
+    fileSystemProvider: () => new MinminBrowserFileSystemProvider(connection),
   });
 
   // Start the language server with the shared services
   startLanguageServer(shared);
 
   connection.onRequest(MinCompileRequest, async (params) => {
-    if (minCompiler.stdLib == null) {
-      const stdmin = shared.workspace.LangiumDocuments.getDocument(URI.parse("builtin:///std.min"));
-      if (stdmin && isProgram(stdmin.parseResult.value)) {
-        minCompiler.stdLib = stdmin.parseResult.value;
-      } else {
-        return {
-          uri: params.uri,
-          asm: "",
-          status: "error",
-          errors: ["Builtin std.min not found or has errors"],
-        };
-      }
-    }
-    const doc = shared.workspace.LangiumDocuments.getDocument(URI.parse(params.uri));
-    if (doc && isProgram(doc.parseResult.value) && doc.diagnostics?.length == 0) {
-      const asm = minCompiler.generate(doc.uri.toString(), doc.parseResult.value);
+    const doc = shared.workspace.LangiumDocuments.getDocument(
+      URI.parse(params.uri),
+    );
+
+    if (
+      doc &&
+      isProgram(doc.parseResult.value) &&
+      doc.diagnostics?.length == 0
+    ) {
+      const libs = doc.parseResult.value.elements
+        .filter((e) => e.$type === "Use")
+        .map((e) => e.libPath);
+      const libPrograms: Program[] = libs
+        .map((libPath) => {
+          const importedDoc = shared.workspace.LangiumDocuments.getDocument(
+            resolveImportUri(doc.uri, libPath),
+          );
+          return importedDoc && isProgram(importedDoc.parseResult.value)
+            ? importedDoc.parseResult.value
+            : null;
+        })
+        .filter((p): p is Program => p !== null);
+      const asm = minCompiler.compile(
+        params.uri,
+        doc.parseResult.value,
+        libPrograms,
+      );
       return { uri: params.uri, asm, status: "ok", errors: [] };
     } else {
       return {

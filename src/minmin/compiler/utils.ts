@@ -1,3 +1,5 @@
+import type { AstNode } from "langium";
+
 export function hexByte(n: number): string {
   // return `$${(n & 0xff).toString(16).padStart(2, "0").toUpperCase()}`;
   return `0x${(n & 0xff).toString(16).padStart(2, "0").toUpperCase()}`;
@@ -24,4 +26,19 @@ export function lowOperand(a: Addr): string {
 }
 export function highOperand(a: Addr): string {
   return typeof a === "number" ? hexByte(a + 1) : `${a}+1`;
+}
+
+export class CompileError extends Error {
+  public range:
+    | {
+        start: { line: number; character: number };
+        end: { line: number; character: number };
+      }
+    | undefined;
+
+  constructor(message: string, node: AstNode) {
+    const line = node.$cstNode?.range.start.line ?? 0;
+    super(`${message} (line ${line})`);
+    this.range = node.$cstNode?.range;
+  }
 }

@@ -3,7 +3,13 @@
  * Licensed under the MIT License. See LICENSE in the package root for license information.
  * ------------------------------------------------------------------------------------------ */
 
-import { IndentationAwareLexer, IndentationAwareTokenBuilder, type Module, inject } from "langium";
+import {
+  IndentationAwareLexer,
+  IndentationAwareTokenBuilder,
+  type Module,
+  inject,
+} from "langium";
+import { MinminScopeProvider } from "./minmin-scope.js";
 import {
   type DefaultSharedModuleContext,
   type LangiumServices,
@@ -13,11 +19,18 @@ import {
   createDefaultModule,
   createDefaultSharedModule,
 } from "langium/lsp";
-import { MinminGeneratedSharedModule, MinminModelGeneratedModule } from "./generated/module.js";
-import { MinminValidator, registerValidationChecks } from "./minmin-validator.js";
+import {
+  MinminGeneratedSharedModule,
+  MinminModelGeneratedModule,
+} from "./generated/module.js";
+import {
+  MinminValidator,
+  registerValidationChecks,
+} from "./minmin-validator.js";
 // import { MinminScopeComputation } from "./minmin-scope.js";
 import { MinminConverter } from "./minmin-value.js";
 import { MinminWorkspaceManager } from "./minmin-workspace.js";
+import { MinminImportLoader } from "./minmin-import-loader.js";
 
 /**
  * Declaration of custom services - add your own service classes here.
@@ -39,13 +52,16 @@ export type MinminServices = LangiumServices & MinminAddedServices;
  * declared custom services. The Langium defaults can be partially specified to override only
  * selected services, while the custom services must be fully specified.
  */
-const MinminModule: Module<MinminServices, PartialLangiumServices & MinminAddedServices> = {
+const MinminModule: Module<
+  MinminServices,
+  PartialLangiumServices & MinminAddedServices
+> = {
   validation: {
     MinminValidator: () => new MinminValidator(),
   },
-  // references: {
-  //   ScopeComputation: (services) => new MinminScopeComputation(services),
-  // },
+  references: {
+    ScopeProvider: (services) => new MinminScopeProvider(services),
+  },
   parser: {
     // override the default value converter
     ValueConverter: (services) => new MinminConverter(),
@@ -54,7 +70,10 @@ const MinminModule: Module<MinminServices, PartialLangiumServices & MinminAddedS
   },
 };
 
-const MinminSharedModule: Module<LangiumSharedServices, PartialLangiumSharedServices> = {
+const MinminSharedModule: Module<
+  LangiumSharedServices,
+  PartialLangiumSharedServices
+> = {
   workspace: {
     WorkspaceManager: (services) => new MinminWorkspaceManager(services),
   },
@@ -75,14 +94,27 @@ const MinminSharedModule: Module<LangiumSharedServices, PartialLangiumSharedServ
  * @param context Optional module context with the LSP connection
  * @returns An object wrapping the shared services and the language-specific services
  */
-export async function createMinminServices(context: DefaultSharedModuleContext): Promise<{
+export async function createMinminServices(
+  context: DefaultSharedModuleContext,
+): Promise<{
   shared: LangiumSharedServices;
   minmin: MinminServices;
 }> {
-  const shared = inject(createDefaultSharedModule(context), MinminGeneratedSharedModule, MinminSharedModule);
-  const minmin = inject(createDefaultModule({ shared }), MinminModelGeneratedModule, MinminModule);
+  const shared = inject(
+    createDefaultSharedModule(context),
+    MinminGeneratedSharedModule,
+    MinminSharedModule,
+  );
+  const minmin = inject(
+    createDefaultModule({ shared }),
+    MinminModelGeneratedModule,
+    MinminModule,
+  );
   shared.ServiceRegistry.register(minmin);
   registerValidationChecks(minmin);
+  // Fetches files referenced via `use "..."` on demand, so any sibling file
+  // (not just ones bundled at build time) can be imported.
+  new MinminImportLoader(shared);
   if (context.connection === undefined) {
     // We don't run inside a language server
     // Therefore, initialize the configuration provider instantly

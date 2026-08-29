@@ -3,7 +3,11 @@
  * Licensed under the MIT License. See LICENSE in the package root for license information.
  * ------------------------------------------------------------------------------------------ */
 
-import type { ValidationAcceptor, ValidationCategory, ValidationChecks } from "langium";
+import type {
+  ValidationAcceptor,
+  ValidationCategory,
+  ValidationChecks,
+} from "langium";
 import { StringLiteral, type MinminAstType } from "./generated/ast.js";
 import type { MinminServices } from "./minmin-module.js";
 

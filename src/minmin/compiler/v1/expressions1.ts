@@ -24,7 +24,8 @@ const runtime2 = import.meta.glob("./runtime/*.asm", {
 const runtime = Object.fromEntries(
   Object.entries(runtime2).map(([path, definition]) => {
     // Extract file name without extension to use as the new key
-    const fileName = "__" + path.slice(path.lastIndexOf("/") + 1).replace(".asm", "");
+    const fileName =
+      "__" + path.slice(path.lastIndexOf("/") + 1).replace(".asm", "");
     return [fileName, definition];
   }),
 );
@@ -61,10 +62,16 @@ export class ExpressionCompiler {
   }
 
   private pushWord(addr: number) {
-    this.out(`LDZ ${hexByte(addr)} PHS LDZ ${hexByte(addr + 1)} PHS`, `push *(${hexByte(addr)})`);
+    this.out(
+      `LDZ ${hexByte(addr)} PHS LDZ ${hexByte(addr + 1)} PHS`,
+      `push *(${hexByte(addr)})`,
+    );
   }
   private popWord(addr: number) {
-    this.out(`PLS STZ ${hexByte(addr + 1)} PLS STZ ${hexByte(addr)}`, `pop to ${hexByte(addr)}`);
+    this.out(
+      `PLS STZ ${hexByte(addr + 1)} PLS STZ ${hexByte(addr)}`,
+      `pop to ${hexByte(addr)}`,
+    );
   }
   private pushZA() {
     this.out(`LDZ zA+0 PHS LDZ zA+1 PHS`, `push z_A`);
@@ -97,7 +104,8 @@ export class ExpressionCompiler {
     const varName = e.varName.$refText;
     const v = this.compiler.getSymbolInfo(varName);
     if (!v) throw new Error(`Unknown variable '${varName}'`);
-    if (v.kind != "variable") throw new Error(`Expected variable received function`);
+    if (v.kind != "variable")
+      throw new Error(`Expected variable received function`);
 
     const isZP = (v.address & 0xff00) == 0;
 
@@ -115,7 +123,7 @@ export class ExpressionCompiler {
       } else {
         this.out(`LDB ${hexWord(v.address)}`, `${varName} (byte, abs)`);
       }
-      this.out("JPS __signext");
+      this.out("JPS __signext"); // why?
     }
   }
 
@@ -123,16 +131,23 @@ export class ExpressionCompiler {
     const functionName = e.functionName.$refText;
     const f = this.compiler.getSymbolInfo(functionName);
     if (!f) throw new Error(`Unknown function '${functionName}'`);
-    if (f.kind != "function") throw new Error(`Expected function received variable`);
+    if (f.kind != "function")
+      throw new Error(`Expected function received variable`);
 
     for (const arg of e.args) {
       // this.compileExpression(arg); // result -> __A
       this.pushZA(); // push __A onto hw stack (lsb, msb)
     }
 
-    this.out(`JPS ${functionName}`, `call ${functionName}(${e.args.length} arg${e.args.length === 1 ? "" : "s"})`);
+    this.out(
+      `JPS ${functionName}`,
+      `call ${functionName}(${e.args.length} arg${e.args.length === 1 ? "" : "s"})`,
+    );
     if (e.args.length > 0) {
-      this.out(`${"PLS ".repeat(e.args.length * 2).trim()}`, `discard ${e.args.length * 2} pushed arg byte(s)`);
+      this.out(
+        `${"PLS ".repeat(e.args.length * 2).trim()}`,
+        `discard ${e.args.length * 2} pushed arg byte(s)`,
+      );
     }
     // return value convention: callee leaves result in __A
   }
@@ -147,7 +162,11 @@ export class ExpressionCompiler {
   }
 
   private compileBinary(e: BinaryExpression) {
-    const constSide = isNumberLiteral(e.left) ? e.left : isNumberLiteral(e.right) ? e.right : null;
+    const constSide = isNumberLiteral(e.left)
+      ? e.left
+      : isNumberLiteral(e.right)
+        ? e.right
+        : null;
     const otherSide = constSide === e.left ? e.right : e.left;
 
     if (constSide) {
@@ -287,7 +306,9 @@ export class ExpressionCompiler {
     this.out("");
     this.out(`; ---- expression compiler zero-page working storage ----`);
     this.out(`#org ${hexWord(this.zpBase)}`);
-    this.out(`z_A:      0x0000    ; accumulator / expression result / fn return value`);
+    this.out(
+      `z_A:      0x0000    ; accumulator / expression result / fn return value`,
+    );
     this.out(`z_B:      0x0000    ; secondary operand`);
     this.out(`z_C:      0x0000    ; scratch (mul/div/cmp)`);
     this.out(`z_D:      0x0000    ; scratch (div quotient)`);

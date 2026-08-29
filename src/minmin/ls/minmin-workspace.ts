@@ -1,4 +1,9 @@
-import { type AstNode, DefaultWorkspaceManager, type LangiumDocument, type LangiumDocumentFactory } from "langium";
+import {
+  type AstNode,
+  DefaultWorkspaceManager,
+  type LangiumDocument,
+  type LangiumDocumentFactory,
+} from "langium";
 import type { LangiumSharedServices } from "langium/lsp";
 import { WorkspaceFolder } from "vscode-languageserver";
 import { URI } from "vscode-uri";
@@ -18,6 +23,8 @@ export class MinminWorkspaceManager extends DefaultWorkspaceManager {
   ): Promise<void> {
     await super.loadAdditionalDocuments(folders, collector);
     // Load our library using the `builtin` URI schema
-    collector(this.documentFactory.fromString(stdLib, URI.parse("builtin:///std.min")));
+    // collector(
+    //   this.documentFactory.fromString(stdLib, URI.parse("builtin:///std.min")),
+    // );
   }
 }

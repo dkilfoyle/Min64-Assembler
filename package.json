@@ -64,10 +64,12 @@
     "vite": "^8.1.5"
   },
   "overrides": {
-    "monaco-editor": "npm:@codingame/monaco-vscode-editor-api@^25.1.2"
+    "monaco-editor": "npm:@codingame/monaco-vscode-editor-api@^25.1.2",
+    "vscode-jsonrpc": "9.0.1",
+    "vscode-languageserver-protocol": "3.18.2"
   },
   "allowScripts": {
-    "@swc/core@1.15.43": true,
-    "esbuild@0.28.1": true
+    "esbuild@0.28.2": true,
+    "@swc/core@1.16.1": true
   }
 }
