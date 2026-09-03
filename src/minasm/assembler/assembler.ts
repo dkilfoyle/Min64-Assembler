@@ -164,6 +164,7 @@ class Assembler {
     this.pc = 0x2000;
     this.isEmit = true;
     this.curInstr = null;
+    this.curLabel = "";
     if (pass == 2) this.hex.reset(0x2000);
     if (pass == 1) {
       this.labels = {};
@@ -270,7 +271,9 @@ class Assembler {
     this.locations[this.pc] = {
       ...sourceLocation2codeLocation(instr.$cstNode!.range),
       nextPC: -1,
-      label: `${this.curLabel}+${this.pc - this.labels[this.curLabel].address}`,
+      label: this.curLabel
+        ? `${this.curLabel}+${this.pc - this.labels[this.curLabel].address}`
+        : "<no label>",
     };
     this.lastPC = this.pc;
 

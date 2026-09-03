@@ -17,7 +17,7 @@ export default defineConfig({
   },
   optimizeDeps: {
     include: ["vscode-textmate"],
-    esbuildOptions: {
+    rolldownOptions: {
       plugins: [importMetaUrlPlugin],
     },
   },

@@ -13,7 +13,8 @@ import {
   type Expression,
 } from "../../ls/generated/ast";
 import type { MinCompiler } from "./compiler";
-import { hexByte, hexWord } from "../utils";
+import { CompileError, hexByte, hexWord } from "../utils";
+import type { AstNode } from "langium";
 
 const runtimeGlob = import.meta.glob("../runtime/*.asm", {
   query: "?raw",
@@ -30,29 +31,14 @@ const runtime = Object.fromEntries(
   }),
 );
 
+const VIRTUAL_STACK_BASE = 0xefff;
+const ZP_BASE = 0x00;
+
 export class ExpressionCompiler {
-  private zpBase: number;
-
-  // computed zero-page addresses (word regs are 2 bytes: +0 = lsb, +1 = msb)
-  readonly A: number;
-  readonly B: number;
-  readonly C: number;
-  readonly D: number;
-  readonly CNT: number;
-  readonly FLAG: number;
-
   compiler: MinCompiler;
 
   constructor(minCompiler: MinCompiler) {
     this.compiler = minCompiler;
-    this.zpBase = 0x00;
-
-    this.A = this.zpBase + 0;
-    this.B = this.zpBase + 2;
-    this.C = this.zpBase + 4;
-    this.D = this.zpBase + 6;
-    this.CNT = this.zpBase + 8;
-    this.FLAG = this.zpBase + 9;
   }
 
   reset() {}
@@ -67,17 +53,28 @@ export class ExpressionCompiler {
       `push *(${hexByte(addr)})`,
     );
   }
+
   private popWord(addr: number) {
     this.out(
       `PLS STZ ${hexByte(addr + 1)} PLS STZ ${hexByte(addr)}`,
       `pop to ${hexByte(addr)}`,
     );
   }
-  private pushZA() {
-    this.out(`LDZ zA+0 PHS LDZ zA+1 PHS`, `push z_A`);
+
+  private emitRTPushZA() {
+    this.out(`MZT zA+0,z_FP INV z_FP MZT zA+1,z_FP INV z_FP`, `push z_A`);
   }
-  private popZA() {
-    this.out(`PLS STZ zA+1 PLS STZ z_A+0`, `pop to z_A`);
+
+  private emitRTPopZA() {
+    this.out(`INV z_FP STZ zA+1 INV z_FP STZ z_A+0`, `pop to z_A`);
+  }
+
+  private emitHWPushZA() {
+    this.out(`LDZ zA+0 PHS LDZ zA+1 PHS`, `push z_A onto hardware stack`);
+  }
+
+  private emitHWPopZA() {
+    this.out(`PLS STZ zA+1 PLS STZ z_A+0`, `pop z_A from hardware stack`);
   }
 
   /** Compile expr, leaving the 16-bit result in the z_A zero-page word. */
@@ -97,58 +94,38 @@ export class ExpressionCompiler {
   }
 
   private compileNum(e: NumberLiteral) {
-    this.out(`MIV ${hexWord(e.value)},z_A`, `const ${e.value}`);
+    const valueStr = `const ${e.value}`;
+    if (this.compiler.cached.z_A == valueStr) return;
+    this.out(`MIV ${hexWord(e.value)},z_A`, valueStr);
+    this.compiler.cached.z_A = valueStr;
   }
 
   private compileVar(e: VariableReference) {
     const varName = e.varName.$refText;
-    const v = this.compiler.getSymbolInfo(varName);
-    if (!v) throw new Error(`Unknown variable '${varName}'`);
-    if (v.kind != "variable")
-      throw new Error(`Expected variable received function`);
+    const v = this.compiler.getSymbol(varName, e);
 
-    const isZP = (v.address & 0xff00) == 0;
+    if (v.location != "stack")
+      throw new CompileError(`Non stack variables not supported yet`, e);
 
-    if (v.type === "int") {
-      if (isZP) {
-        this.out(`MVV ${hexByte(v.address)},z_A`, `${varName} (int, zp)`);
-      } else {
-        this.out(`MWV ${hexWord(v.address)},z_A)`, `${varName} (int, abs)`);
-      }
-      return;
-    } else {
-      // char
-      if (isZP) {
-        this.out(`LDZ ${hexByte(v.address)}`, `${varName} (byte, zp)`);
-      } else {
-        this.out(`LDB ${hexWord(v.address)}`, `${varName} (byte, abs)`);
-      }
-      this.out("JPS __signext"); // why?
-    }
+    this.compiler.emitCopyVarIntoZ(varName, "z_A");
   }
 
   private compileCall(e: FunctionCall) {
     const functionName = e.functionName.$refText;
-    const f = this.compiler.getSymbolInfo(functionName);
-    if (!f) throw new Error(`Unknown function '${functionName}'`);
-    if (f.kind != "function")
-      throw new Error(`Expected function received variable`);
+    const f = this.compiler.functions.get(functionName);
+    if (!f) throw new CompileError(`Unknown function '${functionName}'`, e);
 
-    for (const arg of e.args) {
-      // this.compileExpression(arg); // result -> __A
-      this.pushZA(); // push __A onto hw stack (lsb, msb)
+    for (let i = e.args.length - 1; i >= 0; i--) {
+      const arg = e.args[i];
+      this.compileExpression(arg.exprs[0]); // result -> z_A
+      this.emitRTPushZA(); // push z_A onto runtime stack (lsb, msb)
     }
 
     this.out(
       `JPS ${functionName}`,
       `call ${functionName}(${e.args.length} arg${e.args.length === 1 ? "" : "s"})`,
     );
-    if (e.args.length > 0) {
-      this.out(
-        `${"PLS ".repeat(e.args.length * 2).trim()}`,
-        `discard ${e.args.length * 2} pushed arg byte(s)`,
-      );
-    }
+
     // return value convention: callee leaves result in __A
   }
 
@@ -175,16 +152,15 @@ export class ExpressionCompiler {
         this.compileExpression(otherSide);
         if (constSide.value == 1) {
           this.out(`INV z_A`, `++`);
-          return;
         } else if ((constSide.value & 0xff00) == 0) {
           // anything + byte constant (or vice versa)
           this.out(`AIV ${constSide.value},z_A`, `+ byte constant`);
-          return;
         } else {
           // anything + byte constant (or vice versa)
           this.out(`MIV ${constSide.value},z_B AVV z_B,z_A`, `+ word constant`);
-          return;
         }
+        this.compiler.cached.z_A = "";
+        return;
       }
       if (e.op == "-" && isNumberLiteral(e.right)) {
         if (e.right.value == 1) {
@@ -193,8 +169,9 @@ export class ExpressionCompiler {
           // anything - byte constant
           this.compileExpression(e.left);
           this.out(`SIV ${e.right.value},z_A`, `- byte constant`);
-          return;
         }
+        this.compiler.cached.z_A = "";
+        return;
       }
       if (e.op == "*") {
         // anything * power of 2 (or vice versa)
@@ -202,6 +179,7 @@ export class ExpressionCompiler {
         if (Number.isInteger(shift) && shift >= 1 && shift <= 15) {
           this.compileExpression(otherSide);
           this.out(`MIV ${shift}, z_B JPS __shl16`);
+          this.compiler.cached.z_A = "";
           return;
         }
       }
@@ -209,11 +187,11 @@ export class ExpressionCompiler {
 
     // evaluate left, save; evaluate right into __A, move to __B; restore left into __A
     this.compileExpression(e.left);
-    this.pushZA();
+    this.emitHWPushZA();
 
     this.compileExpression(e.right);
     this.out(`MVV z_A,z_B`);
-    this.popZA();
+    this.emitHWPopZA();
     // now __A = left, __B = right
 
     switch (e.op) {
@@ -261,7 +239,7 @@ export class ExpressionCompiler {
   // <=/>=/>) and branch on sign to produce 0xffff/0x0000 in __A.
   private compileComparison(e: ComparisonExpression) {
     this.compileExpression(e.left);
-    this.pushZA();
+    this.emitHWPushZA();
 
     this.compileExpression(e.right);
     this.out(`MVV z_A,z_B`);
@@ -299,16 +277,18 @@ export class ExpressionCompiler {
         throw new Error(`Unhandled comparison operator '${e.op}'`);
     }
 
-    this.out("PLS", "discard saved left expr off stack");
+    this.out("PLS PLS", "discard saved left expr off stack");
   }
 
   emitHeader() {
     this.out("");
     this.out(`; ---- expression compiler zero-page working storage ----`);
-    this.out(`#org ${hexWord(this.zpBase)}`);
+    this.out(`#org ${hexWord(ZP_BASE)}`);
     this.out(
-      `z_A:      0x0000    ; accumulator / expression result / fn return value`,
+      `z_FP:    ${hexWord(VIRTUAL_STACK_BASE)}    ; virtual stack pointer (not the hardware stack pointer)`,
     );
+    this.out(`z_PTR:    0x0000    ; ptr to current var in runtime stack`);
+    this.out(`z_A:      0x0000    ; acc / expr result / fn return value`);
     this.out(`z_B:      0x0000    ; secondary operand`);
     this.out(`z_C:      0x0000    ; scratch (mul/div/cmp)`);
     this.out(`z_D:      0x0000    ; scratch (div quotient)`);

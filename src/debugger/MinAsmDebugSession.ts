@@ -306,6 +306,62 @@ export class MinAsmDebugSession extends DebugSession {
       });
     } else if (id == "Pointers") {
       variables.push({
+        name: "z_FP (0x0)",
+        type: "integer",
+        value: `${hex16(mem16(es.memory, 0))}, ${mem16(es.memory, 0)}`,
+        variablesReference: 0,
+        memoryReference: "0x00", // allow the user to read memory at this address
+      });
+      variables.push({
+        name: "z_PTR (0x2)",
+        type: "integer",
+        value: `${hex16(mem16(es.memory, 2))}, ${mem16(es.memory, 2)}`,
+        variablesReference: 0,
+        memoryReference: "0x02",
+      });
+      variables.push({
+        name: "*z_PTR (0x2)",
+        type: "integer",
+        value: `${hex16(mem16(es.memory, mem16(es.memory, 0x0002)))}, ${mem16(es.memory, mem16(es.memory, 0x0002))}`,
+        variablesReference: 0,
+        memoryReference: "0x02",
+      });
+      variables.push({
+        name: "z_A (0x4)",
+        type: "integer",
+        value: `${hex16(mem16(es.memory, 4))}, ${mem16(es.memory, 4)}`,
+        variablesReference: 0,
+        memoryReference: "0x04",
+      });
+      variables.push({
+        name: "z_B (0x6)",
+        type: "integer",
+        value: `${hex16(mem16(es.memory, 6))}, ${mem16(es.memory, 6)}`,
+        variablesReference: 0,
+        memoryReference: "0x06",
+      });
+      variables.push({
+        name: "z_C (0x8)",
+        type: "integer",
+        value: `${hex16(mem16(es.memory, 8))}, ${mem16(es.memory, 8)}`,
+        variablesReference: 0,
+        memoryReference: "0x08",
+      });
+      variables.push({
+        name: "z_D (0xC)",
+        type: "integer",
+        value: `${hex16(mem16(es.memory, 0xc))}, ${mem16(es.memory, 0xc)}`,
+        variablesReference: 0,
+        memoryReference: "0x0C",
+      });
+      variables.push({
+        name: "z_cnt (0xE )",
+        type: "integer",
+        value: `${hex16(mem16(es.memory, 0xe))}, ${mem16(es.memory, 0xe)}`,
+        variablesReference: 0,
+        memoryReference: "0x0E",
+      });
+      variables.push({
         name: "z0 (0x90)",
         type: "integer",
         value: `${hex8(es.memory[0x90])}, ${es.memory[0x90]}`,
@@ -328,34 +384,6 @@ export class MinAsmDebugSession extends DebugSession {
         type: "integer",
         value: `${hex8(es.memory[0x93])}, ${es.memory[0x93]}`,
         variablesReference: 0,
-      });
-      variables.push({
-        name: "z_A (0x0)",
-        type: "integer",
-        value: `${hex16(mem16(es.memory, 0))}, ${mem16(es.memory, 0)}`,
-        variablesReference: 0,
-        memoryReference: "0x00", // allow the user to read memory at this address
-      });
-      variables.push({
-        name: "z_B (0x2)",
-        type: "integer",
-        value: `${hex16(mem16(es.memory, 2))}, ${mem16(es.memory, 2)}`,
-        variablesReference: 0,
-        memoryReference: "0x02",
-      });
-      variables.push({
-        name: "z_C (0x4)",
-        type: "integer",
-        value: `${hex16(mem16(es.memory, 4))}, ${mem16(es.memory, 4)}`,
-        variablesReference: 0,
-        memoryReference: "0x04",
-      });
-      variables.push({
-        name: "z_D (0x6)",
-        type: "integer",
-        value: `${hex16(mem16(es.memory, 6))}, ${mem16(es.memory, 6)}`,
-        variablesReference: 0,
-        memoryReference: "0x06",
       });
     }
 
