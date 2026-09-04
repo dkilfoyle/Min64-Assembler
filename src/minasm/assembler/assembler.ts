@@ -284,7 +284,6 @@ class Assembler {
   processArgs(data: Data) {
     // found the instruction arguments (Data) - check match expected and consume
     const info = instructionInfo[this.curInstr!.op];
-    if (info.instr == "STZ") debugger;
     let size = 0;
     let dataIndex = 0;
     for (let argIndex = 0; argIndex < info.argType.length; argIndex++) {

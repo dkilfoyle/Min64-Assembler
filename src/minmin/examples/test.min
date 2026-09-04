@@ -1,2 +1,7 @@
 int a = 5
-int b = a + 6
+int b = 6
+sum(a,b)
+
+def sum(int x, int y):
+    int c = x+y
+
