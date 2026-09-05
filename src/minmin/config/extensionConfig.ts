@@ -38,7 +38,7 @@ export const minminExtensionConfig: ExtensionConfig = {
         {
           command: "minmin-compile",
           title: "Compile",
-          icon: "$(build)",
+          icon: "$(gear)",
         },
         // {
         //   command: "minmin-autocompile",

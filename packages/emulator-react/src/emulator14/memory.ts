@@ -85,7 +85,10 @@ export class Memory {
   /** Load a raw flash image (e.g. the 512KB SSD image) starting at a given bank/offset. */
   loadFlashImage(bytes: Uint8Array, startBank = 0, offset = 0): void {
     const base = startBank * BANK_SIZE + offset;
-    this.flash.set(bytes.subarray(0, Math.min(bytes.length, FLASH_SIZE - base)), base);
+    this.flash.set(
+      bytes.subarray(0, Math.min(bytes.length, FLASH_SIZE - base)),
+      base,
+    );
   }
 
   /** True if the low 4K window currently exposes FLASH rather than RAM. */

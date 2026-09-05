@@ -249,9 +249,7 @@ export class ExpressionCompiler {
     this.out("");
     this.out(`; ---- expression compiler zero-page working storage ----`);
     this.out(`#org ${hexWord(ZP_BASE)}`);
-    this.out(
-      `z_FP:    ${hexWord(VIRTUAL_STACK_BASE)}    ; virtual stack pointer (not the hardware stack pointer)`,
-    );
+    this.out(`z_FP:     0xEFFF    ; frame start pointer`);
     this.out(`z_PTR:    0x0000    ; ptr to current var in runtime stack`);
     this.out(`z_A:      0x0000    ; acc / expr result / fn return value`);
     this.out(`z_B:      0x0000    ; secondary operand`);

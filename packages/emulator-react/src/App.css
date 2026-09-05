@@ -80,6 +80,17 @@ body {
   border-radius: var(--bk-radius-sm);
 }
 
+.memory-cell-ptr {
+  background-color: #4c7aaf;
+  color: rgb(38, 38, 38);
+  border-radius: var(--bk-radius-sm);
+}
+
+.memory-cell-fp {
+  border-radius: var(--bk-radius-sm);
+  background-color: #af4c99;
+}
+
 .memory-row-address {
   color: #cccccc;
 }

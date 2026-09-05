@@ -84,7 +84,7 @@ export class MinCompiler {
 
   out(instruction: string, comment: string = "") {
     this.assembly.push(
-      comment ? `${instruction.padEnd(38)}; ${comment}` : instruction,
+      comment ? `${instruction.padEnd(40)}; ${comment}` : instruction,
     );
   }
 
@@ -120,22 +120,9 @@ export class MinCompiler {
     this.out(`; Code compiled from ${fname}\n`);
     this.out("#org 0x0100");
 
-    // Main program body: everything except Def/Use at top level.
-    this.frameStack.push({
-      name: "__global",
-      variables: new Map<string, IVariableSymbol>(),
-      frameSize: 0,
-    });
+    this.compileMain(mainProgram);
 
     const reachableDefs = computeReachableDefs(mainProgram, libraries);
-
-    this.out(`__main:`);
-    for (const el of mainProgram.elements) {
-      if (AST.isDef(el) || AST.isUse(el)) continue;
-      this.compileStatement(el);
-    }
-    this.outi(`JPA ${this.os("_Prompt")}`);
-
     for (const def of reachableDefs) {
       this.compileDef(def);
     }
@@ -144,6 +131,23 @@ export class MinCompiler {
     this.expressionCompiler.emitHeader();
     this.emitOsCalls();
     return this.assembly.join("\n");
+  }
+
+  compileMain(mainProgram: AST.Program) {
+    // Main program body: everything except Def/Use at top level.
+    this.frameStack.push({
+      name: "__global",
+      variables: new Map<string, IVariableSymbol>(),
+      frameSize: 0,
+    });
+    this.out(`__main:`);
+    for (const el of mainProgram.elements) {
+      if (AST.isDef(el) || AST.isUse(el)) continue;
+      this.compileStatement(el);
+    }
+    const poppedFrame = this.frameStack.pop()!;
+    this.printFrame(poppedFrame);
+    this.outi(`\nJPA ${this.os("_Prompt")}`);
   }
 
   emitOsCalls() {
@@ -463,7 +467,11 @@ export class MinCompiler {
 
   compileDef(def: AST.Def) {
     this.currentFunction = def.name;
-    this.out(`\n${def.name}:`);
+    this.out("\n");
+    this.out(
+      `${def.name}:`,
+      `params ${def.params.map((p) => p.type + ": " + p.name).join(", ")}`,
+    );
 
     // Initialize the new stack frame for the function
     const frame: IStackFrame = {
@@ -486,8 +494,41 @@ export class MinCompiler {
     this.frameStack.push(frame);
 
     def.block.forEach((stmt) => this.compileStatement(stmt));
+    const poppedFrame = this.frameStack.pop()!;
+    this.outi(
+      `AIV ${poppedFrame.frameSize},z_FP`,
+      `Pop the current frame off stack`,
+    );
+    this.printFrame(poppedFrame);
+
     // Explicit backup fallback return sequence if execution flows off end of scope block
-    this.outi(`RTS`, `Default return safety fallback path for ${def.name}`);
+    if (this.assembly.at(-1)?.includes("RTS") == false) {
+      this.outi(`RTS`, `return void`);
+    }
+  }
+
+  compileBlock(name: string, stmts: AST.LocalElement[]) {
+    const lastFrame = this.frameStack.at(-1)!;
+    const frame: IStackFrame = {
+      name: name,
+      frameSize: 0,
+      variables: new Map(),
+    };
+    this.frameStack.push(frame);
+    this.outi(`SIV ${lastFrame.frameSize},z_FP`, `z_FP = ${name}`);
+    stmts.forEach((stmt) => this.compileStatement(stmt));
+    const poppedFrame = this.frameStack.pop();
+    if (poppedFrame) {
+      this.printFrame(poppedFrame);
+    }
+    this.outi(`AIV ${frame.frameSize},z_FP`, `Pop the current frame off stack`);
+  }
+
+  printFrame(frame: IStackFrame) {
+    this.out(`  ; frame summary`);
+    frame.variables.forEach((v) =>
+      this.out(`  ; ${v.name.padEnd(20)} : ${v.address}`),
+    );
   }
 
   compileCallStatement(node: AST.CallStatement) {
