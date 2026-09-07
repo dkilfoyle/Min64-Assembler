@@ -64,7 +64,7 @@ export class ExpressionCompiler {
       case isNumberLiteral(e):
         return this.compileNum(e);
       case isVariableReference(e):
-        return this.compileVar(e);
+        return this.compiler.variableCompiler.compileVariableReference(e);
       case isFunctionCall(e):
         return this.compiler.compileFunctionCall(e);
       case isUnaryExpression(e):
@@ -79,16 +79,6 @@ export class ExpressionCompiler {
     if (this.compiler.cached.z_A == valueStr) return;
     this.outi(`MIV ${hexWord(e.value)},z_A`, valueStr);
     this.compiler.cached.z_A = valueStr;
-  }
-
-  private compileVar(e: VariableReference) {
-    const varName = e.varName.$refText;
-    const v = this.compiler.getSymbol(varName, e);
-
-    if (v.location != "stack")
-      throw new CompileError(`Non stack variables not supported yet`, e);
-
-    this.compiler.emitCopyVarIntoZ(varName, "z_A");
   }
 
   compileUnary(e: UnaryExpression) {

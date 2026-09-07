@@ -9,29 +9,12 @@ import {
   lowOperand,
 } from "../utils";
 import { ExpressionCompiler } from "./expressionCompiler";
-import type { ScopeSymbol } from "./interface";
-import { isDef } from "../../ls/generated/ast";
 import { computeReachableDefs } from "../reachability";
-
-interface IVariableSymbol {
-  name: string;
-  kind: "param" | "local";
-  type: "int" | "char";
-  count: number;
-  address: number; // offset in the case of location=stack
-  location: "stack" | "zeroPage" | "global" | "heap";
-}
-
-interface IStackFrame {
-  name: string;
-  variables: Map<string, IVariableSymbol>;
-  frameSize: number;
-}
-
-interface IFunctionInfo {
-  name: string;
-  parameters: IVariableSymbol[];
-}
+import {
+  VariableCompiler,
+  type IStackFrame,
+  type IVariableSymbol,
+} from "./variableCompiler";
 
 export class MinCompiler {
   assembly: string[] = [];
@@ -39,8 +22,9 @@ export class MinCompiler {
   osUsed: Set<string> = new Set();
   runtimeUsed = new Set<string>();
   expressionCompiler = new ExpressionCompiler(this);
+  variableCompiler = new VariableCompiler(this);
   currentFunction: string | null = null;
-  frameStack: IStackFrame[] = [];
+
   // functions: Map<string, IFunctionInfo> = new Map();
   cached: {
     z_PTR: string;
@@ -62,9 +46,11 @@ export class MinCompiler {
     this.runtimeUsed.add("__getPtr");
     this.runtimeUsed.add("__loadZA");
     this.runtimeUsed.add("__storeZA");
+
     this.expressionCompiler.reset();
+    this.variableCompiler.reset();
     this.currentFunction = null;
-    this.frameStack = [];
+
     // this.functions = new Map();
     this.cached.z_PTR = "";
     this.cached.z_A = "";
@@ -94,20 +80,20 @@ export class MinCompiler {
     );
   }
 
-  getSymbol(name: string, node?: AstNode): IVariableSymbol {
-    const frame = this.currentFrame(node);
-    if (!frame)
-      throw new CompileError(
-        `Current function ${this.currentFunction} not found`,
-        {} as AstNode,
-      );
-    const symbolInfo = frame.variables.get(name);
-    if (!symbolInfo)
-      throw new CompileError(
-        `Symbol ${name} not found in function ${this.currentFunction}`,
-        {} as AstNode,
-      );
-    return symbolInfo;
+  isCachedPtr(name: string): boolean {
+    if (this.cached.z_PTR === name) return true;
+    else {
+      this.cached.z_PTR = name;
+      return false;
+    }
+  }
+
+  isCachedA(name: string): boolean {
+    if (this.cached.z_A === name) return true;
+    else {
+      this.cached.z_A = name;
+      return false;
+    }
   }
 
   compile(
@@ -135,8 +121,9 @@ export class MinCompiler {
 
   compileMain(mainProgram: AST.Program) {
     // Main program body: everything except Def/Use at top level.
-    this.frameStack.push({
+    this.variableCompiler.frameStack.push({
       name: "__global",
+      kind: "global",
       variables: new Map<string, IVariableSymbol>(),
       frameSize: 0,
     });
@@ -145,7 +132,7 @@ export class MinCompiler {
       if (AST.isDef(el) || AST.isUse(el)) continue;
       this.compileStatement(el);
     }
-    const poppedFrame = this.frameStack.pop()!;
+    const poppedFrame = this.variableCompiler.frameStack.pop()!;
     this.printFrame(poppedFrame);
     this.outi(`\nJPA ${this.os("_Prompt")}`);
   }
@@ -159,233 +146,13 @@ export class MinCompiler {
     });
   }
 
-  currentFrame(node?: AstNode): IStackFrame {
-    const frame = this.frameStack.at(-1);
-    if (!frame)
-      throw new CompileError("No current stack frame", node || ({} as AstNode));
-    return frame;
-  }
-
-  /** z_PTR = &VarOnStack */
-  emitGetPtr(varName: string) {
-    const symbolInfo = this.getSymbol(varName);
-
-    if (symbolInfo.location === "stack") {
-      if (this.cached.z_PTR == varName) return;
-      this.outi(
-        `MVV z_FP,z_PTR ${symbolInfo.address != 0 ? `SIV ${symbolInfo.address},z_PTR` : ""}`,
-        `z_PTR = &${varName} (stack offset ${symbolInfo.address})`,
-      );
-      this.cached.z_PTR = varName;
-    } else if (symbolInfo.location === "zeroPage") {
-      throw new CompileError(
-        `Symbol ${varName} is zeroPage, not in stack`,
-        {} as AstNode,
-      );
-    }
-  }
-
-  emitCopyZIntoVar(sourceZ: string, varName: string) {
-    const v = this.getSymbol(varName);
-    if (v.location === "stack") {
-      if (v.address > 255)
-        throw new CompileError(
-          `Maximum stack offset is 255, got ${v.address} for ${varName}`,
-          {} as AstNode,
-        );
-      if (sourceZ == "z_A") {
-        this.cached.z_A == varName
-          ? this.outi(`JPS __sdCachedZA`, `${varName}=z_A`)
-          : this.outi(`LDI ${v.address} PHS JPS __sdZA PLS`, `${varName}=z_A`);
-      } else {
-        throw new CompileError(
-          `Unsupported sourceZ ${sourceZ} for copying into stack variable ${varName}`,
-          {} as AstNode,
-        );
-      }
-
-      return;
-    } else if (v.location === "zeroPage") {
-      this.outi(
-        `MVV ${sourceZ},${hexByte(v.address)}`,
-        `${varName} from ${sourceZ} -> zeroPage`,
-      );
-      return;
-    } else if (v.location === "global") {
-      this.outi(
-        `MWV ${sourceZ},${hexWord(v.address)}`,
-        `${varName} from ${sourceZ} -> global`,
-      );
-      return;
-    }
-    throw new CompileError(
-      `Unsupported location for variable ${varName}`,
-      {} as AstNode,
-    );
-  }
-
-  /** z_PTR = &VarOnStack z_A/B = **z_PTR */
-  emitCopyVarIntoZ(varName: string, targetAddr: number | string) {
-    const v = this.getSymbol(varName);
-    if (v.location === "stack" && this.cached.z_A == varName) return;
-
-    if (typeof targetAddr === "number" && targetAddr > 0xff)
-      throw new CompileError(
-        `Target address ${targetAddr} is not zero-page`,
-        {} as AstNode,
-      );
-    if (
-      typeof targetAddr === "string" &&
-      ["z_A", "z_B", "z_C", "z_D"].includes(targetAddr) == false
-    )
-      throw new CompileError(
-        `Target address ${targetAddr} is not a valid z target`,
-        {} as AstNode,
-      );
-    const targetLSB =
-      typeof targetAddr === "number"
-        ? hexByte((targetAddr + 0) & 0xff)
-        : `${targetAddr}+0`;
-    const targetMSB =
-      typeof targetAddr === "number"
-        ? hexByte((targetAddr + 1) & 0xff)
-        : `${targetAddr}+1`;
-
-    if (v.type === "int") {
-      switch (v.location) {
-        case "stack":
-          if (targetAddr == "z_A") {
-            if (v.address > 255)
-              throw new CompileError(
-                `Maximum stack offset is 255, got ${v.address} for ${varName}`,
-                {} as AstNode,
-              );
-            this.cached.z_PTR == varName
-              ? this.outi(`JPS __ldCachedZA`, `z_A=${varName}`)
-              : this.outi(
-                  `LDI ${v.address} PHS JPS __ldZA PLS`,
-                  `z_A=${varName}`,
-                );
-            this.cached.z_A = varName;
-          } else {
-            this.outi(`LDI ${v.address} PHS JPS __ldZB PLS`, `z_B=${varName}`);
-          }
-
-          return;
-        case "zeroPage":
-          this.outi(
-            `MVV ${hexByte(v.address)},${targetLSB}`,
-            `${varName} from zeroPage -> ${targetAddr}`,
-          );
-          return;
-        case "global":
-          this.outi(
-            `MWV ${hexWord(v.address)},${targetLSB}`,
-            `${varName} from global -> ${targetAddr}`,
-          );
-          return;
-      }
-    } else {
-      switch (v.location) {
-        case "stack":
-          this.emitGetPtr(varName); // z_PTR = &varName
-          this.outi(
-            `MTZ z_PTR,${targetLSB} JPS sign_ext`,
-            `${varName} from stack -> ${targetAddr}`,
-          );
-          return;
-        case "zeroPage":
-          this.outi(
-            `MZZ ${hexByte(v.address)},${targetLSB} JPS __signext`,
-            `${varName} from zeroPage -> ${targetAddr}`,
-          );
-          return;
-        case "global":
-          this.outi(
-            `MBZ ${hexWord(v.address)},${targetLSB} JPS __signext`,
-            `${varName} from global -> ${targetAddr}`,
-          );
-          return;
-      }
-    }
-  }
-
-  compileVariableDeclaration(node: AST.VariableDeclaration) {
-    const frame = this.currentFrame(node);
-    const varName = node.name;
-
-    const symbolInfo: IVariableSymbol = {
-      name: node.name,
-      kind: "local",
-      type: node.type,
-      count: 1, // Assuming single variable for now; extend for arrays if needed
-      location: "stack",
-      address: frame.frameSize,
-    };
-    frame.variables.set(varName, symbolInfo);
-    frame.frameSize += node.type == "int" ? 2 : 1; // Assuming each variable takes 1 unit of frame size
-
-    if (node.assignExpr) {
-      this.expressionCompiler.compileExpression(node.assignExpr.exprs[0]); // z_A = result of expression
-      this.emitCopyZIntoVar("z_A", varName);
-    }
-  }
-
-  compileVariableCalcAssignment(node: AST.VariableCalcAssignment) {
-    if (node.value == 0) return;
-    const frame = this.currentFrame(node);
-    const varName = node.varName.$refText;
-    const symbolInfo = frame.variables.get(varName);
-    if (!symbolInfo) {
-      throw new CompileError(
-        `Variable ${varName} not found in current scope`,
-        node,
-      );
-    }
-
-    this.emitCopyVarIntoZ(varName, "z_A"); // z_PTR = &varName
-
-    if (node.op === "+=") {
-      if (symbolInfo.type === "int") {
-        if (node.value <= 0xff) {
-          this.outi(
-            `LDI ${hexByte(node.value)} ADV z_A`,
-            `${node.varName} += ${node.value}`,
-          );
-        } else {
-          this.outi(
-            `LDI ${hexByte(node.value & 0xff)} ADV z_A LDI ${hexByte(node.value >> 8)} AD.Z z_A+1`,
-            `${node.varName} += ${node.value}`,
-          );
-        }
-        this.cached.z_A = "";
-        this.emitCopyZIntoVar("z_A", varName);
-      } else {
-        this.outi(
-          `LDI ${hexByte(node.value)} AD.T z_PTR `,
-          `${node.varName} += ${node.value}`,
-        );
-      }
-    } else {
-      if (symbolInfo.type === "int") {
-        this.outi(`; how to do this? check min.asm`);
-      } else {
-        this.outi(
-          `LDI ${hexByte(node.value)} SU.T z_PTR `,
-          `${node.varName} += ${node.value}`,
-        );
-      }
-    }
-  }
-
   compileStatement(node: AST.LocalElement) {
     this.outi(`; ${node.$cstNode?.text}`);
     switch (true) {
       case AST.isVariableDeclaration(node):
-        return this.compileVariableDeclaration(node);
+        return this.variableCompiler.compileVariableDeclaration(node);
       case AST.isVariableCalcAssignment(node):
-        return this.compileVariableCalcAssignment(node);
-        break;
+        return this.variableCompiler.compileVariableCalcAssignment(node);
       case AST.isPrintStatement(node):
         return this.compilePrint(node);
       case AST.isCallStatement(node):
@@ -430,6 +197,7 @@ export class MinCompiler {
       case AST.isFunctionCall(node):
         return this.compileFunctionCall(node);
       default:
+        debugger;
         console.error("Unknown compilation type " + node.$type);
         throw Error("Unknown compilation type " + node.$type);
     }
@@ -442,18 +210,16 @@ export class MinCompiler {
     // push the arguments into the callee's frame
     e.args.forEach((arg, i) => {
       this.expressionCompiler.compileExpression(arg.exprs[0]); // result -> z_A
-      const offset = this.currentFrame().frameSize + i * 2;
-      if (offset > 255)
-        throw new CompileError(`Offset ${offset} exceeds 255`, arg);
+      const offset = this.variableCompiler.currentFrame().frameSize + i * 2;
       this.outi(
-        `LDI ${offset} PHS JPS __sdZA PLS`,
-        ` copy z_A to ${functionName} arg${i}`,
+        `MVV z_FP,z_PTR AIV ${offset},z_PTR JPS __sdZA`,
+        `copy z_A to ${functionName} arg${i}`,
       );
     });
 
-    // make z_FP  -= this.currentFrame().frameSize which will point to the new stack frame base
+    // make z_FP  -= this.variableCompiler.currentFrame().frameSize which will point to the new stack frame base
     this.outi(
-      `SIV ${this.currentFrame().frameSize},z_FP`,
+      `SIV ${this.variableCompiler.currentFrame().frameSize},z_FP`,
       `z_FP = ${functionName}`,
     );
 
@@ -476,6 +242,7 @@ export class MinCompiler {
     // Initialize the new stack frame for the function
     const frame: IStackFrame = {
       name: def.name,
+      kind: "function",
       frameSize: 0,
       variables: new Map(),
     };
@@ -491,10 +258,10 @@ export class MinCompiler {
       frame.variables.set(param.name, varSymbol);
       frame.frameSize += 2;
     });
-    this.frameStack.push(frame);
+    this.variableCompiler.frameStack.push(frame);
 
     def.block.forEach((stmt) => this.compileStatement(stmt));
-    const poppedFrame = this.frameStack.pop()!;
+    const poppedFrame = this.variableCompiler.frameStack.pop()!;
     this.outi(
       `AIV ${poppedFrame.frameSize},z_FP`,
       `Pop the current frame off stack`,
@@ -508,16 +275,17 @@ export class MinCompiler {
   }
 
   compileBlock(name: string, stmts: AST.LocalElement[]) {
-    const lastFrame = this.frameStack.at(-1)!;
+    const lastFrame = this.variableCompiler.frameStack.at(-1)!;
     const frame: IStackFrame = {
       name: name,
+      kind: "block",
       frameSize: 0,
       variables: new Map(),
     };
-    this.frameStack.push(frame);
+    this.variableCompiler.frameStack.push(frame);
     this.outi(`SIV ${lastFrame.frameSize},z_FP`, `z_FP = ${name}`);
     stmts.forEach((stmt) => this.compileStatement(stmt));
-    const poppedFrame = this.frameStack.pop();
+    const poppedFrame = this.variableCompiler.frameStack.pop();
     if (poppedFrame) {
       this.printFrame(poppedFrame);
     }
@@ -548,7 +316,7 @@ export class MinCompiler {
         }
         if (AST.isVariableReference(expr)) {
           const varName = expr.varName.$refText;
-          const v = this.getSymbol(varName, expr);
+          const v = this.variableCompiler.getSymbol(varName, expr).symbolInfo;
           if (v.type == "char") {
             // print 0 terminated char(s)
             this.outi(
