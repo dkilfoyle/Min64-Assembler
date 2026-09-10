@@ -1,4 +1,4 @@
-import type { AstNode } from "langium";
+import { AstUtils, type AstNode } from "langium";
 
 export function hexByte(n: number): string {
   // return `$${(n & 0xff).toString(16).padStart(2, "0").toUpperCase()}`;
@@ -35,10 +35,12 @@ export class CompileError extends Error {
         end: { line: number; character: number };
       }
     | undefined;
+  public uri: string | undefined;
 
   constructor(message: string, node: AstNode) {
     const line = node.$cstNode?.range.start.line ?? 0;
     super(`${message} (line ${line})`);
     this.range = node.$cstNode?.range;
+    this.uri = AstUtils.getDocument(node).uri.toString();
   }
 }

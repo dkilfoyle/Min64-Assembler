@@ -15,9 +15,10 @@ import {
 import { createMinminServices } from "../ls/minmin-module.js";
 import { MinminBrowserFileSystemProvider } from "../ls/minmin-filesystem.js";
 import { isProgram, Program } from "../ls/generated/ast.js";
-import { minCompiler } from "../compiler/v3/compiler.js";
+import { compile } from "../compiler/v3/compiler.js";
 import { MinCompileRequest } from "./api.js";
 import { resolveImportUri } from "../ls/minmin-import-utils.js";
+import type { CompileError } from "../compiler/utils.js";
 
 // export interface MinDocChangeNotification {
 //   uri: string;
@@ -78,12 +79,29 @@ export const start = async (
             : null;
         })
         .filter((p): p is Program => p !== null);
-      const asm = minCompiler.compile(
-        params.uri,
-        doc.parseResult.value,
-        libPrograms,
-      );
-      return { uri: params.uri, asm, status: "ok", errors: [] };
+      try {
+        const asm = compile(params.uri, doc.parseResult.value, libPrograms);
+        return { uri: params.uri, asm, status: "ok", errors: [] };
+      } catch (e) {
+        const ce = e as CompileError;
+        connection.sendNotification("textDocument/publishDiagnostics", {
+          uri: ce.uri,
+          diagnostics: [
+            {
+              range: ce.range,
+              severity: 1, // 1 = Error
+              message: ce.message,
+              source: "Min Compiler",
+            },
+          ],
+        });
+        return {
+          uri: params.uri,
+          asm: "",
+          status: "error",
+          errors: [e instanceof Error ? e.message : String(e)],
+        };
+      }
     } else {
       return {
         uri: params.uri,

@@ -1,7 +1,7 @@
 int a = 5
 int b = 6
-sum(a,b)
+print(sum(a,b))
 
 def sum(int x, int y):
     int c = x+y
-
+    return c
