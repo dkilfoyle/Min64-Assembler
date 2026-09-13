@@ -20,7 +20,7 @@ import {
   isVariableAssignment,
   isVariableDeclaration,
 } from "../../ls/generated/ast";
-import { CompileError } from "../utils";
+import { MinCompileError } from "../utils";
 import { computeReachableDefs } from "../reachability";
 
 /**
@@ -127,8 +127,7 @@ export class MinCompiler {
     const allPrograms = [...libraries, mainProgram];
     for (const prog of allPrograms) {
       for (const el of prog.elements) {
-        if (AST.isDef(el))
-          this.functions.set(el.name, this.registerFunction(el));
+        if (AST.isDef(el)) this.functions.set(el.name, this.registerFunction(el));
       }
     }
 
@@ -184,14 +183,7 @@ export class MinCompiler {
   }
 
   /** Assign a range of zero-page memory for a variable and return address */
-  private allocVar(
-    node: AstNode,
-    type: VarType,
-    name: string,
-    length: number,
-    pinned: boolean,
-    atAddr?: number,
-  ): VarInfo {
+  private allocVar(node: AstNode, type: VarType, name: string, length: number, pinned: boolean, atAddr?: number): VarInfo {
     if (pinned) {
       return {
         type,
@@ -203,7 +195,7 @@ export class MinCompiler {
     }
     const size = elementSize(type) * length;
     if (this.zpNext + size > ZP_USER_END) {
-      throw new CompileError(
+      throw new MinCompileError(
         `out of zero-page space allocating '${name}' (${size} bytes needed, ` +
           `${ZP_USER_END - this.zpNext} available) - v1 only supports zero-page storage`,
         node,
@@ -279,11 +271,7 @@ export class MinCompiler {
       const start = idx.startExpr ? this.constEval(idx.startExpr) : 0;
       const end = idx.endExpr ? this.constEval(idx.endExpr) : start;
       length = end - start + 1; // inclusive range, per fill.min's usage (a[0|24] -> 25 elems)
-      if (length < 1)
-        throw new CompileError(
-          `invalid array size [${start}|${end}]`,
-          decl.assignExpr!.exprs[0],
-        );
+      if (length < 1) throw new MinCompileError(`invalid array size [${start}|${end}]`, decl.assignExpr!.exprs[0]);
     } else if (decl.atExpr) {
       // A pinned variable with no explicit size (e.g. "char d @ 0x0080") is a raw
       // memory-address overlay: index it freely, with no compiler-tracked bounds
@@ -291,14 +279,7 @@ export class MinCompiler {
       length = 0xffff;
     }
 
-    const info = this.allocVar(
-      decl,
-      decl.type,
-      decl.name,
-      length,
-      !!decl.atExpr,
-      pinnedAddr,
-    );
+    const info = this.allocVar(decl, decl.type, decl.name, length, !!decl.atExpr, pinnedAddr);
     this.declareVar(decl.name, info);
 
     if (decl.assignExpr && !selfSizeRef) {
@@ -314,10 +295,9 @@ export class MinCompiler {
   }
 
   private lookupVar(name: string, node: AstNode): VarInfo {
-    if (this.currentFunc?.locals.has(name))
-      return this.currentFunc.locals.get(name)!;
+    if (this.currentFunc?.locals.has(name)) return this.currentFunc.locals.get(name)!;
     if (this.globals.has(name)) return this.globals.get(name)!;
-    throw new CompileError(`undefined variable '${name}'`, node);
+    throw new MinCompileError(`undefined variable '${name}'`, node);
   }
 
   private genVariableAssignment(stmt: AST.VariableAssignment): void {
@@ -325,29 +305,17 @@ export class MinCompiler {
     this.genAssignInto(stmt, info, stmt.indexExpr, stmt.assignExpr);
   }
 
-  private genAssignInto(
-    stmt: AstNode,
-    lhsInfo: VarInfo,
-    lhsIndexExpr: AST.Expression | undefined | null,
-    rhs: AST.CompoundExpression,
-  ): void {
+  private genAssignInto(stmt: AstNode, lhsInfo: VarInfo, lhsIndexExpr: AST.Expression | undefined | null, rhs: AST.CompoundExpression): void {
     // generate x = rhs
 
     if (rhs.exprs.length > 1) {
-      throw new CompileError(
-        "concatenation (_) is not yet supported by this compiler",
-        rhs,
-      );
+      throw new MinCompileError("concatenation (_) is not yet supported by this compiler", rhs);
     }
     const rhsExpr = rhs.exprs[0];
 
     if (lhsIndexExpr) {
       // a[i] = expr : single element write
-      if (!lhsInfo.isArray)
-        throw new CompileError(
-          `indexed assignment target is not an array`,
-          lhsIndexExpr,
-        );
+      if (!lhsInfo.isArray) throw new MinCompileError(`indexed assignment target is not an array`, lhsIndexExpr);
       this.genEvalToTemp(rhsExpr, lhsInfo.type, "T1"); // T1 = rhs()
       this.genIndexAddressToPtr(lhsInfo, lhsIndexExpr, "PTR1"); // PTR1 = &(a[i])
       this.genStoreIndirect("PTR1", lhsInfo.type, "T1"); // **PTR1 = *T1
@@ -365,10 +333,7 @@ export class MinCompiler {
       }
     }
     if (lhsInfo.isArray) {
-      throw new CompileError(
-        `cannot assign a scalar expression to array '${lhsInfo.address}'`,
-        stmt,
-      );
+      throw new MinCompileError(`cannot assign a scalar expression to array '${lhsInfo.address}'`, stmt);
     }
     this.genEvalToVar(rhsExpr, lhsInfo);
   }
@@ -399,45 +364,31 @@ export class MinCompiler {
         this.emit(`${stmt.op == "+=" ? "AD.T" : "SU.T"} PTR1+1`); // lhs[i] += RegA
       }
     } else {
-      if (rhsValue & 0xff00)
-        throw new CompileError(
-          `rhsValue ${rhsValue} too large for byte assignment`,
-          stmt,
-        );
+      if (rhsValue & 0xff00) throw new MinCompileError(`rhsValue ${rhsValue} too large for byte assignment`, stmt);
       if (lhsInfo.type === "int") {
-        this.emit(
-          `${stmt.op === "+=" ? "AIV" : "SIV"} ${rhsValue & 0xff},${hexWord(lhsInfo.address)}`,
-        );
+        this.emit(`${stmt.op === "+=" ? "AIV" : "SIV"} ${rhsValue & 0xff},${hexWord(lhsInfo.address)}`);
       } else {
-        this.emit(
-          `${stmt.op === "+=" ? "AIZ" : "SIZ"} ${rhsValue & 0xff},${hexWord(lhsInfo.address)}`,
-        );
+        this.emit(`${stmt.op === "+=" ? "AIZ" : "SIZ"} ${rhsValue & 0xff},${hexWord(lhsInfo.address)}`);
       }
       return;
     }
   }
 
   private genReturn(stmt: AST.ReturnStatement): void {
-    if (!this.currentFunc)
-      throw new CompileError("return outside function", stmt);
+    if (!this.currentFunc) throw new MinCompileError("return outside function", stmt);
     if (stmt.expr.exprs.length > 1) {
-      throw new CompileError(
-        "concatenation (_) is not yet supported by this compiler",
-        stmt,
-      );
+      throw new MinCompileError("concatenation (_) is not yet supported by this compiler", stmt);
     }
     // Return value convention: leave result in A (char) or in the reserved __ret zero-page
     // word (int). Caller reads it from there immediately after the call.
     const expr = stmt.expr.exprs[0];
-    const retType =
-      this.currentFunc.def.params.length > 0 ? undefined : undefined; // unused
+    const retType = this.currentFunc.def.params.length > 0 ? undefined : undefined; // unused
     this.genEvalGeneric(expr);
     this.emit("RTS");
   }
 
   private genBreak(stmt: AST.BreakStatement): void {
-    if (this.breakLabels.length === 0)
-      throw new CompileError("break outside while", stmt);
+    if (this.breakLabels.length === 0) throw new MinCompileError("break outside while", stmt);
     this.emit(`FPA ${this.breakLabels[this.breakLabels.length - 1]}`);
   }
 
@@ -452,10 +403,7 @@ export class MinCompiler {
     const branches: {
       condition: AST.Expression;
       block: AST.GlobalElement[];
-    }[] = [
-      { condition: stmt.condition, block: stmt.block },
-      ...stmt.elifs.map((e) => ({ condition: e.condition, block: e.block })),
-    ];
+    }[] = [{ condition: stmt.condition, block: stmt.block }, ...stmt.elifs.map((e) => ({ condition: e.condition, block: e.block }))];
 
     for (const branch of branches) {
       const falseLabel = this.newLabel("if_next");
@@ -485,10 +433,7 @@ export class MinCompiler {
   private genPrint(stmt: AST.PrintStatement): void {
     for (const compound of stmt.args) {
       if (compound.exprs.length > 1) {
-        throw new CompileError(
-          "concatenation (_) is not yet supported by this compiler",
-          stmt,
-        );
+        throw new MinCompileError("concatenation (_) is not yet supported by this compiler", stmt);
       }
       this.genPrintOne(compound.exprs[0]);
     }
@@ -597,36 +542,20 @@ export class MinCompiler {
     this.emit(`MVV ${zp("PTR1")},${zp("RESULT")}`); // RESULT = address of the first digit
   }
 
-  private genFunctionCall(
-    call: AST.FunctionCall,
-    resultVar: VarInfo | null,
-  ): void {
+  private genFunctionCall(call: AST.FunctionCall, resultVar: VarInfo | null): void {
     const fn = this.functions.get(call.functionName.$refText);
-    if (!fn)
-      throw new CompileError(
-        `undefined function '${call.functionName.$refText}'`,
-        call,
-      );
+    if (!fn) throw new MinCompileError(`undefined function '${call.functionName.$refText}'`, call);
     if (call.args.length !== fn.params.length) {
-      throw new CompileError(
-        `'${call.functionName.$refText}' expects ${fn.params.length} argument(s), got ${call.args.length}`,
-        call,
-      );
+      throw new MinCompileError(`'${call.functionName.$refText}' expects ${fn.params.length} argument(s), got ${call.args.length}`, call);
     }
     for (let i = 0; i < call.args.length; i++) {
       const argCompound = call.args[i];
       if (argCompound.exprs.length > 1) {
-        throw new CompileError(
-          "concatenation (_) is not yet supported by this compiler",
-          call,
-        );
+        throw new MinCompileError("concatenation (_) is not yet supported by this compiler", call);
       }
       const param = fn.params[i];
       if (fn.usedByRef[i]) {
-        throw new CompileError(
-          "by-reference parameters are not yet supported by this compiler",
-          call,
-        );
+        throw new MinCompileError("by-reference parameters are not yet supported by this compiler", call);
       }
       this.genEvalToVar(argCompound.exprs[0], param);
     }
@@ -651,11 +580,7 @@ export class MinCompiler {
 
   /** Evaluates `expr` (must be int or char typed) and stores the result into `dest`. */
   private genEvalToVar(expr: AST.Expression, dest: VarInfo): void {
-    if (dest.isArray)
-      throw new CompileError(
-        "cannot assign a scalar to an array variable",
-        expr,
-      );
+    if (dest.isArray) throw new MinCompileError("cannot assign a scalar to an array variable", expr);
     this.genEvalGeneric(expr);
     if (dest.type === "int") {
       this.emit(`MVV ${zp("RESULT")},${hexWord(dest.address)}`);
@@ -664,11 +589,7 @@ export class MinCompiler {
     }
   }
 
-  private genEvalToTemp(
-    expr: AST.Expression,
-    type: VarType,
-    tempName: string,
-  ): void {
+  private genEvalToTemp(expr: AST.Expression, type: VarType, tempName: string): void {
     this.genEvalGeneric(expr);
     if (type === "int") this.emit(`MVV ${zp("RESULT")},${zp(tempName)}`);
     else this.emit(`MZZ ${zp("RESULTC")},${zp(tempName)}`);
@@ -686,10 +607,7 @@ export class MinCompiler {
         this.emit(`MIV ${hexWord(expr.value)},${zp("RESULT")}`);
         return;
       case isStringLiteral(expr):
-        throw new CompileError(
-          "string literals are not yet supported by this compiler",
-          expr,
-        );
+        throw new MinCompileError("string literals are not yet supported by this compiler", expr);
       case isVariableReference(expr):
         return this.genEvalVariableReference(expr);
       case isFunctionCall(expr): {
@@ -715,14 +633,10 @@ export class MinCompiler {
     const info = this.lookupVar(ref.varName.$refText, ref.$container);
     if (ref.index) {
       if (ref.index.endExpr) {
-        throw new CompileError(
-          "range slicing is not yet supported by this compiler",
-          ref.index.endExpr,
-        );
+        throw new MinCompileError("range slicing is not yet supported by this compiler", ref.index.endExpr);
       }
       const startExpr = ref.index.startExpr;
-      if (!startExpr)
-        throw new CompileError("array reference needs an index", ref.index);
+      if (!startExpr) throw new MinCompileError("array reference needs an index", ref.index);
       this.genIndexAddressToPtr(info, startExpr, "PTR1");
       if (info.type === "int") {
         this.emit(`LDT ${zp("PTR1")}`);
@@ -746,11 +660,7 @@ export class MinCompiler {
   }
 
   /** Computes the runtime BYTE address of arr[indexExpr] into the given zero-page pointer. */
-  private genIndexAddressToPtr(
-    info: VarInfo,
-    indexExpr: AST.Expression,
-    ptrName: string,
-  ): void {
+  private genIndexAddressToPtr(info: VarInfo, indexExpr: AST.Expression, ptrName: string): void {
     const esize = elementSize(info.type);
     this.genEvalGeneric(indexExpr); // index -> RESULT (int)
     if (esize === 2) {
@@ -763,11 +673,7 @@ export class MinCompiler {
     this.emit(`AIV ${hexWord(info.address)},${zp(ptrName)}`);
   }
 
-  private genStoreIndirect(
-    ptrName: string,
-    type: VarType,
-    tempName: string,
-  ): void {
+  private genStoreIndirect(ptrName: string, type: VarType, tempName: string): void {
     if (type === "int") {
       this.emit(`LDZ ${zp(tempName)}`);
       this.emit(`SDT ${zp(ptrName)}`);
@@ -938,10 +844,7 @@ export class MinCompiler {
   }
 
   /** Evaluates a boolean expression and jumps to `falseLabel` if it's zero (false). */
-  private genConditionJumpIfFalse(
-    expr: AST.Expression,
-    falseLabel: string,
-  ): void {
+  private genConditionJumpIfFalse(expr: AST.Expression, falseLabel: string): void {
     this.genEvalGeneric(expr);
     this.emit(`CIV 0x0000,${zp("RESULT")}`);
     this.emit(`BEQ ${falseLabel}`);
@@ -954,7 +857,7 @@ export class MinCompiler {
         return expr.value;
       case isUnaryExpression(expr):
         if (expr.op === "-") return -this.constEval(expr.inner);
-        throw new CompileError("unsupported constant expression", expr);
+        throw new MinCompileError("unsupported constant expression", expr);
       case isBinaryExpression(expr): {
         const l = this.constEval(expr.left);
         const r = this.constEval(expr.right);
@@ -968,11 +871,11 @@ export class MinCompiler {
           case "/":
             return Math.floor(l / r);
           default:
-            throw new CompileError("unsupported constant expression", expr);
+            throw new MinCompileError("unsupported constant expression", expr);
         }
       }
       default:
-        throw new CompileError("expected a constant expression", expr);
+        throw new MinCompileError("expected a constant expression", expr);
     }
   }
 }
@@ -994,8 +897,7 @@ const RESERVED_TEMPS: Record<string, number> = {
 };
 
 function zp(name: string): string {
-  if (!(name in RESERVED_TEMPS))
-    throw new Error(`unknown compiler temp '${name}'`);
+  if (!(name in RESERVED_TEMPS)) throw new Error(`unknown compiler temp '${name}'`);
   return name;
 }
 
@@ -1015,9 +917,7 @@ function hexWord(n: number): string {
  *  containing a literal "'" are not yet supported by this compiler. */
 function escapeForAsmString(s: string): string {
   if (s.includes("'")) {
-    throw new Error(
-      `string literals containing "'" are not yet supported by this compiler: ${JSON.stringify(s)}`,
-    );
+    throw new Error(`string literals containing "'" are not yet supported by this compiler: ${JSON.stringify(s)}`);
   }
   return s;
 }

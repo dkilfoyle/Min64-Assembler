@@ -13,8 +13,8 @@ import {
   VariableReference,
   type Expression,
 } from "../../ls/generated/ast";
-import { cached, nextLabel, out, outi, runtimeUsed } from "./compiler";
-import { CompileError, hexWord } from "../utils";
+import { cached, isCachedA, nextLabel, out, runtimeUsed } from "./compiler";
+import { MinCompileError, hexWord } from "../utils";
 import { compileVariableReference } from "./variables";
 import { compileFunctionCall } from "./functions";
 import type { AstNode } from "langium";
@@ -28,8 +28,7 @@ const runtimeGlob = import.meta.glob("../runtime/*.asm", {
 const runtime = Object.fromEntries(
   Object.entries(runtimeGlob).map(([path, definition]) => {
     // Extract file name without extension to use as the new key
-    const fileName =
-      "__" + path.slice(path.lastIndexOf("/") + 1).replace(".asm", "");
+    const fileName = "__" + path.slice(path.lastIndexOf("/") + 1).replace(".asm", "");
     return [fileName, definition];
   }),
 );
@@ -40,11 +39,11 @@ const ZP_BASE = 0x00;
 export function reset() {}
 
 function emitHWPushZA() {
-  outi(`LDZ z_A+0 PHS LDZ z_A+1 PHS`, `push z_A onto hardware stack`);
+  out(`LDZ z_A+0 PHS LDZ z_A+1 PHS`, `push z_A onto hardware stack`);
 }
 
 function emitHWPopZA() {
-  outi(`PLS SDZ z_A+1 PLS SDZ z_A+0`, `pop z_A from hardware stack`);
+  out(`PLS SDZ z_A+1 PLS SDZ z_A+0`, `pop z_A from hardware stack`);
 }
 
 export function constEval(expr: Expression): number {
@@ -53,7 +52,7 @@ export function constEval(expr: Expression): number {
       return expr.value;
     case isUnaryExpression(expr):
       if (expr.op === "-") return -constEval(expr.inner);
-      throw new CompileError("unsupported constant expression", expr);
+      throw new MinCompileError("unsupported constant expression", expr);
     case isBinaryExpression(expr): {
       const l = constEval(expr.left);
       const r = constEval(expr.right);
@@ -67,11 +66,11 @@ export function constEval(expr: Expression): number {
         case "/":
           return Math.floor(l / r);
         default:
-          throw new CompileError("unsupported constant expression", expr);
+          throw new MinCompileError("unsupported constant expression", expr);
       }
     }
     default:
-      throw new CompileError("expected a constant expression", expr);
+      throw new MinCompileError("expected a constant expression", expr);
   }
 }
 
@@ -91,32 +90,28 @@ export function compileExpression(e: Expression): void {
     case isComparisonExpression(e):
       return compileComparison(e);
     default:
-      throw new CompileError(`Unsupported expression: ${JSON.stringify(e)}`, e);
+      throw new MinCompileError(`Unsupported expression: ${JSON.stringify(e)}`, e);
   }
 }
 
 function compileNum(e: NumberLiteral) {
   const valueStr = `const ${e.value}`;
-  if (cached.z_A == valueStr) return;
-  outi(`MIV ${hexWord(e.value)},z_A`, valueStr);
-  cached.z_A = valueStr;
+  if (isCachedA(valueStr)) return;
+  out(`MIV ${hexWord(e.value)},z_A`, valueStr);
 }
 
 function compileUnary(e: UnaryExpression) {
   compileExpression(e.inner);
   if (e.op === "-") {
-    outi(`NEV z_A`, `unary -`);
+    out(`NEV z_A`, `z_A = -z_A`);
   } else {
-    outi(`NOV z_A`, `unary not (bitwise complement)`);
+    out(`NOV z_A`, `z_A = !z_A`);
   }
+  cached.z_A = "";
 }
 
 function compileBinary(e: BinaryExpression) {
-  const constSide = isNumberLiteral(e.left)
-    ? e.left
-    : isNumberLiteral(e.right)
-      ? e.right
-      : null;
+  const constSide = isNumberLiteral(e.left) ? e.left : isNumberLiteral(e.right) ? e.right : null;
   const otherSide = constSide === e.left ? e.right : e.left;
 
   if (constSide) {
@@ -124,24 +119,24 @@ function compileBinary(e: BinaryExpression) {
     if (e.op == "+") {
       compileExpression(otherSide);
       if (constSide.value == 1) {
-        outi(`INV z_A`, `++`);
+        out(`INV z_A`, `++`);
       } else if ((constSide.value & 0xff00) == 0) {
         // anything + byte constant (or vice versa)
-        outi(`AIV ${constSide.value},z_A`, `+ byte constant`);
+        out(`AIV ${constSide.value},z_A`, `+ byte constant`);
       } else {
         // anything + byte constant (or vice versa)
-        outi(`MIV ${constSide.value},z_B AVV z_B,z_A`, `+ word constant`);
+        out(`MIV ${constSide.value},z_B AVV z_B,z_A`, `+ word constant`);
       }
       cached.z_A = "";
       return;
     }
     if (e.op == "-" && isNumberLiteral(e.right)) {
       if (e.right.value == 1) {
-        outi(`DEV z_A`, `--`);
+        out(`DEV z_A`, `--`);
       } else if ((e.right.value & 0xff00) == 0) {
         // anything - byte constant
         compileExpression(e.left);
-        outi(`SIV ${e.right.value},z_A`, `- byte constant`);
+        out(`SIV ${e.right.value},z_A`, `- byte constant`);
       }
       cached.z_A = "";
       return;
@@ -151,7 +146,7 @@ function compileBinary(e: BinaryExpression) {
       const shift = Math.log2(constSide.value);
       if (Number.isInteger(shift) && shift >= 1 && shift <= 15) {
         compileExpression(otherSide);
-        outi(`MIV ${shift}, z_B JPS __shl16`);
+        out(`MIV ${shift}, z_B JPS __shl16`);
         cached.z_A = "";
         return;
       }
@@ -163,43 +158,43 @@ function compileBinary(e: BinaryExpression) {
   emitHWPushZA();
 
   compileExpression(e.right);
-  outi(`MVV z_A,z_B`);
+  out(`MVV z_A,z_B`);
   emitHWPopZA();
-  // now __A = left, __B = right
+  // now z_A = left, z_B = right
 
   switch (e.op) {
     case "+":
-      outi(`AVV z_B,z_A`, `z_A += z_B`);
+      out(`AVV z_B,z_A`, `z_A += z_B`);
       break;
     case "-":
-      outi(`SVV z_B,z_A`, `z_A -= z_B`);
+      out(`SVV z_B,z_A`, `z_A -= z_B`);
       break;
     case "*":
-      outi(`JPS __mul16`, `*`);
+      out(`JPS __mul16`, `*`);
       runtimeUsed.add("mul16");
       break;
     case "/":
-      outi(`JPS __div16`, `/ (divisor magnitude must fit in a byte)`);
+      out(`JPS __div16`, `/ (divisor magnitude must fit in a byte)`);
       runtimeUsed.add("div16");
       break;
     case "and":
-      outi(`JPS __and16`, `and`);
+      out(`JPS __and16`, `and`);
       runtimeUsed.add("and16");
       break;
     case "or":
-      outi(`JPS __or16`, `or`);
+      out(`JPS __or16`, `or`);
       runtimeUsed.add("or16");
       break;
     case "xor":
-      outi(`JPS __xor16`, `xor`);
+      out(`JPS __xor16`, `xor`);
       runtimeUsed.add("xor16");
       break;
     case "<<":
-      outi(`JPS __shl16`, `<<`);
+      out(`JPS __shl16`, `<<`);
       runtimeUsed.add("shl16");
       break;
     case ">>":
-      outi(`JPS __shr16`, `>> (logical)`);
+      out(`JPS __shr16`, `>> (logical)`);
       runtimeUsed.add("shr16");
       break;
     default:
@@ -215,7 +210,8 @@ export function compileComparison(e: ComparisonExpression) {
   emitHWPushZA();
 
   compileExpression(e.right);
-  outi(`MVV z_A,z_B`);
+  out(`MVV z_A,z_B`);
+  // now z_A = left, z_B = right
 
   const trueLabel = nextLabel("cmp_true");
   const doneLabel = nextLabel("cmp_done");
@@ -223,34 +219,34 @@ export function compileComparison(e: ComparisonExpression) {
   switch (e.op) {
     // PLS after each JPS to discard the
     case "<":
-      outi("JPS __lt16", "<");
+      out("JPS __lt16", "<");
       runtimeUsed.add("lt16");
       break;
     case ">":
-      outi("JPS __gt16", "<");
+      out("JPS __gt16", "<");
       runtimeUsed.add("gt16");
       break;
     case "==":
-      outi("JPS __eq16", "==");
+      out("JPS __eq16", "==");
       runtimeUsed.add("eq16");
       break;
     case "!=":
-      outi("JPS __neq16", "==");
+      out("JPS __neq16", "==");
       runtimeUsed.add("neq16");
       break;
     case "<=":
-      outi("JPS __lteq16", "==");
+      out("JPS __lteq16", "==");
       runtimeUsed.add("lteq16");
       break;
     case ">=":
-      outi("JPS __gteq16", "==");
+      out("JPS __gteq16", "==");
       runtimeUsed.add("gteq16");
       break;
     default:
       throw new Error(`Unhandled comparison operator '${e.op}'`);
   }
 
-  outi("PLS PLS", "discard saved left expr off stack");
+  out("PLS PLS", "discard saved left expr off stack");
 }
 
 export function emitHeader() {
@@ -273,8 +269,10 @@ export function emitRuntime() {
   out(`; --- runtime library ---`);
   out(`#page`);
   runtimeUsed.forEach((x) => {
-    const code = runtime[x];
-    if (!code) throw new Error(`Unable to find runtime code for ${x}`);
+    const code = runtime["__" + x];
+    if (!code) {
+      throw new Error(`Unable to find runtime code for ${x}`);
+    }
     code.split("\n").forEach((line) => out(line));
   });
 }

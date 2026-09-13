@@ -10,7 +10,7 @@ __div16:      CLZ z_flag
               CLV z_D
               MIZ 8,z_cnt
   __div_up:     LDZ z_B+1 LL1 BMI __div_loop
-                STZ z_B+1 INZ z_cnt FPA __div_up
+                SDZ z_B+1 INZ z_cnt FPA __div_up
   __div_loop:   MVV z_A,z_C
                 LDZ z_B SUV z_A FCC __div_carry0
                 SZZ z_B+1,z_A+1 FCS __div_result

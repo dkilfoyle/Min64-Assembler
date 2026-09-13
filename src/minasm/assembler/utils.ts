@@ -1,3 +1,4 @@
+import { AstUtils, type AstNode } from "langium";
 import {
   Expression,
   isBinaryExpression,
@@ -38,3 +39,24 @@ export const getArgTypes = (argTypes: number[]) => {
     })
     .join(",");
 };
+
+export class AsmCompileError extends Error {
+  public range:
+    | {
+        start: { line: number; character: number };
+        end: { line: number; character: number };
+      }
+    | undefined;
+  public uri: string | undefined;
+
+  constructor(message: string, node?: AstNode) {
+    if (node) {
+      const line = node.$cstNode?.range.start.line ?? 0;
+      super(`${message} (line ${line})`);
+      this.range = node.$cstNode?.range;
+      this.uri = AstUtils.getDocument(node).uri.toString();
+    } else {
+      super(message);
+    }
+  }
+}

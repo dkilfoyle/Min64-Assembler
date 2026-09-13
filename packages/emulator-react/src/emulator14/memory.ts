@@ -31,6 +31,8 @@
  * sufficient to run MinOS's file system (save/delete/format) faithfully.
  */
 
+import { machine } from "./machine";
+
 export const RAM_SIZE = 0x10000; // 64KB
 export const BANK_SIZE = 0x1000; // 4KB per FLASH bank / low memory window
 export const FLASH_BANKS = 128;
@@ -41,6 +43,7 @@ export const VRAM_END = 0x7fff; // inclusive
 export const STACK_PAGE = 0xff00;
 export const SP_ADDRESS = 0xffff; // holds the stack pointer LSB; MSB is always 0xff
 export const ZERO_PAGE_END = 0x00ff;
+export const A_REG_ADDRESS = 0x00ff; // memory mapped to hardware accumulator
 
 type FlashState =
   | "idle"
@@ -85,10 +88,7 @@ export class Memory {
   /** Load a raw flash image (e.g. the 512KB SSD image) starting at a given bank/offset. */
   loadFlashImage(bytes: Uint8Array, startBank = 0, offset = 0): void {
     const base = startBank * BANK_SIZE + offset;
-    this.flash.set(
-      bytes.subarray(0, Math.min(bytes.length, FLASH_SIZE - base)),
-      base,
-    );
+    this.flash.set(bytes.subarray(0, Math.min(bytes.length, FLASH_SIZE - base)), base);
   }
 
   /** True if the low 4K window currently exposes FLASH rather than RAM. */
@@ -98,6 +98,12 @@ export class Memory {
 
   /** CPU-visible memory read (RO): used by every regular instruction operand fetch. */
   read(addr: number): number {
+    if (addr === A_REG_ADDRESS) {
+      // Memory-mapped accumulator: reads return the current value of the A register.
+      // This is a special case for the emulator; in real hardware, the A register is
+      return machine.cpu.a;
+    }
+
     addr &= 0xffff;
     if (addr < BANK_SIZE && this.flashWindowActive()) {
       return this.flash[this.bank * BANK_SIZE + addr];

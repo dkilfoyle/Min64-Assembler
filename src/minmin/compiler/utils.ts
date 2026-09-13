@@ -28,7 +28,7 @@ export function highOperand(a: Addr): string {
   return typeof a === "number" ? hexByte(a + 1) : `${a}+1`;
 }
 
-export class CompileError extends Error {
+export class MinCompileError extends Error {
   public range:
     | {
         start: { line: number; character: number };
@@ -37,10 +37,15 @@ export class CompileError extends Error {
     | undefined;
   public uri: string | undefined;
 
-  constructor(message: string, node: AstNode) {
-    const line = node.$cstNode?.range.start.line ?? 0;
-    super(`${message} (line ${line})`);
-    this.range = node.$cstNode?.range;
-    this.uri = AstUtils.getDocument(node).uri.toString();
+  constructor(message: string, node?: AstNode) {
+    if (node) {
+      debugger;
+      const line = node.$cstNode?.range.start.line ?? 0;
+      super(`${message} (line ${line})`);
+      this.range = node.$cstNode?.range;
+      this.uri = AstUtils.getDocument(node).uri.toString();
+    } else {
+      super(message);
+    }
   }
 }

@@ -19,7 +19,7 @@ import {
   type Program,
 } from "../ls/generated/ast";
 import { instructionInfo } from "./instructionInfo14";
-import { getExpressionSize } from "./utils";
+import { AsmCompileError, getExpressionSize } from "./utils";
 import { type Range } from "vscode-languageserver-textdocument";
 
 interface IRecord {
@@ -49,8 +49,7 @@ class IntelHex {
     }
   }
   setAddress(addr: number) {
-    if (addr < 0 || addr > 0xffff)
-      throw Error("Address must be between 0 and 0xffff");
+    if (addr < 0 || addr > 0xffff) throw new AsmCompileError("Address must be between 0 and 0xffff");
     this.flush();
     this.address = addr;
   }
@@ -69,9 +68,7 @@ class IntelHex {
     }
   }
   replaceValue(mc: number, value: number, size: number) {
-    const recordIndex = this.records.findIndex(
-      (r) => mc >= r.address && mc < r.address + r.bytes.length,
-    );
+    const recordIndex = this.records.findIndex((r) => mc >= r.address && mc < r.address + r.bytes.length);
     // replace the lo byte
     let r = this.records[recordIndex];
     const offset = mc - r.address;
@@ -98,8 +95,7 @@ class IntelHex {
     let hex = "";
     for (const record of this.records) {
       let checksum = record.bytes.reduce((acc, byte) => acc + byte, 0);
-      checksum +=
-        record.bytes.length + (record.address >> 8) + (record.address & 0xff);
+      checksum += record.bytes.length + (record.address >> 8) + (record.address & 0xff);
       hex += `:${record.bytes.length.toString(16).padStart(2, "0")}${record.address.toString(16).padStart(4, "0")}00`;
       for (const byte of record.bytes) {
         hex += byte.toString(16).padStart(2, "0");
@@ -228,8 +224,7 @@ class Assembler {
 
   processDirective(dir: Directive): void {
     const setAddress = (addr: number) => {
-      if (addr < 0 || addr > 0xffff)
-        throw Error("Address must be between 0 and 0xffff");
+      if (addr < 0 || addr > 0xffff) throw new AsmCompileError("Address must be between 0 and 0xffff");
       this.pc = addr;
       if (this.isEmit) {
         this.mc = this.pc;
@@ -250,7 +245,7 @@ class Assembler {
       case "#org":
         if (dir.address !== undefined) {
           setAddress(dir.address);
-        } else throw Error("#org directive needs address");
+        } else throw new AsmCompileError("#org directive needs address");
     }
   }
 
@@ -266,14 +261,11 @@ class Assembler {
     const info = instructionInfo[instr.op];
 
     // this allows the debugger to find the return instruction after a JPS when the function modifies the return address eg PRINT followed by data arguments
-    if (this.locations[this.lastPC])
-      this.locations[this.lastPC].nextPC = this.pc;
+    if (this.locations[this.lastPC]) this.locations[this.lastPC].nextPC = this.pc;
     this.locations[this.pc] = {
       ...sourceLocation2codeLocation(instr.$cstNode!.range),
       nextPC: -1,
-      label: this.curLabel
-        ? `${this.curLabel}+${this.pc - this.labels[this.curLabel].address}`
-        : "<no label>",
+      label: this.curLabel ? `${this.curLabel}+${this.pc - this.labels[this.curLabel].address}` : "<no label>",
     };
     this.lastPC = this.pc;
 
@@ -297,32 +289,24 @@ class Assembler {
         if (curDataSize == 1 || isLSB) {
           size += 1;
         } else {
-          throw Error(`Invalid args for entry ${data.$containerIndex}`);
+          throw new AsmCompileError(`Invalid args for entry ${data.$containerIndex}`, data);
         }
       } else if (expectedArgSize == 2) {
         if (curDataSize == 1) {
           const nextDataItem = data.items[dataIndex++];
           const nextDataSize = getExpressionSize(nextDataItem);
           if (nextDataSize !== 1)
-            throw Error(
-              "expectedArgSize is 2 and should have received two consecutive bytes",
-            );
+            throw new AsmCompileError("expectedArgSize is 2 and should have received two consecutive bytes", nextDataItem);
           size += 2; // 2 consecutive bytes
         } else if (curDataSize == 2) {
           size += 2;
-        } else
-          throw Error(
-            `Invalid data item size ${curDataSize} at entry ${data.$containerIndex}`,
-          );
+        } else throw new AsmCompileError(`Invalid data item size ${curDataSize} at entry ${data.$containerIndex}`, curDataItem);
       }
     }
 
     if (dataIndex != data.items.length)
-      throw Error(
-        `More data items than expected arguments for entry ${data.$cstNode!.text}`,
-      );
-    if (size != info.totalSize)
-      throw Error("Data does not match expected argument size");
+      throw new AsmCompileError(`More data items than expected arguments for entry ${data.$cstNode!.text}`, data);
+    if (size != info.totalSize) throw new AsmCompileError("Data does not match expected argument size", data);
     this.advanceBytes(size);
     this.curInstr = null;
   }
@@ -375,7 +359,7 @@ class Assembler {
         const curDataResult = this.calculateExpression(item);
         if (curDataResult.size == 1) this.emitByte(curDataResult.result);
         else if (curDataResult.size == 2) this.emitWord(curDataResult.result);
-        else throw Error("Unknown data result size");
+        else throw new AsmCompileError("Unknown data result size", item);
       }
     }
   }
@@ -394,7 +378,7 @@ class Assembler {
           x = left.result - right.result;
           break;
         default:
-          throw new Error(`Unknown binary operator: ${expr}`);
+          throw new AsmCompileError(`Unknown binary operator: ${expr}`, expr);
       }
       return { result: x, size: Math.max(left.size, right.size) };
     } else if (isUnaryExpression(expr)) {
@@ -402,8 +386,7 @@ class Assembler {
       if (expr.operator == "<") return { result: x & 0xff, size: 1 };
       else return { result: (x >> 8) & 0xff, size: 1 };
     } else if (isStringLiteral(expr)) {
-      if (expr.value.length != 1)
-        throw Error(`processExpression should only be char literal`);
+      if (expr.value.length != 1) throw new AsmCompileError(`processExpression should only be char literal`, expr);
       return { result: expr.value.charCodeAt(0), size: 1 };
     } else if (isImmediateByteLiteral(expr)) {
       return { result: expr.neg ? -expr.value : expr.value, size: 1 };
@@ -413,13 +396,13 @@ class Assembler {
       return { result: instructionInfo[expr.value].opcode, size: 1 };
     } else if (isLabelReference(expr)) {
       const labelName = expr.label.ref?.name;
-      if (!labelName) throw new Error("Label reference has no name");
+      if (!labelName) throw new AsmCompileError("Label reference has no name", expr);
       const lbl = this.labels[labelName];
-      if (lbl === undefined) throw new Error(`Undefined label: ${labelName}`);
+      if (lbl === undefined) throw new AsmCompileError(`Undefined label: ${labelName}`, expr);
       return { result: lbl.address, size: 2 };
     } else if (isStarLiteral(expr)) {
       return { result: this.mc, size: 2 };
-    } else throw new Error(`Unknown expression type: ${expr}`);
+    } else throw new AsmCompileError(`Unknown expression type: ${expr}`, expr);
   }
 }
 
