@@ -69,4 +69,4 @@ def line(int x1, int y1, int x2, int y2):
 def dot(int x, int y):  
   char d @ 0x0080
   d[0] = x; d[1] = x>>8; d[2] = y
-  call 0xf04b
+  call 0xf04e

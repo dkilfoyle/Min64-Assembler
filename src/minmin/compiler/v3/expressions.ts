@@ -28,7 +28,8 @@ const runtimeGlob = import.meta.glob("../runtime/*.asm", {
 const runtime = Object.fromEntries(
   Object.entries(runtimeGlob).map(([path, definition]) => {
     // Extract file name without extension to use as the new key
-    const fileName = "__" + path.slice(path.lastIndexOf("/") + 1).replace(".asm", "");
+    const fileName =
+      "__" + path.slice(path.lastIndexOf("/") + 1).replace(".asm", "");
     return [fileName, definition];
   }),
 );
@@ -76,6 +77,10 @@ export function constEval(expr: Expression): number {
 
 /** Compile expr, leaving the 16-bit result in the z_A zero-page word. */
 export function compileExpression(e: Expression): void {
+  // TODO: possible optimisations
+  // option to preserve z_A or not
+  // check if e is a leaf
+  // option to compile to different target virtual register eg z_B or z_TEMP
   switch (true) {
     case isNumberLiteral(e):
       return compileNum(e);
@@ -90,7 +95,10 @@ export function compileExpression(e: Expression): void {
     case isComparisonExpression(e):
       return compileComparison(e);
     default:
-      throw new MinCompileError(`Unsupported expression: ${JSON.stringify(e)}`, e);
+      throw new MinCompileError(
+        `Unsupported expression: ${JSON.stringify(e)}`,
+        e,
+      );
   }
 }
 
@@ -111,7 +119,11 @@ function compileUnary(e: UnaryExpression) {
 }
 
 function compileBinary(e: BinaryExpression) {
-  const constSide = isNumberLiteral(e.left) ? e.left : isNumberLiteral(e.right) ? e.right : null;
+  const constSide = isNumberLiteral(e.left)
+    ? e.left
+    : isNumberLiteral(e.right)
+      ? e.right
+      : null;
   const otherSide = constSide === e.left ? e.right : e.left;
 
   if (constSide) {
@@ -155,11 +167,16 @@ function compileBinary(e: BinaryExpression) {
 
   // evaluate left, save; evaluate right into __A, move to __B; restore left into __A
   compileExpression(e.left);
-  emitHWPushZA();
 
-  compileExpression(e.right);
-  out(`MVV z_A,z_B`);
-  emitHWPopZA();
+  // optimisation - if right is a constant then can move directly to z_B without pushing and popping z_A
+  if (isNumberLiteral(e.right)) {
+    out(`MIV ${hexWord(e.right.value)},z_B`, `z_B = ${e.right.value}`);
+  } else {
+    emitHWPushZA();
+    compileExpression(e.right);
+    out(`MVV z_A,z_B`);
+    emitHWPopZA();
+  }
   // now z_A = left, z_B = right
 
   switch (e.op) {
@@ -273,6 +290,9 @@ export function emitRuntime() {
     if (!code) {
       throw new Error(`Unable to find runtime code for ${x}`);
     }
-    code.split("\n").forEach((line) => out(line));
+    code
+      .split("\n")
+      .filter((line) => line.trim() !== "")
+      .forEach((line) => out(line));
   });
 }

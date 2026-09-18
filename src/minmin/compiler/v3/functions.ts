@@ -2,15 +2,27 @@ import { MinCompileError, hexWord } from "../utils";
 import * as expressionCompiler from "./expressions";
 import * as variableCompiler from "./variables";
 import type { IStackFrame, IVariableSymbol } from "./variables";
-import { FunctionCall, type ReturnStatement, Def, CallStatement, LocalElement } from "../../ls/generated/ast";
+import {
+  FunctionCall,
+  type ReturnStatement,
+  Def,
+  CallStatement,
+  LocalElement,
+} from "../../ls/generated/ast";
 import { compileStatement, out, format, options } from "./compiler";
 
 function emitBlockPrologue(name: string, kind: "function" | "block") {
   // make z_FP  -= this.variableCompiler.currentFrame().frameSize which will point to the new stack frame base
   const newFPOffset = variableCompiler.currentFrame().frameSize;
-  if (newFPOffset > 255) throw new MinCompileError(`Maximum frame size is 255, got ${newFPOffset} for ${name}`);
+  if (newFPOffset > 255)
+    throw new MinCompileError(
+      `Maximum frame size is 255, got ${newFPOffset} for ${name}`,
+    );
   if (newFPOffset > 0) {
-    out(`SIV ${variableCompiler.currentFrame().frameSize},z_FP`, "Prologue: z_FP = new frame base");
+    out(
+      `SIV ${variableCompiler.currentFrame().frameSize},z_FP`,
+      "Prologue: z_FP = new frame base",
+    );
   }
   const frame: IStackFrame = {
     name,
@@ -28,13 +40,19 @@ function emitBlockEpilogue() {
   printFrame(poppedFrame);
   const callerFrameSize = variableCompiler.currentFrame().frameSize;
   if (callerFrameSize > 0) {
-    out(`AIV ${callerFrameSize},z_FP`, "Epilogue: restore z_FP to previous frame base");
+    out(
+      `AIV ${callerFrameSize},z_FP`,
+      "Epilogue: restore z_FP to previous frame base",
+    );
   }
 }
 
 export function compileDef(def: Def) {
   out("\n");
-  out(`${def.name}:`, `params ${def.params.map((p) => p.type + ": " + p.name).join(", ")}`);
+  out(
+    `${def.name}:`,
+    `params ${def.params.map((p) => p.type + ": " + p.name).join(", ")}`,
+  );
   format.indent += 2;
 
   // Initialize the new stack frame for the function
@@ -73,7 +91,9 @@ export function compileBlock(name: string, stmts: LocalElement[]) {
 export function printFrame(frame: IStackFrame) {
   if (options.printFrame) {
     out(`; frame summary for ${frame.name} (${frame.kind})`);
-    frame.variables.forEach((v) => out(`; ${v.name.padEnd(15)} : ${hexWord(v.address)} (${v.location})`));
+    frame.variables.forEach((v) =>
+      out(`; ${v.name.padEnd(15)} : ${hexWord(v.address)} (${v.location})`),
+    );
   }
 }
 
@@ -81,7 +101,9 @@ export function printFrameStack() {
   for (let i = variableCompiler.frameStack.length - 1; i >= 0; i--) {
     const frame = variableCompiler.frameStack[i];
     out(`; frame ${i}: ${frame.name} (${frame.kind})`);
-    frame.variables.forEach((v) => out(`;   ${v.name.padEnd(15)} : ${hexWord(v.address)} (${v.location})`));
+    frame.variables.forEach((v) =>
+      out(`;   ${v.name.padEnd(15)} : ${hexWord(v.address)} (${v.location})`),
+    );
   }
 }
 
@@ -93,7 +115,6 @@ export function compileReturn(node: ReturnStatement) {
 /** a function call statement ie  foo(arg1, arg2) with no or ignored return value */
 export function compileFunctionCall(e: FunctionCall) {
   const functionName = e.functionName.$refText;
-  if (functionName == "dot") debugger;
   const comment = `call ${functionName}(${e.args.length} arg${e.args.length === 1 ? "" : "s"})`;
 
   // push the arguments into the callee's frame
@@ -101,7 +122,10 @@ export function compileFunctionCall(e: FunctionCall) {
   e.args.forEach((arg, i) => {
     expressionCompiler.compileExpression(arg.exprs[0]); // result -> z_A
     const offset = newFrameBase + i * 2;
-    out(`MVV z_FP,z_PTR SIV ${offset},z_PTR JPS __sdZA`, `copy z_A to ${functionName} arg${i}`);
+    out(
+      `MVV z_FP,z_PTR SIV ${offset},z_PTR JPS __sdZA`,
+      `copy z_A to ${functionName} arg${i}`,
+    );
   });
 
   out(`JPS ${functionName}`, comment);
@@ -109,5 +133,8 @@ export function compileFunctionCall(e: FunctionCall) {
 }
 
 export function compileCallStatement(node: CallStatement) {
-  out(`JPS ${hexWord(node.address.value)}`, `Call statement to address ${node.address.value}`);
+  out(
+    `JPS ${hexWord(node.address.value)}`,
+    `Call statement to address ${node.address.value}`,
+  );
 }
