@@ -54,20 +54,19 @@ def key():
 # clears the screeen
 def clear(): call 0xf033
 
-# draws a rect
 def rect(int x, int y, int w, int h):
   char d @ 0x0080
   d[0] = x; d[1] = x>>8; d[2] = y
   d[3] = w; d[4] = w>>8; d[5] = h
-  call 0xf051
+  call 0xf054
 
 def line(int x1, int y1, int x2, int y2):
   char d @ 0x0080
   d[0] = x1; d[1] = x1>>8; d[2] = y1
   d[3] = x2; d[4] = x2>>8; d[5] = y2
-  call 0xf04e
+  call 0xf051
 
 def dot(int x, int y):  
   char d @ 0x0080
   d[0] = x; d[1] = x>>8; d[2] = y
-  call 0xf04b
+  call 0xf04e

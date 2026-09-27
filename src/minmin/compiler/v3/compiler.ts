@@ -1,10 +1,11 @@
 import { osAddr } from "../oslabels";
-import { MinCompileError, highOperand, lowOperand } from "../utils";
+import { MinCompileError, hexWord, highOperand, lowOperand } from "../utils";
 import * as expressionCompiler from "./expressions";
 import { computeReachableDefs } from "../reachability";
 import * as variableCompiler from "./variables";
 import type { IVariableSymbol } from "./variables";
 import {
+  Expression,
   isCallStatement,
   isDef,
   isFunctionCall,
@@ -23,14 +24,35 @@ import {
   PrintStatement,
   Program,
 } from "../../ls/generated/ast";
-import { compileDef, printFrame, compileCallStatement, compileReturn, compileFunctionCall } from "./functions";
+import {
+  compileDef,
+  printFrame,
+  compileCallStatement,
+  compileReturn,
+  compileFunctionCall,
+} from "./functions";
 import { compileIf, compileWhile } from "./controlflow";
+import { ZP_BASE } from "./expressions";
+
+const runtimeGlob = import.meta.glob("../runtime/*.asm", {
+  query: "?raw",
+  import: "default",
+  eager: true,
+});
+
+const runtime = Object.fromEntries(
+  Object.entries(runtimeGlob).map(([path, definition]) => {
+    // Extract file name without extension to use as the new key
+    const fileName =
+      "__" + path.slice(path.lastIndexOf("/") + 1).replace(".asm", "");
+    return [fileName, definition];
+  }),
+);
 
 export let assembly: string[] = [];
 export let labelPrefixCounters: Map<string, number> = new Map();
 export const osUsed: Set<string> = new Set();
 export const runtimeUsed = new Set<string>();
-export let currentFunction: string | null = null;
 export let currentUri: string | undefined = undefined;
 export const format = {
   indent: 0,
@@ -41,10 +63,30 @@ export const options = {
   printFrame: true,
 };
 
-export const cached: { z_PTR: string; z_A: string } = {
+export const cached: { z_PTR: string; z_A: string; blockPath: string } = {
   z_PTR: "",
   z_A: "",
+  blockPath: "",
 };
+
+export function emitZeroPage() {
+  out("");
+  out(`; ---- Compiler zero-page working storage ----`);
+  out(`#org ${hexWord(ZP_BASE)}`);
+  out(`z_FP:     0xEFFF    ; frame start pointer`);
+  out(`z_PTR:    0x0000    ; ptr to current var in runtime stack`);
+  out(`z_HP:     0x0000    ; heap pointer`);
+  out(`z_A:      0x0000    ; acc / expr result / fn return value`);
+  out(`z_B:      0x0000    ; secondary operand`);
+  out(`z_C:      0x0000    ; scratch (mul/div/cmp)`);
+  out(`z_D:      0x0000    ; scratch (div quotient)`);
+  out(`z_PTR2:   0x0000    ; secondary pointer for array operations`);
+  out(`z_TMP1:   0x0000    ; temporary storage`);
+  out(`z_TMP2:   0x0000    ; temporary storage`);
+  out(`z_cnt:    0x00      ; loop counter (mul/div/shifts)`);
+  out(`z_flag:   0x00      ; sign flag (div)`);
+  out(``);
+}
 
 export function reset() {
   labelPrefixCounters = new Map();
@@ -58,11 +100,11 @@ export function reset() {
 
   expressionCompiler.reset();
   variableCompiler.reset();
-  currentFunction = null;
   format.indent = 0;
 
   cached.z_PTR = "";
   cached.z_A = "";
+  cached.blockPath = "";
 }
 
 export function nextLabel(prefix: string): string {
@@ -90,25 +132,31 @@ export function isCachedPtr(name: string): boolean {
   }
 }
 
-export function isCachedA(name: string): boolean {
-  return false;
-  // if (name == "") {
-  //   // new z_A value is uncacheable, so reset the cache
-  //   cached.z_A = "";
-  //   return false;
-  // }
-  // if (cached.z_A === name) return true;
-  // else {
-  //   cached.z_A = name;
-  //   return false;
-  // }
+export function isCachedZA(e: Expression): boolean {
+  const ename = e.$cstNode ? `${cached.blockPath}.${e.$cstNode.text}` : "";
+
+  if (ename == "") {
+    // new z_A value is uncacheable, so reset the cache
+    cached.z_A = "";
+    return false;
+  }
+  if (cached.z_A === ename) return true;
+  else {
+    cached.z_A = ename;
+    return false;
+  }
 }
 
-export function compile(fname: string, mainProgram: Program, libraries: Program[]): string {
+export function compile(
+  fname: string,
+  mainProgram: Program,
+  libraries: Program[],
+): string {
   reset();
 
   out(`; Code compiled from ${fname}\n`);
   out("#org 0x0100");
+  out(`MIV HEAP_START,z_HP`, "Initialize heap start pointer");
 
   currentUri = mainProgram.$document?.uri.toString();
 
@@ -120,8 +168,8 @@ export function compile(fname: string, mainProgram: Program, libraries: Program[
     compileDef(def);
   }
 
-  expressionCompiler.emitRuntime();
-  expressionCompiler.emitHeader();
+  emitRuntime();
+  emitZeroPage();
   emitOsCalls();
   return assembly.join("\n");
 }
@@ -133,6 +181,7 @@ export function compileMain(mainProgram: Program) {
     kind: "global",
     variables: new Map<string, IVariableSymbol>(),
     frameSize: 0,
+    heapSize: 0,
   });
 
   out(`__main:`);
@@ -145,6 +194,7 @@ export function compileMain(mainProgram: Program) {
   printFrame(globalFrame);
   out(`\nJPA ${os("_Prompt")}`);
   format.indent -= 2;
+  out(`HEAP_START:`);
 }
 
 export function compileStatement(node: LocalElement) {
@@ -186,7 +236,10 @@ export function compilePrint(print: PrintStatement) {
         const v = variableCompiler.getSymbol(varName, expr).symbolInfo;
         if (v.type == "char") {
           // print 0 terminated char(s)
-          out(`LDI ${lowOperand(v.address)} PHS LDI ${highOperand(v.address)} PHS JPS ${os("_PrintPtr")} PLS PLS`, `print ${varName}`);
+          out(
+            `LDI ${lowOperand(v.address)} PHS LDI ${highOperand(v.address)} PHS JPS ${os("_PrintPtr")} PLS PLS`,
+            `print ${varName}`,
+          );
 
           return;
         }
@@ -194,7 +247,9 @@ export function compilePrint(print: PrintStatement) {
       expressionCompiler.compileExpression(expr);
       // result will be int in z_A
       out(`JPS __inttostr`);
-      out(`LDB __strptr+0 PHS LDB __strptr+1 PHS JPS ${os("_PrintPtr")} PLS PLS`);
+      out(
+        `LDB __strptr+0 PHS LDB __strptr+1 PHS JPS ${os("_PrintPtr")} PLS PLS`,
+      );
       runtimeUsed.add("__inttostr");
     });
   });
@@ -206,5 +261,23 @@ export function emitOsCalls() {
     const addr = osAddr[name];
     if (!addr) throw new Error(`Unknown os call ${name}`);
     out(`#org 0x${addr.toString(16).padStart(4, "0")} ${name}:`);
+  });
+}
+
+export function emitRuntime() {
+  out("");
+  out(`; --- runtime library ---`);
+  out(`#page`);
+  out("");
+  runtimeUsed.forEach((x) => {
+    const code = runtime["__" + x];
+    if (!code) {
+      throw new Error(`Unable to find runtime code for ${x}`);
+    }
+    code
+      .split("\n")
+      .filter((line) => line.trim() !== "")
+      .forEach((line) => out(line));
+    out("");
   });
 }

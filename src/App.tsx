@@ -7,7 +7,12 @@ import { runtime } from "./emulator/runtime";
 import { useDocStore } from "./store/myStore";
 import { AsmCompileRequest, type AsmCompileResult } from "./minasm/worker/api";
 import "./debugger/debugger";
-import { MinCompileRequest, MinReadFileRequest, type MinCompileResult, type MinReadFileParams } from "./minmin/worker/api";
+import {
+  MinCompileRequest,
+  MinReadFileRequest,
+  type MinCompileResult,
+  type MinReadFileParams,
+} from "./minmin/worker/api";
 
 const config = await configure(document.getElementById("root")!);
 
@@ -34,74 +39,66 @@ export default function App() {
 
         // Lets the minmin worker (which has no direct fs access) read files
         // from the virtual filesystem for dynamic cross-file `use "..."` imports.
-        minmin.onRequest(MinReadFileRequest.method, async ({ uri }: MinReadFileParams) => {
-          const bytes = await vscode.workspace.fs.readFile(vscode.Uri.parse(uri));
-          return { content: new TextDecoder().decode(bytes) };
-        });
-
-        // minmin.onNotification(
-        //   "minminlsp/docChange",
-        //   async (data: MinDocChangeNotification) => {
-        //     const uri = vscode.Uri.file(
-        //       data.uri.replace("file:///", "").replace(".min", ".asm"),
-        //     );
-        //     const content = new TextEncoder().encode(data.asm);
-        //     try {
-        //       await vscode.workspace.fs.writeFile(uri, content);
-        //     } catch (e) {
-        //       console.error("write file error", e);
-        //     }
-        //     await vscode.window.showTextDocument(uri, {
-        //       viewColumn: vscode.ViewColumn.Beside,
-        //       preserveFocus: true,
-        //     });
-        //   },
-        // );
-
-        // const stdmin = await minmin.sendRequest<MinCompileResult>(
-        //   MinCompileRequest.method,
-        //   {
-        //     uri: "builtin:///std.min",
-        //   },
-        // );
-        // if (stdmin.status !== "ok") {
-        //   printOutputChannel(
-        //     `Error compiling builtin:///std.min: ${stdmin.errors.join("\n")}`,
-        //     true,
-        //   );
-        // }
+        minmin.onRequest(
+          MinReadFileRequest.method,
+          async ({ uri }: MinReadFileParams) => {
+            const bytes = await vscode.workspace.fs.readFile(
+              vscode.Uri.parse(uri),
+            );
+            return { content: new TextDecoder().decode(bytes) };
+          },
+        );
 
         vscode.commands.registerCommand("minmin-compile", async () => {
           console.log("minmin-compile command called");
-          const result = await minmin.sendRequest<MinCompileResult>(MinCompileRequest.method, {
-            uri: vscode.window.activeTextEditor?.document.uri.toString(),
-          });
+          const result = await minmin.sendRequest<MinCompileResult>(
+            MinCompileRequest.method,
+            {
+              uri: vscode.window.activeTextEditor?.document.uri.toString(),
+            },
+          );
           if (result.status == "ok") {
             const content = new TextEncoder().encode(result.asm);
-            const resulturi = vscode.Uri.parse(result.uri.toString().replace(".min", ".asm"));
+            const resulturi = vscode.Uri.parse(
+              result.uri.toString().replace(".min", ".asm"),
+            );
             try {
               await vscode.workspace.fs.writeFile(resulturi, content);
             } catch (e) {
               console.error("write file error", e);
             }
-            printOutputChannel(`Compiled ${result.uri.toString()} OK: ${result.asm.split("\n").length} lines (${resulturi})`, true);
+            printOutputChannel(
+              `Compiled ${result.uri.toString()} OK: ${result.asm.split("\n").length} lines (${resulturi})`,
+              true,
+            );
           } else {
-            printOutputChannel(`Compile ${result.uri.toString()} ERROR: ${result.errors.join("\n")}`, true);
+            printOutputChannel(
+              `Compile ${result.uri.toString()} ERROR: ${result.errors.join("\n")}`,
+              true,
+            );
           }
         });
 
         vscode.commands.registerCommand("minasm-compile", async () => {
-          const result = await minasm.sendRequest<AsmCompileResult>(AsmCompileRequest.method, {
-            uri: vscode.window.activeTextEditor?.document.uri.toString(),
-          });
+          const result = await minasm.sendRequest<AsmCompileResult>(
+            AsmCompileRequest.method,
+            {
+              uri: vscode.window.activeTextEditor?.document.uri.toString(),
+            },
+          );
           const content = new TextEncoder().encode(result.hex);
-          const hexuri = vscode.Uri.parse(result.uri.toString().replace(".asm", ".hex"));
+          const hexuri = vscode.Uri.parse(
+            result.uri.toString().replace(".asm", ".hex"),
+          );
           try {
             await vscode.workspace.fs.writeFile(hexuri, content);
           } catch (e) {
             console.error("write file error", e);
           }
-          printOutputChannel(`Compiled ${result.uri.toString()} OK: hex output = ${result.hex.length} bytes (${hexuri})`, true);
+          printOutputChannel(
+            `Compiled ${result.uri.toString()} OK: hex output = ${result.hex.length} bytes (${hexuri})`,
+            true,
+          );
           addCompiledAsm(result);
         });
 
@@ -109,9 +106,12 @@ export default function App() {
           const uri = vscode.window.activeTextEditor?.document.uri.toString();
           if (!uri) return;
           if (!compiledAsm[uri]) {
-            const result = await minasm.sendRequest<AsmCompileResult>(AsmCompileRequest.method, {
-              uri: vscode.window.activeTextEditor?.document.uri.toString(),
-            });
+            const result = await minasm.sendRequest<AsmCompileResult>(
+              AsmCompileRequest.method,
+              {
+                uri: vscode.window.activeTextEditor?.document.uri.toString(),
+              },
+            );
             addCompiledAsm(result);
 
             runtime.run({ runType: "run", pc: 0x100, hex: result.hex });
@@ -127,7 +127,8 @@ export default function App() {
 
         var VIEW_MEMORY_ID = "workbench.debug.viewlet.action.viewMemory";
         vscode.commands.registerCommand(VIEW_MEMORY_ID, async (arg) => {
-          if (arg.variable.memoryReference) runtime.showMemory(arg.variable.memoryReference);
+          if (arg.variable.memoryReference)
+            runtime.showMemory(arg.variable.memoryReference);
           console.log("memory view command called", arg);
         });
 

@@ -1,7 +1,7 @@
 import {
   BinaryExpression,
   ComparisonExpression,
-  FunctionCall,
+  CompoundExpression,
   isBinaryExpression,
   isComparisonExpression,
   isFunctionCall,
@@ -10,41 +10,24 @@ import {
   isVariableReference,
   NumberLiteral,
   UnaryExpression,
-  VariableReference,
   type Expression,
 } from "../../ls/generated/ast";
-import { cached, isCachedA, nextLabel, out, runtimeUsed } from "./compiler";
+import { cached, isCachedZA, nextLabel, out, runtimeUsed } from "./compiler";
 import { MinCompileError, hexWord } from "../utils";
-import { compileVariableReference } from "./variables";
+import { compileVariableReference, getSymbol } from "./variables";
 import { compileFunctionCall } from "./functions";
-import type { AstNode } from "langium";
-
-const runtimeGlob = import.meta.glob("../runtime/*.asm", {
-  query: "?raw",
-  import: "default",
-  eager: true,
-});
-
-const runtime = Object.fromEntries(
-  Object.entries(runtimeGlob).map(([path, definition]) => {
-    // Extract file name without extension to use as the new key
-    const fileName =
-      "__" + path.slice(path.lastIndexOf("/") + 1).replace(".asm", "");
-    return [fileName, definition];
-  }),
-);
 
 const VIRTUAL_STACK_BASE = 0xefff;
-const ZP_BASE = 0x00;
+export const ZP_BASE = 0x00;
 
 export function reset() {}
 
-function emitHWPushZA() {
-  out(`LDZ z_A+0 PHS LDZ z_A+1 PHS`, `push z_A onto hardware stack`);
+export function emitHWPushZ(z = "z_A") {
+  out(`LDZ ${z}+0 PHS LDZ ${z}+1 PHS`, `push ${z} onto hardware stack`);
 }
 
-function emitHWPopZA() {
-  out(`PLS SDZ z_A+1 PLS SDZ z_A+0`, `pop z_A from hardware stack`);
+export function emitHWPopZ(z = "z_A") {
+  out(`PLS SDZ ${z}+1 PLS SDZ ${z}+0`, `pop ${z}   from hardware stack`);
 }
 
 export function constEval(expr: Expression): number {
@@ -75,12 +58,87 @@ export function constEval(expr: Expression): number {
   }
 }
 
+export function getExpressionType(e: Expression): string {
+  switch (true) {
+    case isNumberLiteral(e):
+      return e.value > 0xff ? "int" : "char";
+    case isVariableReference(e):
+      return getSymbol(e.varName.$refText).symbolInfo.type;
+    case isFunctionCall(e):
+    case isUnaryExpression(e):
+    case isBinaryExpression(e):
+    case isComparisonExpression(e):
+      return "int";
+    default:
+      throw new MinCompileError(
+        `Unsupported expression: ${JSON.stringify(e)}`,
+        e,
+      );
+  }
+}
+
+export function isArraySliceExpression(e: Expression): boolean {
+  if (!isVariableReference(e)) return false;
+  if (!e.index) return false;
+  return !!e.index.endExpr;
+}
+
+export function compileCompoundExpression(
+  e: CompoundExpression,
+  targetType: string,
+  targetName: string,
+): void {
+  // prerequisite: z_PTR2 points to &target[index||0]
+  // eg int a = 0_1_2_3
+  // eg int a = a[0|3]; a = 0_1_2_3;
+  // eg foo(0_1_2_3)
+  // eg return 0_1_2_3
+  if (targetType != "int*" && targetType != "char*")
+    throw new MinCompileError(
+      "Compound expression assignment target is not an array",
+      e,
+    );
+  const elementType = targetType === "int*" ? "int" : "char";
+  for (let i = 0; i < e.exprs.length; i++) {
+    // const exprType = getExpressionType(e.exprs[i]);
+    // if (exprType !== elementType && exprType != targetType)
+    //   throw new MinCompileError(
+    //     `Type mismatch in compound expression: expected ${targetType}`,
+    //     e.exprs[i],
+    //   );
+    compileExpression(e.exprs[i]);
+    if (isArraySliceExpression(e.exprs[i])) {
+      // compiling an array slice puts the slice information in z_PTR (pointer to start), z_CNT (number of items), and z_A (number of bytes)
+      out(`JPS __memCopy`, `copy z_A bytes from z_PTR to z_PTR2`);
+    } else {
+      if (elementType == "int") {
+        out(`MZT z_A+0,z_PTR2 INV z_PTR2`, `move z_A to ${targetName}[${i}]`);
+        out(`MZT z_A+1,z_PTR2 INV z_PTR2`);
+      } else {
+        out(`MZT z_A+0,z_PTR2 INV z_PTR2`, `move z_A to ${targetName}[${i}]`);
+      }
+    }
+  }
+}
+
+// TODO: handle array expressions
+// e could be a compound expression 0_1_2_3 -> z_A is pointer to a temporary array of length z_CNT
+// e could be an array reference -> z_A is pointer to the array element [0]
+// e could be an array slice -> z_A is pointer to the start of the slice
+// e could be a simple variable -> z_A is the value of the variable
+
 /** Compile expr, leaving the 16-bit result in the z_A zero-page word. */
 export function compileExpression(e: Expression): void {
   // TODO: possible optimisations
   // option to preserve z_A or not
   // check if e is a leaf
   // option to compile to different target virtual register eg z_B or z_TEMP
+
+  if (isCachedZA(e)) {
+    out("", `cached z_A ${cached.z_A}`);
+    return;
+  }
+
   switch (true) {
     case isNumberLiteral(e):
       return compileNum(e);
@@ -104,21 +162,34 @@ export function compileExpression(e: Expression): void {
 
 function compileNum(e: NumberLiteral) {
   const valueStr = `const ${e.value}`;
-  if (isCachedA(valueStr)) return;
   out(`MIV ${hexWord(e.value)},z_A`, valueStr);
 }
 
 function compileUnary(e: UnaryExpression) {
+  if (isArraySliceExpression(e.inner)) {
+    throw new MinCompileError("Unary expression on array is not supported", e);
+  }
   compileExpression(e.inner);
   if (e.op === "-") {
     out(`NEV z_A`, `z_A = -z_A`);
   } else {
     out(`NOV z_A`, `z_A = !z_A`);
   }
-  cached.z_A = "";
 }
 
 function compileBinary(e: BinaryExpression) {
+  if (isArraySliceExpression(e.left)) {
+    throw new MinCompileError(
+      "Binary expression on array is not supported",
+      e.left,
+    );
+  }
+  if (isArraySliceExpression(e.right)) {
+    throw new MinCompileError(
+      "Binary expression on array is not supported",
+      e.right,
+    );
+  }
   const constSide = isNumberLiteral(e.left)
     ? e.left
     : isNumberLiteral(e.right)
@@ -139,7 +210,6 @@ function compileBinary(e: BinaryExpression) {
         // anything + byte constant (or vice versa)
         out(`MIV ${constSide.value},z_B AVV z_B,z_A`, `+ word constant`);
       }
-      cached.z_A = "";
       return;
     }
     if (e.op == "-" && isNumberLiteral(e.right)) {
@@ -150,7 +220,6 @@ function compileBinary(e: BinaryExpression) {
         compileExpression(e.left);
         out(`SIV ${e.right.value},z_A`, `- byte constant`);
       }
-      cached.z_A = "";
       return;
     }
     if (e.op == "*") {
@@ -159,7 +228,6 @@ function compileBinary(e: BinaryExpression) {
       if (Number.isInteger(shift) && shift >= 1 && shift <= 15) {
         compileExpression(otherSide);
         out(`MIV ${shift}, z_B JPS __shl16`);
-        cached.z_A = "";
         return;
       }
     }
@@ -172,10 +240,10 @@ function compileBinary(e: BinaryExpression) {
   if (isNumberLiteral(e.right)) {
     out(`MIV ${hexWord(e.right.value)},z_B`, `z_B = ${e.right.value}`);
   } else {
-    emitHWPushZA();
+    emitHWPushZ("z_A");
     compileExpression(e.right);
     out(`MVV z_A,z_B`);
-    emitHWPopZA();
+    emitHWPopZ("z_A");
   }
   // now z_A = left, z_B = right
 
@@ -223,8 +291,20 @@ function compileBinary(e: BinaryExpression) {
 // __A then moved to __B; combine into __B via negate+add (or plain subtract for
 // <=/>=/>) and branch on sign to produce 0xffff/0x0000 in __A.
 export function compileComparison(e: ComparisonExpression) {
+  if (isArraySliceExpression(e.left)) {
+    throw new MinCompileError(
+      "Binary expression on array is not supported",
+      e.left,
+    );
+  }
+  if (isArraySliceExpression(e.right)) {
+    throw new MinCompileError(
+      "Binary expression on array is not supported",
+      e.right,
+    );
+  }
   compileExpression(e.left);
-  emitHWPushZA();
+  emitHWPushZ("z_A");
 
   compileExpression(e.right);
   out(`MVV z_A,z_B`);
@@ -264,35 +344,4 @@ export function compileComparison(e: ComparisonExpression) {
   }
 
   out("PLS PLS", "discard saved left expr off stack");
-}
-
-export function emitHeader() {
-  out("");
-  out(`; ---- expression compiler zero-page working storage ----`);
-  out(`#org ${hexWord(ZP_BASE)}`);
-  out(`z_FP:     0xEFFF    ; frame start pointer`);
-  out(`z_PTR:    0x0000    ; ptr to current var in runtime stack`);
-  out(`z_A:      0x0000    ; acc / expr result / fn return value`);
-  out(`z_B:      0x0000    ; secondary operand`);
-  out(`z_C:      0x0000    ; scratch (mul/div/cmp)`);
-  out(`z_D:      0x0000    ; scratch (div quotient)`);
-  out(`z_cnt:    0x00      ; loop counter (mul/div/shifts)`);
-  out(`z_flag:   0x00      ; sign flag (div)`);
-  out(``);
-}
-
-export function emitRuntime() {
-  out("");
-  out(`; --- runtime library ---`);
-  out(`#page`);
-  runtimeUsed.forEach((x) => {
-    const code = runtime["__" + x];
-    if (!code) {
-      throw new Error(`Unable to find runtime code for ${x}`);
-    }
-    code
-      .split("\n")
-      .filter((line) => line.trim() !== "")
-      .forEach((line) => out(line));
-  });
 }

@@ -9,9 +9,19 @@ import {
   CallStatement,
   LocalElement,
 } from "../../ls/generated/ast";
-import { compileStatement, out, format, options } from "./compiler";
+import {
+  compileStatement,
+  out,
+  format,
+  options,
+  isCachedPtr,
+  isCachedZA,
+  cached,
+} from "./compiler";
 
 function emitBlockPrologue(name: string, kind: "function" | "block") {
+  cached.blockPath += "." + name;
+
   // make z_FP  -= this.variableCompiler.currentFrame().frameSize which will point to the new stack frame base
   const newFPOffset = variableCompiler.currentFrame().frameSize;
   if (newFPOffset > 255)
@@ -45,6 +55,10 @@ function emitBlockEpilogue() {
       "Epilogue: restore z_FP to previous frame base",
     );
   }
+  cached.blockPath = cached.blockPath.slice(
+    0,
+    cached.blockPath.lastIndexOf("."),
+  );
 }
 
 export function compileDef(def: Def) {

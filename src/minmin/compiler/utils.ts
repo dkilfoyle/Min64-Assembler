@@ -45,6 +45,7 @@ export class MinCompileError extends Error {
       this.range = node.$cstNode?.range;
       this.uri = AstUtils.getDocument(node).uri.toString();
     } else {
+      console.error(message);
       super(message);
     }
   }

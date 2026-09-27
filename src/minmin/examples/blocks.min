@@ -40,7 +40,7 @@ def drawScreen():
 def drawShape(char b, int x, int y):
   int i=0; x+=14
   while i<8:
-    pos(x+shape[i], y+shape[i+1]); print(b)
+    pos(x+ [i], y+shape[i+1]); print(b)
     i+=2
 
 def newShape():
