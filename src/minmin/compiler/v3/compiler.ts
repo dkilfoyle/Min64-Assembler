@@ -169,6 +169,7 @@ export function compile(
   }
 
   emitRuntime();
+  out(`#org 0x8000     HEAP_START:`);
   emitZeroPage();
   emitOsCalls();
   return assembly.join("\n");
@@ -194,7 +195,6 @@ export function compileMain(mainProgram: Program) {
   printFrame(globalFrame);
   out(`\nJPA ${os("_Prompt")}`);
   format.indent -= 2;
-  out(`HEAP_START:`);
 }
 
 export function compileStatement(node: LocalElement) {

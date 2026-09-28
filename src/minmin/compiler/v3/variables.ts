@@ -135,6 +135,19 @@ export function emitGetPtr(
       );
   }
 
+  if (varInfo.type.endsWith("*") && varIndex) {
+    // z_PTR is a pointer to the heap location
+    out(
+      `MTZ ${z_PTR},z_B+1 DEV ${z_PTR}`,
+      `z_B = **${z_PTR} (pointer to heap location)`,
+    );
+    out(
+      `MTZ ${z_PTR},z_B+0 INV ${z_PTR}`,
+      `z_B = **${z_PTR} (pointer to heap location)`,
+    );
+    out(`MVV z_B,${z_PTR}`, `z_B = **${z_PTR} (pointer to heap location)`);
+  }
+
   if (varIndex) {
     if (typeof varIndex === "number" || isNumberLiteral(varIndex)) {
       const index = typeof varIndex === "number" ? varIndex : varIndex.value;
