@@ -70,34 +70,24 @@ export function getExpressionType(e: Expression): string {
     case isComparisonExpression(e):
       return "int";
     default:
-      throw new MinCompileError(
-        `Unsupported expression: ${JSON.stringify(e)}`,
-        e,
-      );
+      throw new MinCompileError(`Unsupported expression: ${JSON.stringify(e)}`, e);
   }
 }
 
-export function isArraySliceExpression(e: Expression): boolean {
+export function isArrayExpression(e: Expression): boolean {
   if (!isVariableReference(e)) return false;
-  if (!e.index) return false;
-  return !!e.index.endExpr;
+  const varType = getSymbol(e.varName.$refText).symbolInfo.type;
+  if (!varType.endsWith("*")) return false;
+  return true;
 }
 
-export function compileCompoundExpression(
-  e: CompoundExpression,
-  targetType: string,
-  targetName: string,
-): void {
+export function compileCompoundExpression(e: CompoundExpression, targetType: string, targetName: string): void {
   // prerequisite: z_PTR2 points to &target[index||0]
   // eg int a = 0_1_2_3
   // eg int a = a[0|3]; a = 0_1_2_3;
   // eg foo(0_1_2_3)
   // eg return 0_1_2_3
-  if (targetType != "int*" && targetType != "char*")
-    throw new MinCompileError(
-      "Compound expression assignment target is not an array",
-      e,
-    );
+  if (targetType != "int*" && targetType != "char*") throw new MinCompileError("Compound expression assignment target is not an array", e);
   const elementType = targetType === "int*" ? "int" : "char";
   for (let i = 0; i < e.exprs.length; i++) {
     // const exprType = getExpressionType(e.exprs[i]);
@@ -107,9 +97,10 @@ export function compileCompoundExpression(
     //     e.exprs[i],
     //   );
     compileExpression(e.exprs[i]);
-    if (isArraySliceExpression(e.exprs[i])) {
+    if (isArrayExpression(e.exprs[i])) {
       // compiling an array slice puts the slice information in z_PTR (pointer to start), z_CNT (number of items), and z_A (number of bytes)
       out(`JPS __memCopy`, `copy z_A bytes from z_PTR to z_PTR2`);
+      runtimeUsed.add("memCopy");
     } else {
       if (elementType == "int") {
         out(`MZT z_A+0,z_PTR2 INV z_PTR2`, `move z_A to ${targetName}[${i}]`);
@@ -153,10 +144,7 @@ export function compileExpression(e: Expression): void {
     case isComparisonExpression(e):
       return compileComparison(e);
     default:
-      throw new MinCompileError(
-        `Unsupported expression: ${JSON.stringify(e)}`,
-        e,
-      );
+      throw new MinCompileError(`Unsupported expression: ${JSON.stringify(e)}`, e);
   }
 }
 
@@ -166,7 +154,7 @@ function compileNum(e: NumberLiteral) {
 }
 
 function compileUnary(e: UnaryExpression) {
-  if (isArraySliceExpression(e.inner)) {
+  if (isArrayExpression(e.inner)) {
     throw new MinCompileError("Unary expression on array is not supported", e);
   }
   compileExpression(e.inner);
@@ -178,23 +166,13 @@ function compileUnary(e: UnaryExpression) {
 }
 
 function compileBinary(e: BinaryExpression) {
-  if (isArraySliceExpression(e.left)) {
-    throw new MinCompileError(
-      "Binary expression on array is not supported",
-      e.left,
-    );
+  if (isArrayExpression(e.left)) {
+    throw new MinCompileError("Binary expression on array is not supported", e.left);
   }
-  if (isArraySliceExpression(e.right)) {
-    throw new MinCompileError(
-      "Binary expression on array is not supported",
-      e.right,
-    );
+  if (isArrayExpression(e.right)) {
+    throw new MinCompileError("Binary expression on array is not supported", e.right);
   }
-  const constSide = isNumberLiteral(e.left)
-    ? e.left
-    : isNumberLiteral(e.right)
-      ? e.right
-      : null;
+  const constSide = isNumberLiteral(e.left) ? e.left : isNumberLiteral(e.right) ? e.right : null;
   const otherSide = constSide === e.left ? e.right : e.left;
 
   if (constSide) {
@@ -291,17 +269,11 @@ function compileBinary(e: BinaryExpression) {
 // __A then moved to __B; combine into __B via negate+add (or plain subtract for
 // <=/>=/>) and branch on sign to produce 0xffff/0x0000 in __A.
 export function compileComparison(e: ComparisonExpression) {
-  if (isArraySliceExpression(e.left)) {
-    throw new MinCompileError(
-      "Binary expression on array is not supported",
-      e.left,
-    );
+  if (isArrayExpression(e.left)) {
+    throw new MinCompileError("Binary expression on array is not supported", e.left);
   }
-  if (isArraySliceExpression(e.right)) {
-    throw new MinCompileError(
-      "Binary expression on array is not supported",
-      e.right,
-    );
+  if (isArrayExpression(e.right)) {
+    throw new MinCompileError("Binary expression on array is not supported", e.right);
   }
   compileExpression(e.left);
   emitHWPushZ("z_A");

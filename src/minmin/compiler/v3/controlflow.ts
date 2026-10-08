@@ -23,7 +23,7 @@ export function compileIf(node: If) {
     emitConditionJumpIfFalse(branch.condition, falseLabel);
     compileBlock(prefix + "_branch", branch.block);
     // for (const s of branch.block) compileStatement(s);
-    out(`FPA ${endLabel}`);
+    out(`JPA ${endLabel}`);
     out(`${falseLabel}:`);
   }
   if (node.elseBlock) {
@@ -45,7 +45,7 @@ export function compileWhile(node: While) {
   format.indent -= 2;
   // for (const s of node.block) compileStatement(s);
   compileBlock(whileLabel, node.block);
-  out(`FPA ${startLabel}`);
+  out(`JPA ${startLabel}`);
   out(`${endLabel}:`);
   breakLabels.pop();
 }

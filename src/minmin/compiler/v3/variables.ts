@@ -10,12 +10,8 @@ import {
   type VariableReference,
 } from "../../ls/generated/ast";
 import { cached, out, runtimeUsed } from "./compiler";
-import {
-  compileCompoundExpression,
-  compileExpression,
-  constEval,
-  isArraySliceExpression,
-} from "./expressions";
+import { compileCompoundExpression, compileExpression, constEval, isArrayExpression } from "./expressions";
+import { emitGetPtr, emitGetArrayPtr } from "./pointers";
 
 export interface IVariableSymbol {
   name: string;
@@ -23,6 +19,7 @@ export interface IVariableSymbol {
   type: "int" | "char" | "int*" | "char*";
   location: "stack" | "zeroPage" | "global" | "heap";
   address: number;
+  count?: number; // for array types, the number of elements
   // offset (+ve to lower addresses) in the case of location=stack
   // 0x10000 if location=heap (to throw an error if address is used)
 }
@@ -64,123 +61,26 @@ export function currentFrame(node?: AstNode): IStackFrame {
  *    symbolInfo:IVariableSymbol // contains the variable's metadata
  *  }
  */
-export function getSymbol(
-  name: string,
-  node?: AstNode,
-): { fpOffset: number; fpName: string; symbolInfo: IVariableSymbol } {
+export function getSymbol(name: string, node?: AstNode): { fpOffset: number; fpName: string; symbolInfo: IVariableSymbol } {
   let fpOffset = 0;
   let fpName = name;
   let inReach = true;
 
   for (let i = frameStack.length - 1; i >= 0; i--) {
-    if (i < frameStack.length - 1 && i > 0) fpOffset += frameStack[i].frameSize;
+    const isCurrentFrame = i === frameStack.length - 1;
+    const isGlobalFrameOnly = frameStack.length == 1;
+    if (!(isCurrentFrame || isGlobalFrameOnly)) fpOffset += frameStack[i].frameSize;
     const frame = frameStack[i];
     fpName = `${frame.name}.${fpName}`;
     if (inReach || i == 0) {
       // search stack up to function level and global frame
       const symbolInfo = frame.variables.get(name);
-      if (symbolInfo)
-        return { fpOffset: fpOffset - symbolInfo.address, fpName, symbolInfo };
+      if (symbolInfo) return { fpOffset: fpOffset - symbolInfo.address, fpName, symbolInfo };
     }
     if (frame.kind == "function") inReach = false; // can't search in calling functions
   }
 
-  throw new MinCompileError(
-    `Symbol ${name} not found in frameStack`,
-    node || ({} as AstNode),
-  );
-}
-
-export function emitGetPtr(
-  z_PTR: string,
-  varName: string,
-  varIndex?: Expression | number,
-  preserveZA?: boolean,
-) {
-  const { fpOffset, fpName, symbolInfo: varInfo } = getSymbol(varName);
-  const cacheName =
-    fpName +
-    (varIndex
-      ? `[${typeof varIndex === "number" ? varIndex : varIndex.$cstNode?.text}]`
-      : "");
-  // TODO: Cache z_PTR to avoid redundant calculations
-  // if (cached.z_PTR == cacheName) return;
-  // else cached.z_PTR = cacheName;
-
-  switch (varInfo.location) {
-    case "stack":
-      const x = `MVV z_FP,${z_PTR}`;
-      if (fpOffset < 0) {
-        // targetPtr = z_FP - abs(fpOffset)
-        out(
-          `${x} SIV ${Math.abs(fpOffset)},${z_PTR}`,
-          `${z_PTR} = &${varName}`,
-        );
-      } else if (fpOffset == 0) {
-        out(`${x}`, `${z_PTR} = &${varName}`);
-      } else {
-        // targetPtr = z_FP + fpOffset
-        out(`${x} AIV ${fpOffset},${z_PTR}`, `${z_PTR} = &${varName}`);
-      }
-      break;
-    case "zeroPage":
-      out(`MIV ${hexWord(varInfo.address)},${z_PTR}`, `${z_PTR} = &${varName}`);
-      break;
-    case "global":
-      out(`MIV ${hexWord(varInfo.address)},${z_PTR}`, `${z_PTR} = &${varName}`);
-      break;
-    case "heap":
-      throw new MinCompileError(
-        `Cannot get pointer to heap variable ${varName}`,
-      );
-  }
-
-  if (varInfo.type.endsWith("*") && varIndex) {
-    // z_PTR is a pointer to the heap location
-    out(
-      `MTZ ${z_PTR},z_B+1 DEV ${z_PTR}`,
-      `z_B = **${z_PTR} (pointer to heap location)`,
-    );
-    out(
-      `MTZ ${z_PTR},z_B+0 INV ${z_PTR}`,
-      `z_B = **${z_PTR} (pointer to heap location)`,
-    );
-    out(`MVV z_B,${z_PTR}`, `z_B = **${z_PTR} (pointer to heap location)`);
-  }
-
-  if (varIndex) {
-    if (typeof varIndex === "number" || isNumberLiteral(varIndex)) {
-      const index = typeof varIndex === "number" ? varIndex : varIndex.value;
-      const offset = index * (varInfo.type == "int*" ? 2 : 1);
-      if (offset == 0) {
-        // offset is 0, no adjustment needed for targetPtr
-      } else if (offset < 256)
-        out(
-          `AIV ${hexByte(offset)},${z_PTR}`,
-          `${z_PTR} = &${varName}[${index}]`,
-        );
-      else
-        out(
-          `MIV ${hexWord(offset)},z_B AVV z_B,${z_PTR}`,
-          `${z_PTR} = &${varName}[${index}]`,
-        );
-    } else {
-      if (preserveZA) out(`MVV z_A,z_B`, "save z_A to z_B");
-      compileExpression(varIndex);
-      if (varInfo.type == "int") {
-        out(
-          `LLV z_A`,
-          `z_A = array index ${varIndex.$cstNode?.text} * size(int)`,
-        );
-      }
-      // arrays are indexed upwards in memory regardless of location
-      out(
-        `AVV z_A,${z_PTR}`,
-        `${z_PTR} = &${varName}[${varIndex.$cstNode?.text}]`,
-      );
-      if (preserveZA) out(`MVV z_B,z_A`, "restore z_A");
-    }
-  }
+  throw new MinCompileError(`Symbol ${name} not found in frameStack`, node || ({} as AstNode));
 }
 
 export function emitCachedZA(instr: string, comment: string, value: string) {
@@ -189,24 +89,12 @@ export function emitCachedZA(instr: string, comment: string, value: string) {
   cached.z_A = value;
 }
 
-export function emitCopyZIntoVar(
-  sourceZ: string,
-  varName: string,
-  varIndex?: Expression | number,
-) {
-  if (sourceZ !== "z_A")
-    throw new MinCompileError(
-      `Unsupported sourceZ ${sourceZ} for copying into variable ${varName}`,
-      {} as AstNode,
-    );
+export function emitCopyZIntoVar(sourceZ: string, varName: string, varIndex?: Expression | number) {
+  if (sourceZ !== "z_A") throw new MinCompileError(`Unsupported sourceZ ${sourceZ} for copying into variable ${varName}`, {} as AstNode);
   const { fpName, fpOffset, symbolInfo: v } = getSymbol(varName);
   if (v.location === "stack") {
     // copying from z_A on to the stack
-    if (v.address > 255)
-      throw new MinCompileError(
-        `Maximum frame size is 255, got ${v.address} for ${varName}`,
-        {} as AstNode,
-      );
+    if (v.address > 255) throw new MinCompileError(`Maximum frame size is 255, got ${v.address} for ${varName}`, {} as AstNode);
     emitGetPtr("z_PTR", varName, varIndex, true);
     if (v.type == "int") {
       out(`JPS __sdZA`, `${fpName}:int = z_A(${cached.z_A})`);
@@ -219,10 +107,7 @@ export function emitCopyZIntoVar(
     if (varIndex) {
       emitGetPtr("z_PTR", varName, varIndex, true);
       runtimeUsed.add("copyZA");
-      out(
-        `JPS __copyZA`,
-        `${fpName}:int[${typeof varIndex === "number" ? varIndex : varIndex.$cstNode?.text}] = z_A(${cached.z_A})`,
-      );
+      out(`JPS __copyZA`, `${fpName}:int[${typeof varIndex === "number" ? varIndex : varIndex.$cstNode?.text}] = z_A(${cached.z_A})`);
     } else {
       if (v.type == "int") {
         out(`MVV z_A,${hexByte(v.address)}`, `${varName}:int = z_A ()`);
@@ -232,47 +117,25 @@ export function emitCopyZIntoVar(
     }
     return;
   } else if (v.location === "global") {
-    out(
-      `MWV ${sourceZ},${hexWord(v.address)}`,
-      `${varName} from ${sourceZ} -> global`,
-    );
+    out(`MWV ${sourceZ},${hexWord(v.address)}`, `${varName} from ${sourceZ} -> global`);
     return;
   }
   throw new MinCompileError(`Unsupported location for variable ${varName}`);
 }
 
 /** z_PTR = &VarOnStack z_A/B = **z_PTR */
-export function emitCopyVarIntoZ(
-  targetAddr: number | string,
-  varName: string,
-  varIndex?: Expression,
-) {
+export function emitCopyVarIntoZ(targetAddr: number | string, varName: string, varIndex?: Expression) {
   const { fpName, fpOffset, symbolInfo: v } = getSymbol(varName);
 
   // ensure valid targetAddr which must be in zero page
   if (typeof targetAddr === "number" && targetAddr > 0xff)
-    throw new MinCompileError(
-      `Target address ${targetAddr} is not zero-page`,
-      {} as AstNode,
-    );
-  if (
-    typeof targetAddr === "string" &&
-    ["z_A", "z_B", "z_C", "z_D"].includes(targetAddr) == false
-  )
-    throw new MinCompileError(
-      `Target address ${targetAddr} is not a valid z target`,
-      {} as AstNode,
-    );
+    throw new MinCompileError(`Target address ${targetAddr} is not zero-page`, {} as AstNode);
+  if (typeof targetAddr === "string" && ["z_A", "z_B", "z_C", "z_D"].includes(targetAddr) == false)
+    throw new MinCompileError(`Target address ${targetAddr} is not a valid z target`, {} as AstNode);
 
   // calculate target LSB and MSB addresses
-  const targetLSB =
-    typeof targetAddr === "number"
-      ? hexByte((targetAddr + 0) & 0xff)
-      : `${targetAddr}+0`;
-  const targetMSB =
-    typeof targetAddr === "number"
-      ? hexByte((targetAddr + 1) & 0xff)
-      : `${targetAddr}+1`;
+  const targetLSB = typeof targetAddr === "number" ? hexByte((targetAddr + 0) & 0xff) : `${targetAddr}+0`;
+  const targetMSB = typeof targetAddr === "number" ? hexByte((targetAddr + 1) & 0xff) : `${targetAddr}+1`;
 
   if (v.type === "int") {
     switch (v.location) {
@@ -286,45 +149,27 @@ export function emitCopyVarIntoZ(
             out(`LDI ${v.address} PHS JPS __ldZB PLS`, `z_B=${varName}`);
             break;
           default:
-            throw new MinCompileError(
-              `Unsupported target address ${targetAddr}`,
-              {} as AstNode,
-            );
+            throw new MinCompileError(`Unsupported target address ${targetAddr}`, {} as AstNode);
         }
         return;
       case "zeroPage":
-        out(
-          `MVV ${hexByte(v.address)},${targetLSB}`,
-          `${varName} from zeroPage -> ${targetAddr}`,
-        );
+        out(`MVV ${hexByte(v.address)},${targetLSB}`, `${varName} from zeroPage -> ${targetAddr}`);
         return;
       case "global":
-        out(
-          `MWV ${hexWord(v.address)},${targetLSB}`,
-          `${varName} from global -> ${targetAddr}`,
-        );
+        out(`MWV ${hexWord(v.address)},${targetLSB}`, `${varName} from global -> ${targetAddr}`);
         return;
     }
   } else {
     switch (v.location) {
       case "stack":
         emitGetPtr("z_PTR", varName, varIndex, false); // z_PTR = &varName
-        out(
-          `MTZ z_PTR,${targetLSB} JPS sign_ext`,
-          `${varName} from stack -> ${targetAddr}`,
-        );
+        out(`MTZ z_PTR,${targetLSB} JPS __signext`, `${varName} from stack -> ${targetAddr}`);
         return;
       case "zeroPage":
-        out(
-          `MZZ ${hexByte(v.address)},${targetLSB} JPS __signext`,
-          `${varName} from zeroPage -> ${targetAddr}`,
-        );
+        out(`MZZ ${hexByte(v.address)},${targetLSB} JPS __signext`, `${varName} from zeroPage -> ${targetAddr}`);
         return;
       case "global":
-        out(
-          `MBZ ${hexWord(v.address)},${targetLSB} JPS __signext`,
-          `${varName} from global -> ${targetAddr}`,
-        );
+        out(`MBZ ${hexWord(v.address)},${targetLSB} JPS __signext`, `${varName} from global -> ${targetAddr}`);
         return;
     }
   }
@@ -334,12 +179,7 @@ const getSelfSizeRangeExpr = (node: VariableDeclaration) => {
   if (!node.assignExpr) return false;
   if (node.assignExpr.exprs.length !== 1) return false;
   const expr = node.assignExpr.exprs[0];
-  if (
-    isVariableReference(expr) &&
-    expr.varName.$refText === node.name &&
-    !!expr.index
-  )
-    return expr.index;
+  if (isVariableReference(expr) && expr.varName.$refText === node.name && !!expr.index) return expr.index;
   return undefined;
 };
 
@@ -388,12 +228,13 @@ export function compileVariableDeclaration(node: VariableDeclaration) {
     if (arraySizeDecl) {
       // int a = a[0|n]
       if (arraySizeDecl.startExpr && constEval(arraySizeDecl.startExpr) !== 0)
-        throw new MinCompileError(
-          `Start index must be 0 or undefined`,
-          arraySizeDecl.startExpr,
-        );
-      if (!arraySizeDecl.endExpr)
-        throw new MinCompileError(`End index must be specified`, arraySizeDecl);
+        throw new MinCompileError(`Start index must be 0 or undefined`, arraySizeDecl.startExpr);
+      if (!arraySizeDecl.endExpr) throw new MinCompileError(`End index must be specified`, arraySizeDecl);
+
+      symbolInfo.count = constEval(arraySizeDecl.endExpr) + 1;
+      // will throw error if endExpr is not constant
+      // currently does not handle runtime array sizes
+      // to do this would need to store the array size at runtime eg first 2 bytes of the array could hold the size
 
       // store array address (z_HP) into the pointer variable
       emitGetPtr("z_PTR", symbolInfo.name);
@@ -411,11 +252,7 @@ export function compileVariableDeclaration(node: VariableDeclaration) {
     } else if (isArrayAssignDecl) {
       // int a = 1_2_3
       out(`MVV z_HP,z_PTR2`);
-      compileCompoundExpression(
-        node.assignExpr,
-        symbolInfo.type,
-        symbolInfo.name,
-      );
+      compileCompoundExpression(node.assignExpr, symbolInfo.type, symbolInfo.name);
       out(`MVV z_PTR2,z_HP`, "Update z_HP from z_PTR2");
     } else {
       // not an array
@@ -425,67 +262,39 @@ export function compileVariableDeclaration(node: VariableDeclaration) {
   }
 }
 
-/**
- * Emits code to set ptrReg to &arr[start], z_CNT to num of items in slice, z_B to num of bytes in slice
- * @param ptrReg The register to store the pointer.
- * @param varRef The variable reference representing the slice.
- * @remarks
- * Assumes the variable referenced by `varRef` is a pointer type (e.g., `int*` or `char*`).
- */
-export function emitGetSlicePtr(ptrReg: string, varRef: VariableReference) {
-  const varName = varRef.varName.$refText;
-  const varType = getSymbol(varName).symbolInfo.type;
-  if (!varRef.index)
-    throw new MinCompileError(`Slice index is missing`, varRef);
-  if (!varRef.index.endExpr)
-    throw new MinCompileError(`Slice end expression is missing`, varRef);
-  if (!varType.endsWith("*"))
-    throw new MinCompileError(
-      `Variable type ${varType} is not a pointer`,
-      varRef,
-    );
-
-  compileExpression(varRef.index.endExpr); // z_A = endExpr
-  out(`MVV z_A,z_CNT`);
-  if (varRef.index.startExpr) {
-    compileExpression(varRef.index.startExpr); // z_A = startExpr
-    out(`SVV z_A,z_CNT`, `z_CNT = number of items in slice`);
-    emitGetPtr(ptrReg, varName);
-    if (varType == "int*")
-      out(`MVV z_CNT,z_B LLV z_B`, `z_B = number of bytes in slice`);
-    else if (varType == "char*") {
-      out(`MVV z_CNT,z_B`, `z_B = number of bytes in slice`);
-    } else
-      throw new MinCompileError(`Unsupported variable type for slice`, varRef);
-  }
-}
-
 export function compileVariableAssignment(node: VariableAssignment) {
   const lhsVarName = node.varName.$refText;
   const { symbolInfo: lhs } = getSymbol(lhsVarName);
   let rhs = node.assignExpr;
 
+  // a = 5
+  // a[i] = 5
+  // z_PTR2 = &lhs
+  // z_PTR = &rhs
+
   if (lhs.type == "int*") {
     // TODO: bounds checking
-    if (rhs.exprs.length == 1 && isArraySliceExpression(rhs.exprs[0])) {
-      // rhs is array slice, eg minos[5] = a[0|3]
-      const rhsVarRef = rhs.exprs[0] as VariableReference;
+    if (rhs.exprs.length == 1) {
+      // a[i] = x
       emitGetPtr("z_PTR2", lhsVarName, node.indexExpr);
-      emitGetSlicePtr("z_PTR", rhsVarRef); // z_PTR = &a[slicestart], z_CNT = num item, z_B = num bytes
-      out(`JPS __memCopy`); // copy z_B bytes from z_PTR to z_PTR2
-      runtimeUsed.add("__memCopy");
+      if (isArrayExpression(rhs.exprs[0])) {
+        // rhs is array slice, eg minos[5] = a[0|3]
+        const rhsVarRef = rhs.exprs[0] as VariableReference;
+        emitGetArrayPtr("z_PTR", rhsVarRef); // z_PTR = &a[slicestart], z_CNT = num item, z_B = num bytes
+        out(`JPS __memCopy`); // copy z_A bytes from z_PTR to z_PTR2
+        runtimeUsed.add("memCopy");
+      } else {
+        compileExpression(rhs.exprs[0]);
+        out(`MZT z_A+0,z_PTR2 INV z_PTR2 MZT z_A+1,z_PTR2 `); // store the value into the pointer location
+      }
     } else if (rhs.exprs.length > 1) {
       // rhs is compound expression, eg minos[5] = 1_2_3_4
       emitGetPtr("z_PTR2", lhsVarName, node.indexExpr);
       compileCompoundExpression(rhs, lhs.type, lhs.name);
-    } else throw new MinCompileError(`Unimplemented int* assignment`, rhs);
+    } else throw new MinCompileError(`Unimplemented assignment rhs int* = ${rhs.$type}`, rhs);
   } else {
     // lhs is not a pointer, so rhs must be a single expression
-    if (rhs.exprs.length != 1)
-      throw new MinCompileError(
-        `Cannot assign compound expression to non-pointer variable`,
-        rhs,
-      );
+    if (rhs.exprs.length != 1) throw new MinCompileError(`Cannot assign compound expression to non-pointer variable`, rhs);
     compileExpression(rhs.exprs[0]);
     emitCopyZIntoVar("z_A", lhs.name, node.indexExpr);
   }
@@ -501,32 +310,20 @@ export function compileVariableCalcAssignment(node: VariableCalcAssignment) {
   if (node.op === "+=") {
     if (lhs.type === "int") {
       if (node.value <= 0xff) {
-        out(
-          `LDI ${hexByte(node.value)} ADV z_A`,
-          `${node.varName} += ${node.value}`,
-        );
+        out(`LDI ${hexByte(node.value)} ADV z_A`, `${node.varName} += ${node.value}`);
       } else {
-        out(
-          `LDI ${hexByte(node.value & 0xff)} ADV z_A LDI ${hexByte(node.value >> 8)} AD.Z z_A+1`,
-          `${node.varName} += ${node.value}`,
-        );
+        out(`LDI ${hexByte(node.value & 0xff)} ADV z_A LDI ${hexByte(node.value >> 8)} AD.Z z_A+1`, `${node.varName} += ${node.value}`);
       }
       cached.z_A = "";
       emitCopyZIntoVar("z_A", varName);
     } else {
-      out(
-        `LDI ${hexByte(node.value)} AD.T z_PTR `,
-        `${node.varName} += ${node.value}`,
-      );
+      out(`LDI ${hexByte(node.value)} AD.T z_PTR `, `${node.varName} += ${node.value}`);
     }
   } else {
     if (lhs.type === "int") {
       throw new MinCompileError(`-= on integer type not supported yet`, node);
     } else {
-      out(
-        `LDI ${hexByte(node.value)} SU.T z_PTR `,
-        `${node.varName} -= ${node.value}`,
-      );
+      out(`LDI ${hexByte(node.value)} SU.T z_PTR `, `${node.varName} -= ${node.value}`);
     }
   }
 }
@@ -535,11 +332,10 @@ export function compileVariableReference(e: VariableReference) {
   const varName = e.varName.$refText;
   const v = getSymbol(varName);
 
-  if (isArraySliceExpression(e)) {
+  if (isArrayExpression(e)) {
     // eg a[0|4]  a[|4]  a[x|y]
-    if (e.isAddress)
-      throw new MinCompileError(`Cannot take address of array slice`, e);
-    emitGetSlicePtr("z_A", e); // z_A = &a[slicestart], z_CNT = num items, z_B = num bytes
+    if (e.isAddress) throw new MinCompileError(`Cannot take address of array slice`, e);
+    emitGetArrayPtr("z_A", e); // z_A = &a[slicestart], z_CNT = num items, z_B = num bytes
   } else {
     // eg a or a[5] or &a
     if (e.isAddress) {

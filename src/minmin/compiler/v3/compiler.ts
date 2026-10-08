@@ -24,13 +24,7 @@ import {
   PrintStatement,
   Program,
 } from "../../ls/generated/ast";
-import {
-  compileDef,
-  printFrame,
-  compileCallStatement,
-  compileReturn,
-  compileFunctionCall,
-} from "./functions";
+import { compileDef, printFrame, compileCallStatement, compileReturn, compileFunctionCall } from "./functions";
 import { compileIf, compileWhile } from "./controlflow";
 import { ZP_BASE } from "./expressions";
 
@@ -43,8 +37,7 @@ const runtimeGlob = import.meta.glob("../runtime/*.asm", {
 const runtime = Object.fromEntries(
   Object.entries(runtimeGlob).map(([path, definition]) => {
     // Extract file name without extension to use as the new key
-    const fileName =
-      "__" + path.slice(path.lastIndexOf("/") + 1).replace(".asm", "");
+    const fileName = "__" + path.slice(path.lastIndexOf("/") + 1).replace(".asm", "");
     return [fileName, definition];
   }),
 );
@@ -85,6 +78,7 @@ export function emitZeroPage() {
   out(`z_TMP2:   0x0000    ; temporary storage`);
   out(`z_cnt:    0x00      ; loop counter (mul/div/shifts)`);
   out(`z_flag:   0x00      ; sign flag (div)`);
+  out(`z_CNT:    0x0000    ; array slice count`);
   out(``);
 }
 
@@ -147,11 +141,7 @@ export function isCachedZA(e: Expression): boolean {
   }
 }
 
-export function compile(
-  fname: string,
-  mainProgram: Program,
-  libraries: Program[],
-): string {
+export function compile(fname: string, mainProgram: Program, libraries: Program[]): string {
   reset();
 
   out(`; Code compiled from ${fname}\n`);
@@ -236,10 +226,7 @@ export function compilePrint(print: PrintStatement) {
         const v = variableCompiler.getSymbol(varName, expr).symbolInfo;
         if (v.type == "char") {
           // print 0 terminated char(s)
-          out(
-            `LDI ${lowOperand(v.address)} PHS LDI ${highOperand(v.address)} PHS JPS ${os("_PrintPtr")} PLS PLS`,
-            `print ${varName}`,
-          );
+          out(`LDI ${lowOperand(v.address)} PHS LDI ${highOperand(v.address)} PHS JPS ${os("_PrintPtr")} PLS PLS`, `print ${varName}`);
 
           return;
         }
@@ -247,9 +234,7 @@ export function compilePrint(print: PrintStatement) {
       expressionCompiler.compileExpression(expr);
       // result will be int in z_A
       out(`JPS __inttostr`);
-      out(
-        `LDB __strptr+0 PHS LDB __strptr+1 PHS JPS ${os("_PrintPtr")} PLS PLS`,
-      );
+      out(`LDB __strptr+0 PHS LDB __strptr+1 PHS JPS ${os("_PrintPtr")} PLS PLS`);
       runtimeUsed.add("__inttostr");
     });
   });
