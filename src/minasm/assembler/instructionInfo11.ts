@@ -1,3 +1,5 @@
+// instruction set for the deprecated 1.1 version of Min64
+
 // argument info: bits0-3: argtype1, bits 4-7: argtype2
 // types: 0=none, 1=expect byte, 2=zero page, 3=expect word, 4=fast jump
 

@@ -3,7 +3,7 @@ import { MinCompileError, hexWord, highOperand, lowOperand } from "../utils";
 import * as expressionCompiler from "./expressions";
 import { computeReachableDefs } from "../reachability";
 import * as variableCompiler from "./variables";
-import type { IVariableSymbol } from "./variables";
+import type { IExpressionType, IVariableSymbol } from "./variables";
 import {
   Expression,
   isCallStatement,
@@ -56,11 +56,23 @@ export const options = {
   printFrame: true,
 };
 
-export const cached: { z_PTR: string; z_A: string; blockPath: string } = {
-  z_PTR: "",
-  z_A: "",
+interface ICachedValue {
+  id: string;
+  type: IExpressionType;
+}
+
+export const cached: { z_PTR: ICachedValue; z_A: ICachedValue; blockPath: string } = {
+  z_PTR: { id: "", type: "int" },
+  z_A: { id: "", type: "int" },
   blockPath: "",
 };
+
+export function emitRuntimeCall(name: string, comment?: string) {
+  const definition = runtime[`__${name}`];
+  if (!definition) throw new MinCompileError(`Runtime definition not found for ${name}`, {} as any);
+  runtimeUsed.add(name);
+  out(`JPS __${name}`, comment);
+}
 
 export function emitZeroPage() {
   out("");
@@ -96,8 +108,8 @@ export function reset() {
   variableCompiler.reset();
   format.indent = 0;
 
-  cached.z_PTR = "";
-  cached.z_A = "";
+  cached.z_PTR = { id: "", type: "int" };
+  cached.z_A = { id: "", type: "int" };
   cached.blockPath = "";
 }
 
@@ -119,9 +131,9 @@ export function out(instruction: string, comment: string = "") {
 }
 
 export function isCachedPtr(name: string): boolean {
-  if (cached.z_PTR === name) return true;
+  if (cached.z_PTR.id === name) return true;
   else {
-    cached.z_PTR = name;
+    cached.z_PTR = { id: name, type: "int" };
     return false;
   }
 }
@@ -131,12 +143,12 @@ export function isCachedZA(e: Expression): boolean {
 
   if (ename == "") {
     // new z_A value is uncacheable, so reset the cache
-    cached.z_A = "";
+    cached.z_A = { id: "", type: "int" };
     return false;
   }
-  if (cached.z_A === ename) return true;
+  if (cached.z_A.id === ename) return true;
   else {
-    cached.z_A = ename;
+    cached.z_A = { id: ename, type: "int" };
     return false;
   }
 }
@@ -172,7 +184,6 @@ export function compileMain(mainProgram: Program) {
     kind: "global",
     variables: new Map<string, IVariableSymbol>(),
     frameSize: 0,
-    heapSize: 0,
   });
 
   out(`__main:`);
@@ -233,9 +244,8 @@ export function compilePrint(print: PrintStatement) {
       }
       expressionCompiler.compileExpression(expr);
       // result will be int in z_A
-      out(`JPS __inttostr`);
+      emitRuntimeCall(`inttostr`);
       out(`LDB __strptr+0 PHS LDB __strptr+1 PHS JPS ${os("_PrintPtr")} PLS PLS`);
-      runtimeUsed.add("__inttostr");
     });
   });
 }

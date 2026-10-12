@@ -9,14 +9,16 @@ import {
   type VariableDeclaration,
   type VariableReference,
 } from "../../ls/generated/ast";
-import { cached, out, runtimeUsed } from "./compiler";
+import { cached, emitRuntimeCall, out, runtimeUsed } from "./compiler";
 import { compileCompoundExpression, compileExpression, constEval, isArrayExpression } from "./expressions";
 import { emitGetPtr, emitGetArrayPtr } from "./pointers";
+
+export type IExpressionType = "int" | "char" | "int*" | "char*";
 
 export interface IVariableSymbol {
   name: string;
   kind: "param" | "local";
-  type: "int" | "char" | "int*" | "char*";
+  type: IExpressionType;
   location: "stack" | "zeroPage" | "global" | "heap";
   address: number;
   count?: number; // for array types, the number of elements
@@ -29,7 +31,7 @@ export interface IStackFrame {
   kind: "function" | "block" | "global";
   variables: Map<string, IVariableSymbol>;
   frameSize: number;
-  heapSize: number;
+  // heapSize: number;
 }
 
 export let frameStack: IStackFrame[] = [];
@@ -80,24 +82,24 @@ export function getSymbol(name: string, node?: AstNode): { fpOffset: number; fpN
     if (frame.kind == "function") inReach = false; // can't search in calling functions
   }
 
-  throw new MinCompileError(`Symbol ${name} not found in frameStack`, node || ({} as AstNode));
+  throw new MinCompileError(`Symbol ${name} not found in frameStack`, node);
 }
 
 export function emitCachedZA(instr: string, comment: string, value: string) {
-  if (cached.z_A == value) return;
+  if (cached.z_A.id == value) return;
   out(instr, comment);
-  cached.z_A = value;
+  cached.z_A.id = value;
 }
 
 export function emitCopyZIntoVar(sourceZ: string, varName: string, varIndex?: Expression | number) {
-  if (sourceZ !== "z_A") throw new MinCompileError(`Unsupported sourceZ ${sourceZ} for copying into variable ${varName}`, {} as AstNode);
+  if (sourceZ !== "z_A") throw new MinCompileError(`Unsupported sourceZ ${sourceZ} for copying into variable ${varName}`);
   const { fpName, fpOffset, symbolInfo: v } = getSymbol(varName);
   if (v.location === "stack") {
     // copying from z_A on to the stack
-    if (v.address > 255) throw new MinCompileError(`Maximum frame size is 255, got ${v.address} for ${varName}`, {} as AstNode);
+    if (v.address > 255) throw new MinCompileError(`Maximum frame size is 255, got ${v.address} for ${varName}`);
     emitGetPtr("z_PTR", varName, varIndex, true);
     if (v.type == "int") {
-      out(`JPS __sdZA`, `${fpName}:int = z_A(${cached.z_A})`);
+      emitRuntimeCall(`sdZA`, `${fpName}:int = z_A(${cached.z_A})`);
     } else {
       out(`MZT z_A+0,z_PTR`, `${fpName}:char = z_A(${cached.z_A})`);
     }
@@ -106,8 +108,7 @@ export function emitCopyZIntoVar(sourceZ: string, varName: string, varIndex?: Ex
     // copying from z_A on to zeroPage
     if (varIndex) {
       emitGetPtr("z_PTR", varName, varIndex, true);
-      runtimeUsed.add("copyZA");
-      out(`JPS __copyZA`, `${fpName}:int[${typeof varIndex === "number" ? varIndex : varIndex.$cstNode?.text}] = z_A(${cached.z_A})`);
+      emitRuntimeCall(`copyZA`, `${fpName}:int[${typeof varIndex === "number" ? varIndex : varIndex.$cstNode?.text}] = z_A(${cached.z_A})`);
     } else {
       if (v.type == "int") {
         out(`MVV z_A,${hexByte(v.address)}`, `${varName}:int = z_A ()`);
@@ -128,10 +129,9 @@ export function emitCopyVarIntoZ(targetAddr: number | string, varName: string, v
   const { fpName, fpOffset, symbolInfo: v } = getSymbol(varName);
 
   // ensure valid targetAddr which must be in zero page
-  if (typeof targetAddr === "number" && targetAddr > 0xff)
-    throw new MinCompileError(`Target address ${targetAddr} is not zero-page`, {} as AstNode);
+  if (typeof targetAddr === "number" && targetAddr > 0xff) throw new MinCompileError(`Target address ${targetAddr} is not zero-page`);
   if (typeof targetAddr === "string" && ["z_A", "z_B", "z_C", "z_D"].includes(targetAddr) == false)
-    throw new MinCompileError(`Target address ${targetAddr} is not a valid z target`, {} as AstNode);
+    throw new MinCompileError(`Target address ${targetAddr} is not a valid z target`);
 
   // calculate target LSB and MSB addresses
   const targetLSB = typeof targetAddr === "number" ? hexByte((targetAddr + 0) & 0xff) : `${targetAddr}+0`;
@@ -149,7 +149,7 @@ export function emitCopyVarIntoZ(targetAddr: number | string, varName: string, v
             out(`LDI ${v.address} PHS JPS __ldZB PLS`, `z_B=${varName}`);
             break;
           default:
-            throw new MinCompileError(`Unsupported target address ${targetAddr}`, {} as AstNode);
+            throw new MinCompileError(`Unsupported target address ${targetAddr}`);
         }
         return;
       case "zeroPage":
@@ -231,23 +231,29 @@ export function compileVariableDeclaration(node: VariableDeclaration) {
         throw new MinCompileError(`Start index must be 0 or undefined`, arraySizeDecl.startExpr);
       if (!arraySizeDecl.endExpr) throw new MinCompileError(`End index must be specified`, arraySizeDecl);
 
-      symbolInfo.count = constEval(arraySizeDecl.endExpr) + 1;
-      // will throw error if endExpr is not constant
-      // currently does not handle runtime array sizes
-      // to do this would need to store the array size at runtime eg first 2 bytes of the array could hold the size
-
       // store array address (z_HP) into the pointer variable
       emitGetPtr("z_PTR", symbolInfo.name);
       out(`MZT z_HP+1,z_PTR DEV z_PTR`, `ptr ${symbolInfo.name} = z_HP`);
       out(`MZT z_HP+0,z_PTR INV z_PTR`, `ptr ${symbolInfo.name} = z_HP`);
 
-      compileExpression(arraySizeDecl.endExpr); // z_A = length of array
-      // TODO: store the evaluated length into the array header at lhs.address+2
-
-      if (symbolInfo.type == "int*") {
-        out(`LLV z_A AVV z_A,z_HP`, "Advance z_HP by size of int array");
-      } else {
-        out(`AVV z_A,z_HP`, "Advance z_HP by size of char array");
+      try {
+        symbolInfo.count = constEval(arraySizeDecl.endExpr) + 1; // +1 as array slice is inclusive of start and end
+        if (symbolInfo.type == "int*") {
+          out(`MIV ${hexWord(symbolInfo.count * 2)},z_A AVV z_A,z_HP`, "Advance z_HP by size of int array");
+        } else {
+          out(`MIV ${hexWord(symbolInfo.count)},z_A AVV z_A,z_HP`, "Advance z_HP by size of char array");
+        }
+      } catch {
+        throw new MinCompileError(`Array size must be a constant`, arraySizeDecl.endExpr);
+        // TODO: implement handling for runtime array sizes
+        // could store the array size at runtime, e.g., in the first 2 bytes of the array
+        // compileExpression(arraySizeDecl.endExpr); // z_A = length of array
+        // array size will be z_A + 1 [0|x] or [|x] is length x+1
+        // if (symbolInfo.type == "int*") {
+        //   out(`LLV z_A AVV z_A,z_HP`, "Advance z_HP by size of int array");
+        // } else {
+        //   out(`AVV z_A,z_HP`, "Advance z_HP by size of char array");
+        // }
       }
     } else if (isArrayAssignDecl) {
       // int a = 1_2_3
@@ -274,28 +280,27 @@ export function compileVariableAssignment(node: VariableAssignment) {
 
   if (lhs.type == "int*") {
     // TODO: bounds checking
+    emitGetPtr("z_PTR2", lhsVarName, node.indexExpr); // z_PTR2 = &lhs[index]
     if (rhs.exprs.length == 1) {
       // a[i] = x
-      emitGetPtr("z_PTR2", lhsVarName, node.indexExpr);
-      if (isArrayExpression(rhs.exprs[0])) {
-        // rhs is array slice, eg minos[5] = a[0|3]
-        const rhsVarRef = rhs.exprs[0] as VariableReference;
-        emitGetArrayPtr("z_PTR", rhsVarRef); // z_PTR = &a[slicestart], z_CNT = num item, z_B = num bytes
-        out(`JPS __memCopy`); // copy z_A bytes from z_PTR to z_PTR2
-        runtimeUsed.add("memCopy");
+      const exprType = compileExpression(rhs.exprs[0]);
+      if (exprType.endsWith("*")) {
+        // z_A = heap address of rhs[0]
+        out(`MVV z_A,z_PTR`); // prepare source pointer for memCopy
+        emitRuntimeCall("memCopy", "copy z_B bytes from z_PTR to z_PTR2");
       } else {
-        compileExpression(rhs.exprs[0]);
-        out(`MZT z_A+0,z_PTR2 INV z_PTR2 MZT z_A+1,z_PTR2 `); // store the value into the pointer location
+        out(`MZT z_A+0,z_PTR2 INV z_PTR2`); // store the value into the pointer location
+        out(`MZT z_A+1,z_PTR2`); // store the value into the pointer location
       }
     } else if (rhs.exprs.length > 1) {
       // rhs is compound expression, eg minos[5] = 1_2_3_4
-      emitGetPtr("z_PTR2", lhsVarName, node.indexExpr);
       compileCompoundExpression(rhs, lhs.type, lhs.name);
     } else throw new MinCompileError(`Unimplemented assignment rhs int* = ${rhs.$type}`, rhs);
   } else {
-    // lhs is not a pointer, so rhs must be a single expression
+    // lhs is not a pointer, so rhs must be a single expression evaluating to an int
     if (rhs.exprs.length != 1) throw new MinCompileError(`Cannot assign compound expression to non-pointer variable`, rhs);
-    compileExpression(rhs.exprs[0]);
+    const exprType = compileExpression(rhs.exprs[0]);
+    if (exprType != "int") throw new MinCompileError(`Type mismatch: expected int, got ${exprType}`, rhs);
     emitCopyZIntoVar("z_A", lhs.name, node.indexExpr);
   }
 }
@@ -314,7 +319,7 @@ export function compileVariableCalcAssignment(node: VariableCalcAssignment) {
       } else {
         out(`LDI ${hexByte(node.value & 0xff)} ADV z_A LDI ${hexByte(node.value >> 8)} AD.Z z_A+1`, `${node.varName} += ${node.value}`);
       }
-      cached.z_A = "";
+      cached.z_A.id = "";
       emitCopyZIntoVar("z_A", varName);
     } else {
       out(`LDI ${hexByte(node.value)} AD.T z_PTR `, `${node.varName} += ${node.value}`);
@@ -328,7 +333,7 @@ export function compileVariableCalcAssignment(node: VariableCalcAssignment) {
   }
 }
 
-export function compileVariableReference(e: VariableReference) {
+export function compileVariableReference(e: VariableReference): IExpressionType {
   const varName = e.varName.$refText;
   const v = getSymbol(varName);
 
@@ -336,12 +341,16 @@ export function compileVariableReference(e: VariableReference) {
     // eg a[0|4]  a[|4]  a[x|y]
     if (e.isAddress) throw new MinCompileError(`Cannot take address of array slice`, e);
     emitGetArrayPtr("z_A", e); // z_A = &a[slicestart], z_CNT = num items, z_B = num bytes
+    return v.symbolInfo.type; // int* or char*
   } else {
     // eg a or a[5] or &a
     if (e.isAddress) {
       emitGetPtr("z_A", varName, e.index?.startExpr);
+      if (v.symbolInfo.type.endsWith("*")) throw new MinCompileError(`Cannot take address of pointer type`, e);
+      return (v.symbolInfo.type + "*") as IExpressionType; // int* or char*
     } else {
       emitCopyVarIntoZ("z_A", varName, e.index?.startExpr);
+      return v.symbolInfo.type; // int or char
     }
   }
 }

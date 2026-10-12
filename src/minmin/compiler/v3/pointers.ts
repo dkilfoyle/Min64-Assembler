@@ -69,7 +69,7 @@ export function emitGetPtr(z_PTR: string, varName: string, varIndex?: Expression
 }
 
 /**
- * Emits code to set ptrReg to &arr[start], z_CNT to num of items in slice, z_A to num of bytes in slice
+ * Emits code to set ptrReg to &arr[start], z_CNT to num of items in slice, z_B to num of bytes in slice
  * @param ptrReg The register to store the pointer.
  * @param varRef The variable reference representing the slice.
  * @remarks
@@ -85,9 +85,9 @@ export function emitGetArrayPtr(ptrReg: string, varRef: VariableReference) {
     emitGetPtr(ptrReg, varName);
     emitDereferencePointer(ptrReg);
     if (varType == "int*") {
-      out(`MIV ${hexWord(count)},z_CNT MIV ${hexWord(count * 2)},z_A`, `z_CNT = num items, z_A = num of bytes in full array`);
+      out(`MIV ${hexWord(count)},z_CNT MIV ${hexWord(count * 2)},z_B`, `z_CNT=num items, z_B=num of bytes in full array`);
     } else if (varType == "char*") {
-      out(`MIV ${hexWord(count)},z_CNT MIV ${hexWord(count)},z_A`, `z_CNT = num items, z_A = num of bytes in full array`);
+      out(`MIV ${hexWord(count)},z_CNT MIV ${hexWord(count)},z_B`, `z_CNT=num items, z_B=num of bytes in full array`);
     } else throw new MinCompileError(`Unsupported variable type for slice`, varRef);
     return;
   }
@@ -95,8 +95,9 @@ export function emitGetArrayPtr(ptrReg: string, varRef: VariableReference) {
   if (!varRef.index.endExpr) throw new MinCompileError(`Slice end expression is missing`, varRef);
   if (!varType.endsWith("*")) throw new MinCompileError(`Variable type ${varType} is not a pointer`, varRef);
 
+  // TODO: handle cases where startExpr or endExpr are not constant expressions
   compileExpression(varRef.index.endExpr); // z_A = endExpr
-  out(`INV z_A`, `Add 1 for inclusive slice ends`);
+  out(`INV z_A`, `Add 1 for inclusive slice ends`); // z_A = endExpr + 1
   out(`MVV z_A,z_CNT`, `z_CNT = endExpr - startExpr + 1`);
   if (varRef.index.startExpr) {
     // adjust z_CNT by subtracting the start index
@@ -104,8 +105,8 @@ export function emitGetArrayPtr(ptrReg: string, varRef: VariableReference) {
     out(`SVV z_A,z_CNT`, `z_CNT = number of items in slice`);
   }
   emitGetPtr(ptrReg, varName);
-  if (varType == "int*") out(`MVV z_CNT,z_A LLV z_A`, `z_A = number of bytes in slice`);
+  if (varType == "int*") out(`MVV z_CNT,z_B LLV z_B`, `z_B = number of bytes in slice`);
   else if (varType == "char*") {
-    out(`MVV z_CNT,z_A`, `z_A = number of bytes in slice`);
+    out(`MVV z_CNT,z_B`, `z_B = number of bytes in slice`);
   } else throw new MinCompileError(`Unsupported variable type for slice`, varRef);
 }

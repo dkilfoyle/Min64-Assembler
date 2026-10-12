@@ -12,9 +12,9 @@ import {
   UnaryExpression,
   type Expression,
 } from "../../ls/generated/ast";
-import { cached, isCachedZA, nextLabel, out, runtimeUsed } from "./compiler";
+import { cached, emitRuntimeCall, isCachedZA, nextLabel, out, runtimeUsed } from "./compiler";
 import { MinCompileError, hexWord } from "../utils";
-import { compileVariableReference, getSymbol } from "./variables";
+import { compileVariableReference, getSymbol, type IExpressionType } from "./variables";
 import { compileFunctionCall } from "./functions";
 
 const VIRTUAL_STACK_BASE = 0xefff;
@@ -78,6 +78,7 @@ export function isArrayExpression(e: Expression): boolean {
   if (!isVariableReference(e)) return false;
   const varType = getSymbol(e.varName.$refText).symbolInfo.type;
   if (!varType.endsWith("*")) return false;
+  if (e.index && e.index.startExpr && !e.index.endExpr) return false; // eg a[5] which returns a primary value
   return true;
 }
 
@@ -90,17 +91,12 @@ export function compileCompoundExpression(e: CompoundExpression, targetType: str
   if (targetType != "int*" && targetType != "char*") throw new MinCompileError("Compound expression assignment target is not an array", e);
   const elementType = targetType === "int*" ? "int" : "char";
   for (let i = 0; i < e.exprs.length; i++) {
-    // const exprType = getExpressionType(e.exprs[i]);
-    // if (exprType !== elementType && exprType != targetType)
-    //   throw new MinCompileError(
-    //     `Type mismatch in compound expression: expected ${targetType}`,
-    //     e.exprs[i],
-    //   );
+    emitHWPushZ("z_PTR");
     compileExpression(e.exprs[i]);
+    emitHWPopZ("z_PTR");
     if (isArrayExpression(e.exprs[i])) {
       // compiling an array slice puts the slice information in z_PTR (pointer to start), z_CNT (number of items), and z_A (number of bytes)
-      out(`JPS __memCopy`, `copy z_A bytes from z_PTR to z_PTR2`);
-      runtimeUsed.add("memCopy");
+      emitRuntimeCall(`memCopy`, `copy z_A bytes from z_PTR to z_PTR2`);
     } else {
       if (elementType == "int") {
         out(`MZT z_A+0,z_PTR2 INV z_PTR2`, `move z_A to ${targetName}[${i}]`);
@@ -119,16 +115,16 @@ export function compileCompoundExpression(e: CompoundExpression, targetType: str
 // e could be a simple variable -> z_A is the value of the variable
 
 /** Compile expr, leaving the 16-bit result in the z_A zero-page word. */
-export function compileExpression(e: Expression): void {
+export function compileExpression(e: Expression): IExpressionType {
   // TODO: possible optimisations
   // option to preserve z_A or not
   // check if e is a leaf
   // option to compile to different target virtual register eg z_B or z_TEMP
 
-  if (isCachedZA(e)) {
-    out("", `cached z_A ${cached.z_A}`);
-    return;
-  }
+  // if (isCachedZA(e)) {
+  //   out("", `cached z_A ${cached.z_A}`);
+  //   return "int";
+  // }
 
   switch (true) {
     case isNumberLiteral(e):
@@ -148,12 +144,13 @@ export function compileExpression(e: Expression): void {
   }
 }
 
-function compileNum(e: NumberLiteral) {
+function compileNum(e: NumberLiteral): IExpressionType {
   const valueStr = `const ${e.value}`;
   out(`MIV ${hexWord(e.value)},z_A`, valueStr);
+  return "int";
 }
 
-function compileUnary(e: UnaryExpression) {
+function compileUnary(e: UnaryExpression): IExpressionType {
   if (isArrayExpression(e.inner)) {
     throw new MinCompileError("Unary expression on array is not supported", e);
   }
@@ -163,9 +160,10 @@ function compileUnary(e: UnaryExpression) {
   } else {
     out(`NOV z_A`, `z_A = !z_A`);
   }
+  return "int";
 }
 
-function compileBinary(e: BinaryExpression) {
+function compileBinary(e: BinaryExpression): IExpressionType {
   if (isArrayExpression(e.left)) {
     throw new MinCompileError("Binary expression on array is not supported", e.left);
   }
@@ -188,7 +186,7 @@ function compileBinary(e: BinaryExpression) {
         // anything + byte constant (or vice versa)
         out(`MIV ${constSide.value},z_B AVV z_B,z_A`, `+ word constant`);
       }
-      return;
+      return "int";
     }
     if (e.op == "-" && isNumberLiteral(e.right)) {
       if (e.right.value == 1) {
@@ -198,7 +196,7 @@ function compileBinary(e: BinaryExpression) {
         compileExpression(e.left);
         out(`SIV ${e.right.value},z_A`, `- byte constant`);
       }
-      return;
+      return "int";
     }
     if (e.op == "*") {
       // anything * power of 2 (or vice versa)
@@ -206,7 +204,7 @@ function compileBinary(e: BinaryExpression) {
       if (Number.isInteger(shift) && shift >= 1 && shift <= 15) {
         compileExpression(otherSide);
         out(`MIV ${shift}, z_B JPS __shl16`);
-        return;
+        return "int";
       }
     }
   }
@@ -233,42 +231,36 @@ function compileBinary(e: BinaryExpression) {
       out(`SVV z_B,z_A`, `z_A -= z_B`);
       break;
     case "*":
-      out(`JPS __mul16`, `*`);
-      runtimeUsed.add("mul16");
+      emitRuntimeCall("mul16", `*`);
       break;
     case "/":
-      out(`JPS __div16`, `/ (divisor magnitude must fit in a byte)`);
-      runtimeUsed.add("div16");
+      emitRuntimeCall("div16", `/ (divisor magnitude must fit in a byte)`);
       break;
     case "and":
-      out(`JPS __and16`, `and`);
-      runtimeUsed.add("and16");
+      emitRuntimeCall("and16", `and`);
       break;
     case "or":
-      out(`JPS __or16`, `or`);
-      runtimeUsed.add("or16");
+      emitRuntimeCall("or16", `or`);
       break;
     case "xor":
-      out(`JPS __xor16`, `xor`);
-      runtimeUsed.add("xor16");
+      emitRuntimeCall("xor16", `xor`);
       break;
     case "<<":
-      out(`JPS __shl16`, `<<`);
-      runtimeUsed.add("shl16");
+      emitRuntimeCall("shl16", `<<`);
       break;
     case ">>":
-      out(`JPS __shr16`, `>> (logical)`);
-      runtimeUsed.add("shr16");
+      emitRuntimeCall("shr16", `>> (logical)`);
       break;
     default:
       throw new Error(`Unhandled binary operator '${e.op}'`);
   }
+  return "int";
 }
 
 // Comparisons: ported from MIN's RelExpr. Left in __A, pushed; right computed into
 // __A then moved to __B; combine into __B via negate+add (or plain subtract for
 // <=/>=/>) and branch on sign to produce 0xffff/0x0000 in __A.
-export function compileComparison(e: ComparisonExpression) {
+export function compileComparison(e: ComparisonExpression): IExpressionType {
   if (isArrayExpression(e.left)) {
     throw new MinCompileError("Binary expression on array is not supported", e.left);
   }
@@ -288,32 +280,27 @@ export function compileComparison(e: ComparisonExpression) {
   switch (e.op) {
     // PLS after each JPS to discard the
     case "<":
-      out("JPS __lt16", "<");
-      runtimeUsed.add("lt16");
+      emitRuntimeCall("lt16", "<");
       break;
     case ">":
-      out("JPS __gt16", "<");
-      runtimeUsed.add("gt16");
+      emitRuntimeCall("gt16", ">");
       break;
     case "==":
-      out("JPS __eq16", "==");
-      runtimeUsed.add("eq16");
+      emitRuntimeCall("eq16", "==");
       break;
     case "!=":
-      out("JPS __neq16", "==");
-      runtimeUsed.add("neq16");
+      emitRuntimeCall("neq16", "!=");
       break;
     case "<=":
-      out("JPS __lteq16", "==");
-      runtimeUsed.add("lteq16");
+      emitRuntimeCall("lteq16", "<=");
       break;
     case ">=":
-      out("JPS __gteq16", "==");
-      runtimeUsed.add("gteq16");
+      emitRuntimeCall("gteq16", ">=");
       break;
     default:
       throw new Error(`Unhandled comparison operator '${e.op}'`);
   }
 
   out("PLS PLS", "discard saved left expr off stack");
+  return "int";
 }

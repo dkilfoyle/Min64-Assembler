@@ -1,3 +1,5 @@
+// instruction set for the current 1.4 version of Min64
+
 const mne = [
   "NOP",
   "OUT",
