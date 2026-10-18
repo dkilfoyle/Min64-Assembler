@@ -1,47 +1,89 @@
 import { MinCompileError, hexByte, hexWord } from "../utils";
-import { isNumberLiteral, type Expression, type VariableReference } from "../../ls/generated/ast";
+import {
+  isNumberLiteral,
+  type Expression,
+  type VariableReference,
+} from "../../ls/generated/ast";
 import { out } from "./compiler";
 import { compileExpression } from "./expressions";
-import { getSymbol } from "./variables";
+import { frameStack } from "./stack";
+import type { IVariable } from "./variables";
 
-function emitDereferencePointer(z_PTR: string) {
+export function emitDereferencePointer(z_PTR: string) {
   // convert z_PTR (pointer to pointer) into the actual heap address it points to
   out(`MTZ ${z_PTR},z_B+1 DEV ${z_PTR}`, `Deference z_PTR to z_B`);
   out(`MTZ ${z_PTR},z_B+0`, `z_B = **${z_PTR} (pointer to heap location)`);
   out(`MVV z_B,${z_PTR}`, `${z_PTR} = heap address of pointer`);
 }
 
-export function emitGetPtr(z_PTR: string, varName: string, varIndex?: Expression | number, preserveZA?: boolean) {
-  const { fpOffset, fpName, symbolInfo: varInfo } = getSymbol(varName);
-  const cacheName = fpName + (varIndex ? `[${typeof varIndex === "number" ? varIndex : varIndex.$cstNode?.text}]` : "");
+function emitGetGlobalStackPtr(z_PTR: string, varInfo: IVariable) {
+  // variables in the global stack can be accessed from absolute address 0xefff rather than offset from z_FP
+  if (varInfo.address <= 0) {
+    throw new MinCompileError(
+      `Invalid global stack address for variable ${varInfo.name}: ${varInfo.address}`,
+    );
+  } else {
+    // targetPtr = z_FP + fpOffset
+    out(
+      `MIV ${hexWord(0xefff - varInfo.address)},${z_PTR}`,
+      `${z_PTR} = &${varInfo.name} (global)`,
+    );
+  }
+}
+
+function emitGetFrameStackPtr(z_PTR: string, varInfo: IVariable) {
+  const x = `MVV z_FP,${z_PTR}`;
+  if (varInfo.kind == "local") {
+    // targetPtr = z_FP - abs(fpOffset)
+    out(`${x} SIV ${varInfo.address},${z_PTR}`, `${z_PTR} = &${varInfo.name}`);
+  } else if (varInfo.address == 0) {
+    out(`${x}`, `${z_PTR} = &${varInfo.name}`);
+  } else {
+    // targetPtr = z_FP + fpOffset
+    out(`${x} AIV ${varInfo.address},${z_PTR}`, `${z_PTR} = &${varInfo.name}`);
+  }
+}
+
+export function emitGetPtr(
+  z_PTR: string,
+  varName: string,
+  varIndex?: Expression | number,
+  preserveZA?: boolean,
+) {
+  const { frame, varInfo } = frameStack.getVariable(varName);
+  const cacheName =
+    frame +
+    (varIndex
+      ? `[${typeof varIndex === "number" ? varIndex : varIndex.$cstNode?.text}]`
+      : "");
   // TODO: Cache z_PTR to avoid redundant calculations
   // if (cached.z_PTR == cacheName) return;
   // else cached.z_PTR = cacheName;
 
   switch (varInfo.location) {
     case "stack":
-      const x = `MVV z_FP,${z_PTR}`;
-      if (fpOffset < 0) {
-        // targetPtr = z_FP - abs(fpOffset)
-        out(`${x} SIV ${Math.abs(fpOffset)},${z_PTR}`, `${z_PTR} = &${varName}`);
-      } else if (fpOffset == 0) {
-        out(`${x}`, `${z_PTR} = &${varName}`);
-      } else {
-        // targetPtr = z_FP + fpOffset
-        out(`${x} AIV ${fpOffset},${z_PTR}`, `${z_PTR} = &${varName}`);
-      }
+      emitGetFrameStackPtr(z_PTR, varInfo);
+      break;
+    case "globalStack":
+      emitGetGlobalStackPtr(z_PTR, varInfo);
       break;
     case "zeroPage":
       out(`MIV ${hexWord(varInfo.address)},${z_PTR}`, `${z_PTR} = &${varName}`);
       break;
-    case "global":
+    case "absolute":
       out(`MIV ${hexWord(varInfo.address)},${z_PTR}`, `${z_PTR} = &${varName}`);
       break;
-    case "heap":
-      throw new MinCompileError(`Cannot get pointer to heap variable ${varName}`);
+    default:
+      throw new MinCompileError(
+        `Cannot get pointer to heap variable ${varName}`,
+      );
   }
 
-  if (varInfo.type.endsWith("*") && varIndex && varInfo.location != "global") {
+  if (
+    varInfo.type.endsWith("*") &&
+    varIndex &&
+    varInfo.location != "absolute"
+  ) {
     // z_PTR is a pointer to the heap location
     // deference z_PTR to get the actual heap address
     emitDereferencePointer(z_PTR);
@@ -53,16 +95,30 @@ export function emitGetPtr(z_PTR: string, varName: string, varIndex?: Expression
       const offset = index * (varInfo.type == "int*" ? 2 : 1);
       if (offset == 0) {
         // offset is 0, no adjustment needed for targetPtr
-      } else if (offset < 256) out(`AIV ${hexByte(offset)},${z_PTR}`, `${z_PTR} = &${varName}[${index}]`);
-      else out(`MIV ${hexWord(offset)},z_B AVV z_B,${z_PTR}`, `${z_PTR} = &${varName}[${index}]`);
+      } else if (offset < 256)
+        out(
+          `AIV ${hexByte(offset)},${z_PTR}`,
+          `${z_PTR} = &${varName}[${index}]`,
+        );
+      else
+        out(
+          `MIV ${hexWord(offset)},z_B AVV z_B,${z_PTR}`,
+          `${z_PTR} = &${varName}[${index}]`,
+        );
     } else {
       if (preserveZA) out(`MVV z_A,z_B`, "save z_A to z_B");
       compileExpression(varIndex);
       if (varInfo.type == "int" || varInfo.type == "int*") {
-        out(`LLV z_A`, `z_A = array index ${varIndex.$cstNode?.text} * size(int)`);
+        out(
+          `LLV z_A`,
+          `z_A = array index ${varIndex.$cstNode?.text} * size(int)`,
+        );
       }
       // arrays are indexed upwards in memory regardless of location
-      out(`AVV z_A,${z_PTR}`, `${z_PTR} = &${varName}[${varIndex.$cstNode?.text}]`);
+      out(
+        `AVV z_A,${z_PTR}`,
+        `${z_PTR} = &${varName}[${varIndex.$cstNode?.text}]`,
+      );
       if (preserveZA) out(`MVV z_B,z_A`, "restore z_A");
     }
   }
@@ -77,23 +133,39 @@ export function emitGetPtr(z_PTR: string, varName: string, varIndex?: Expression
  */
 export function emitGetArrayPtr(ptrReg: string, varRef: VariableReference) {
   const varName = varRef.varName.$refText;
-  const { type: varType, count } = getSymbol(varName).symbolInfo;
+  const { varInfo } = frameStack.getVariable(varName);
 
   if (!varRef.index) {
     // a without an index, just the base pointer
-    if (count === undefined) throw new MinCompileError(`Array size is not known at compile time`, varRef);
+    if (varInfo.count === undefined)
+      throw new MinCompileError(
+        `Array size is not known at compile time`,
+        varRef,
+      );
     emitGetPtr(ptrReg, varName);
     emitDereferencePointer(ptrReg);
-    if (varType == "int*") {
-      out(`MIV ${hexWord(count)},z_CNT MIV ${hexWord(count * 2)},z_B`, `z_CNT=num items, z_B=num of bytes in full array`);
-    } else if (varType == "char*") {
-      out(`MIV ${hexWord(count)},z_CNT MIV ${hexWord(count)},z_B`, `z_CNT=num items, z_B=num of bytes in full array`);
-    } else throw new MinCompileError(`Unsupported variable type for slice`, varRef);
+    if (varInfo.type == "int*") {
+      out(
+        `MIV ${hexWord(varInfo.count)},z_CNT MIV ${hexWord(varInfo.count * 2)},z_B`,
+        `z_CNT=num items, z_B=num of bytes in full array`,
+      );
+    } else if (varInfo.type == "char*") {
+      out(
+        `MIV ${hexWord(varInfo.count)},z_CNT MIV ${hexWord(varInfo.count)},z_B`,
+        `z_CNT=num items, z_B=num of bytes in full array`,
+      );
+    } else
+      throw new MinCompileError(`Unsupported variable type for slice`, varRef);
     return;
   }
 
-  if (!varRef.index.endExpr) throw new MinCompileError(`Slice end expression is missing`, varRef);
-  if (!varType.endsWith("*")) throw new MinCompileError(`Variable type ${varType} is not a pointer`, varRef);
+  if (!varRef.index.endExpr)
+    throw new MinCompileError(`Slice end expression is missing`, varRef);
+  if (!varInfo.type.endsWith("*"))
+    throw new MinCompileError(
+      `Variable type ${varInfo.type} is not a pointer`,
+      varRef,
+    );
 
   // TODO: handle cases where startExpr or endExpr are not constant expressions
   compileExpression(varRef.index.endExpr); // z_A = endExpr
@@ -105,8 +177,10 @@ export function emitGetArrayPtr(ptrReg: string, varRef: VariableReference) {
     out(`SVV z_A,z_CNT`, `z_CNT = number of items in slice`);
   }
   emitGetPtr(ptrReg, varName);
-  if (varType == "int*") out(`MVV z_CNT,z_B LLV z_B`, `z_B = number of bytes in slice`);
-  else if (varType == "char*") {
+  if (varInfo.type == "int*")
+    out(`MVV z_CNT,z_B LLV z_B`, `z_B = number of bytes in slice`);
+  else if (varInfo.type == "char*") {
     out(`MVV z_CNT,z_B`, `z_B = number of bytes in slice`);
-  } else throw new MinCompileError(`Unsupported variable type for slice`, varRef);
+  } else
+    throw new MinCompileError(`Unsupported variable type for slice`, varRef);
 }

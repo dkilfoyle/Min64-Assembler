@@ -3,7 +3,7 @@ import { MinCompileError, hexWord, highOperand, lowOperand } from "../utils";
 import * as expressionCompiler from "./expressions";
 import { computeReachableDefs } from "../reachability";
 import * as variableCompiler from "./variables";
-import type { IExpressionType, IVariableSymbol } from "./variables";
+import type { IExpressionType } from "./variables";
 import {
   Expression,
   isCallStatement,
@@ -24,9 +24,16 @@ import {
   PrintStatement,
   Program,
 } from "../../ls/generated/ast";
-import { compileDef, printFrame, compileCallStatement, compileReturn, compileFunctionCall } from "./functions";
+import {
+  compileDef,
+  printFrame,
+  compileCallStatement,
+  compileReturn,
+  compileFunctionCall,
+} from "./functions";
 import { compileIf, compileWhile } from "./controlflow";
 import { ZP_BASE } from "./expressions";
+import { frameStack } from "./stack";
 
 const runtimeGlob = import.meta.glob("../runtime/*.asm", {
   query: "?raw",
@@ -37,7 +44,8 @@ const runtimeGlob = import.meta.glob("../runtime/*.asm", {
 const runtime = Object.fromEntries(
   Object.entries(runtimeGlob).map(([path, definition]) => {
     // Extract file name without extension to use as the new key
-    const fileName = "__" + path.slice(path.lastIndexOf("/") + 1).replace(".asm", "");
+    const fileName =
+      "__" + path.slice(path.lastIndexOf("/") + 1).replace(".asm", "");
     return [fileName, definition];
   }),
 );
@@ -61,7 +69,11 @@ interface ICachedValue {
   type: IExpressionType;
 }
 
-export const cached: { z_PTR: ICachedValue; z_A: ICachedValue; blockPath: string } = {
+export const cached: {
+  z_PTR: ICachedValue;
+  z_A: ICachedValue;
+  blockPath: string;
+} = {
   z_PTR: { id: "", type: "int" },
   z_A: { id: "", type: "int" },
   blockPath: "",
@@ -69,7 +81,11 @@ export const cached: { z_PTR: ICachedValue; z_A: ICachedValue; blockPath: string
 
 export function emitRuntimeCall(name: string, comment?: string) {
   const definition = runtime[`__${name}`];
-  if (!definition) throw new MinCompileError(`Runtime definition not found for ${name}`, {} as any);
+  if (!definition)
+    throw new MinCompileError(
+      `Runtime definition not found for ${name}`,
+      {} as any,
+    );
   runtimeUsed.add(name);
   out(`JPS __${name}`, comment);
 }
@@ -79,8 +95,9 @@ export function emitZeroPage() {
   out(`; ---- Compiler zero-page working storage ----`);
   out(`#org ${hexWord(ZP_BASE)}`);
   out(`z_FP:     0xEFFF    ; frame start pointer`);
+  out(`z_SP:     0xEFFF    ; top of stack pointer`);
   out(`z_PTR:    0x0000    ; ptr to current var in runtime stack`);
-  out(`z_HP:     0x0000    ; heap pointer`);
+  out(`z_HP:     0x8000    ; heap pointer`);
   out(`z_A:      0x0000    ; acc / expr result / fn return value`);
   out(`z_B:      0x0000    ; secondary operand`);
   out(`z_C:      0x0000    ; scratch (mul/div/cmp)`);
@@ -105,7 +122,7 @@ export function reset() {
   runtimeUsed.add("storeZA");
 
   expressionCompiler.reset();
-  variableCompiler.reset();
+  frameStack.reset();
   format.indent = 0;
 
   cached.z_PTR = { id: "", type: "int" };
@@ -153,12 +170,15 @@ export function isCachedZA(e: Expression): boolean {
   }
 }
 
-export function compile(fname: string, mainProgram: Program, libraries: Program[]): string {
+export function compile(
+  fname: string,
+  mainProgram: Program,
+  libraries: Program[],
+): string {
   reset();
 
   out(`; Code compiled from ${fname}\n`);
   out("#org 0x0100");
-  out(`MIV HEAP_START,z_HP`, "Initialize heap start pointer");
 
   currentUri = mainProgram.$document?.uri.toString();
 
@@ -171,7 +191,6 @@ export function compile(fname: string, mainProgram: Program, libraries: Program[
   }
 
   emitRuntime();
-  out(`#org 0x8000     HEAP_START:`);
   emitZeroPage();
   emitOsCalls();
   return assembly.join("\n");
@@ -179,12 +198,7 @@ export function compile(fname: string, mainProgram: Program, libraries: Program[
 
 export function compileMain(mainProgram: Program) {
   // Main program body: everything except Def/Use at top level.
-  variableCompiler.frameStack.push({
-    name: "__global",
-    kind: "global",
-    variables: new Map<string, IVariableSymbol>(),
-    frameSize: 0,
-  });
+  const frame = frameStack.addFrame("__global", "global");
 
   out(`__main:`);
   format.indent += 2;
@@ -192,8 +206,7 @@ export function compileMain(mainProgram: Program) {
     if (isDef(el) || isUse(el)) continue;
     compileStatement(el);
   }
-  const globalFrame = variableCompiler.currentFrame();
-  printFrame(globalFrame);
+  printFrame(frame);
   out(`\nJPA ${os("_Prompt")}`);
   format.indent -= 2;
 }
@@ -234,10 +247,13 @@ export function compilePrint(print: PrintStatement) {
       }
       if (isVariableReference(expr)) {
         const varName = expr.varName.$refText;
-        const v = variableCompiler.getSymbol(varName, expr).symbolInfo;
+        const v = frameStack.getVariable(varName, expr).varInfo;
         if (v.type == "char") {
           // print 0 terminated char(s)
-          out(`LDI ${lowOperand(v.address)} PHS LDI ${highOperand(v.address)} PHS JPS ${os("_PrintPtr")} PLS PLS`, `print ${varName}`);
+          out(
+            `LDI ${lowOperand(v.address)} PHS LDI ${highOperand(v.address)} PHS JPS ${os("_PrintPtr")} PLS PLS`,
+            `print ${varName}`,
+          );
 
           return;
         }
@@ -245,7 +261,9 @@ export function compilePrint(print: PrintStatement) {
       expressionCompiler.compileExpression(expr);
       // result will be int in z_A
       emitRuntimeCall(`inttostr`);
-      out(`LDB __strptr+0 PHS LDB __strptr+1 PHS JPS ${os("_PrintPtr")} PLS PLS`);
+      out(
+        `LDB __strptr+0 PHS LDB __strptr+1 PHS JPS ${os("_PrintPtr")} PLS PLS`,
+      );
     });
   });
 }

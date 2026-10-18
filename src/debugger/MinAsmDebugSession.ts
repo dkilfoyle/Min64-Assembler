@@ -20,7 +20,8 @@ interface LaunchRequestArguments extends DebugProtocol.LaunchRequestArguments {
 
 const hex8 = (n: number) => "0x" + n.toString(16).padStart(2, "0");
 const hex16 = (n: number) => "0x" + n.toString(16).padStart(4, "0");
-const mem16 = (mem: Uint8Array, addr: number) => mem[addr] | (mem[(addr + 1) & 0xffff] << 8);
+const mem16 = (mem: Uint8Array, addr: number) =>
+  mem[addr] | (mem[(addr + 1) & 0xffff] << 8);
 
 /*
 Debug Adapter Protocol (DAP) sequence of events:
@@ -36,15 +37,14 @@ Debug Adapter Protocol (DAP) sequence of events:
 
 const zpAddresses = {
   z_FP: 0,
-  z_PTR: 2,
-  z_HP: 4,
-  z_A: 6,
-  z_B: 8,
-  z_C: 10,
-  z_D: 12,
-  z_PTR2: 14,
-  z_cnt: 16,
-  z_flag: 17,
+  z_SP: 2,
+  z_PTR: 4,
+  z_HP: 6,
+  z_A: 8,
+  z_B: 10,
+  z_C: 12,
+  z_D: 14,
+  z_PTR2: 16,
 };
 
 export class MinAsmDebugSession extends DebugSession {
@@ -76,7 +76,10 @@ export class MinAsmDebugSession extends DebugSession {
     return cr;
   }
 
-  protected initializeRequest(response: DebugProtocol.InitializeResponse, _args: DebugProtocol.InitializeRequestArguments): void {
+  protected initializeRequest(
+    response: DebugProtocol.InitializeResponse,
+    _args: DebugProtocol.InitializeRequestArguments,
+  ): void {
     console.log("initializeRequest", _args);
     response.body = response.body || {};
     response.body.supportsConfigurationDoneRequest = true;
@@ -93,12 +96,18 @@ export class MinAsmDebugSession extends DebugSession {
     this.sendEvent(new InitializedEvent());
   }
 
-  protected configurationDoneRequest(response: DebugProtocol.ConfigurationDoneResponse, args: DebugProtocol.ConfigurationDoneArguments): void {
+  protected configurationDoneRequest(
+    response: DebugProtocol.ConfigurationDoneResponse,
+    args: DebugProtocol.ConfigurationDoneArguments,
+  ): void {
     super.configurationDoneRequest(response, args);
     this._configurationDone.notify();
   }
 
-  protected async launchRequest(response: DebugProtocol.LaunchResponse, args: LaunchRequestArguments) {
+  protected async launchRequest(
+    response: DebugProtocol.LaunchResponse,
+    args: LaunchRequestArguments,
+  ) {
     // make sure to 'Stop' the buffered logging if 'trace' is not set
     // logger.setup(args.trace ? Logger.LogLevel.Verbose : Logger.LogLevel.Stop, false);
     console.log("launchRequest", args);
@@ -130,7 +139,10 @@ export class MinAsmDebugSession extends DebugSession {
     this.sendResponse(response);
   }
 
-  protected setBreakPointsRequest(response: DebugProtocol.SetBreakpointsResponse, args: DebugProtocol.SetBreakpointsArguments): void {
+  protected setBreakPointsRequest(
+    response: DebugProtocol.SetBreakpointsResponse,
+    args: DebugProtocol.SetBreakpointsArguments,
+  ): void {
     console.log("setBreakPointsRequest", args);
     const path = args.source.path;
     if (!path) throw new Error("no path");
@@ -152,7 +164,14 @@ export class MinAsmDebugSession extends DebugSession {
         }
       });
       if (valid) {
-        console.log("Breakpoint valid at PC", valid[0], "for line", bp.line, "column", bp.column);
+        console.log(
+          "Breakpoint valid at PC",
+          valid[0],
+          "for line",
+          bp.line,
+          "column",
+          bp.column,
+        );
         runtime.breakpoints.get(path)!.push(parseInt(valid[0])); // push the PC
       }
       const breakpoint = new Breakpoint(true, bp.line, bp.column);
@@ -179,10 +198,13 @@ export class MinAsmDebugSession extends DebugSession {
     if (args.source.path) {
       response.body = {
         breakpoints: Object.values(cs.locations).filter((loc) => {
-          if (args.endLine != undefined && loc.endLine > args.endLine) return false;
+          if (args.endLine != undefined && loc.endLine > args.endLine)
+            return false;
           if (loc.line < args.line) return false;
-          if (args.endColumn != undefined && loc.endColumn > args.endColumn) return false;
-          if (args.column != undefined && loc.column < args.column) return false;
+          if (args.endColumn != undefined && loc.endColumn > args.endColumn)
+            return false;
+          if (args.column != undefined && loc.column < args.column)
+            return false;
           return true;
         }),
       };
@@ -194,7 +216,10 @@ export class MinAsmDebugSession extends DebugSession {
     this.sendResponse(response);
   }
 
-  protected stackTraceRequest(response: DebugProtocol.StackTraceResponse, _args: DebugProtocol.StackTraceArguments): void {
+  protected stackTraceRequest(
+    response: DebugProtocol.StackTraceResponse,
+    _args: DebugProtocol.StackTraceArguments,
+  ): void {
     // const startFrame = typeof args.startFrame === "number" ? args.startFrame : 0;
     // const maxLevels = typeof args.levels === "number" ? args.levels : 1000;
     // const endFrame = startFrame + maxLevels;
@@ -214,12 +239,23 @@ export class MinAsmDebugSession extends DebugSession {
     this.sendResponse(response);
   }
 
-  protected scopesRequest(response: DebugProtocol.ScopesResponse, _args: DebugProtocol.ScopesArguments): void {
+  protected scopesRequest(
+    response: DebugProtocol.ScopesResponse,
+    _args: DebugProtocol.ScopesArguments,
+  ): void {
     response.body = {
       scopes: [
-        new Scope("Registers", this._variableHandles.create("Registers"), false),
+        new Scope(
+          "Registers",
+          this._variableHandles.create("Registers"),
+          false,
+        ),
         new Scope("Pointers", this._variableHandles.create("Pointers"), false),
-        new Scope("Labels (file)", this._variableHandles.create("Labels"), true),
+        new Scope(
+          "Labels (file)",
+          this._variableHandles.create("Labels"),
+          true,
+        ),
       ],
     };
     this.sendResponse(response);
@@ -240,7 +276,9 @@ export class MinAsmDebugSession extends DebugSession {
     const id = this._variableHandles.get(args.variablesReference);
 
     if (id == "Registers") {
-      const pcLabel = Object.entries(cs.labels).find(([label, info]) => info.address == es.pc);
+      const pcLabel = Object.entries(cs.labels).find(
+        ([label, info]) => info.address == es.pc,
+      );
       variables.push({
         name: "pc",
         type: "integer",
@@ -254,24 +292,24 @@ export class MinAsmDebugSession extends DebugSession {
         value: `${hex8(es.a)}, ${es.a}`,
         variablesReference: 0,
       });
-      variables.push({
-        name: "n",
-        type: "boolean",
-        value: `${es.n.toString()}`,
-        variablesReference: 0,
-      });
-      variables.push({
-        name: "c",
-        type: "boolean",
-        value: `${es.c.toString()}`,
-        variablesReference: 0,
-      });
-      variables.push({
-        name: "z",
-        type: "boolean",
-        value: `${es.z.toString()}`,
-        variablesReference: 0,
-      });
+      // variables.push({
+      //   name: "n",
+      //   type: "boolean",
+      //   value: `${es.n.toString()}`,
+      //   variablesReference: 0,
+      // });
+      // variables.push({
+      //   name: "c",
+      //   type: "boolean",
+      //   value: `${es.c.toString()}`,
+      //   variablesReference: 0,
+      // });
+      // variables.push({
+      //   name: "z",
+      //   type: "boolean",
+      //   value: `${es.z.toString()}`,
+      //   variablesReference: 0,
+      // });
       variables.push({
         name: "sp",
         type: "integer",
@@ -294,14 +332,21 @@ export class MinAsmDebugSession extends DebugSession {
         type: "integer",
         value: `${hex16(mem16(es.memory, zpAddresses.z_FP))}, ${mem16(es.memory, zpAddresses.z_FP)}`,
         variablesReference: 0,
-        memoryReference: "0x00", // allow the user to read memory at this address
+        memoryReference: hex16(mem16(es.memory, zpAddresses.z_FP)), // allow the user to read memory at this address
+      });
+      variables.push({
+        name: "z_SP",
+        type: "integer",
+        value: `${hex16(mem16(es.memory, zpAddresses.z_SP))}, ${mem16(es.memory, zpAddresses.z_SP)}`,
+        variablesReference: 0,
+        memoryReference: hex16(mem16(es.memory, zpAddresses.z_SP)), // allow the user to read memory at this address
       });
       variables.push({
         name: "z_PTR",
         type: "integer",
         value: `${hex16(mem16(es.memory, zpAddresses.z_PTR))}, ${mem16(es.memory, zpAddresses.z_PTR)}`,
         variablesReference: 0,
-        memoryReference: "0x02",
+        memoryReference: hex16(mem16(es.memory, zpAddresses.z_PTR)),
       });
       variables.push({
         // z_PTR = mem16(es.memory, 0x0002) with LSB at z_PTR-1, MSB at z_PTR
@@ -309,7 +354,7 @@ export class MinAsmDebugSession extends DebugSession {
         type: "integer",
         value: `${hex16(mem16(es.memory, mem16(es.memory, zpAddresses.z_PTR) - 1))}, ${mem16(es.memory, mem16(es.memory, zpAddresses.z_PTR) - 1)}`,
         variablesReference: 0,
-        memoryReference: "0x02",
+        memoryReference: hex16(mem16(es.memory, zpAddresses.z_PTR)),
       });
       variables.push({
         name: "z_PTR2",
@@ -324,74 +369,43 @@ export class MinAsmDebugSession extends DebugSession {
         type: "integer",
         value: `${hex16(mem16(es.memory, mem16(es.memory, zpAddresses.z_PTR2) - 1))}, ${mem16(es.memory, mem16(es.memory, zpAddresses.z_PTR2) - 1)}`,
         variablesReference: 0,
-        memoryReference: zpAddresses.z_PTR2.toString(),
+        memoryReference: hex16(mem16(es.memory, zpAddresses.z_PTR2)),
       });
       variables.push({
         name: "z_HP",
         type: "integer",
         value: `${hex16(mem16(es.memory, zpAddresses.z_HP))}, ${mem16(es.memory, zpAddresses.z_HP)}`,
         variablesReference: 0,
-        memoryReference: "0x04",
+        memoryReference: hex16(mem16(es.memory, zpAddresses.z_HP)),
       });
       variables.push({
         name: "z_A",
         type: "integer",
         value: `${hex16(mem16(es.memory, zpAddresses.z_A))}, ${mem16(es.memory, zpAddresses.z_A)}`,
         variablesReference: 0,
-        memoryReference: "0x04",
+        memoryReference: zpAddresses.z_A.toString(),
       });
       variables.push({
         name: "z_B",
         type: "integer",
         value: `${hex16(mem16(es.memory, zpAddresses.z_B))}, ${mem16(es.memory, zpAddresses.z_B)}`,
         variablesReference: 0,
-        memoryReference: "0x06",
+        memoryReference: zpAddresses.z_B.toString(),
       });
-      variables.push({
-        name: "z_C",
-        type: "integer",
-        value: `${hex16(mem16(es.memory, zpAddresses.z_C))}, ${mem16(es.memory, zpAddresses.z_C)}`,
-        variablesReference: 0,
-        memoryReference: "0x08",
-      });
-      variables.push({
-        name: "z_D",
-        type: "integer",
-        value: `${hex16(mem16(es.memory, zpAddresses.z_D))}, ${mem16(es.memory, zpAddresses.z_D)}`,
-        variablesReference: 0,
-        memoryReference: "0x0C",
-      });
-      variables.push({
-        name: "z_cnt",
-        type: "integer",
-        value: `${hex16(mem16(es.memory, zpAddresses.z_cnt))}, ${mem16(es.memory, zpAddresses.z_cnt)}`,
-        variablesReference: 0,
-        memoryReference: "0x0E",
-      });
-      variables.push({
-        name: "z0 (0x90)",
-        type: "integer",
-        value: `${hex8(es.memory[0x90])}, ${es.memory[0x90]}`,
-        variablesReference: 0,
-      });
-      variables.push({
-        name: "z1 (0x91)",
-        type: "integer",
-        value: `${hex8(es.memory[0x91])}, ${es.memory[0x91]}`,
-        variablesReference: 0,
-      });
-      variables.push({
-        name: "z2 (0x92)",
-        type: "integer",
-        value: `${hex8(es.memory[0x92])}, ${es.memory[0x92]}`,
-        variablesReference: 0,
-      });
-      variables.push({
-        name: "z3 (0x93)",
-        type: "integer",
-        value: `${hex8(es.memory[0x93])}, ${es.memory[0x93]}`,
-        variablesReference: 0,
-      });
+      // variables.push({
+      //   name: "z_C",
+      //   type: "integer",
+      //   value: `${hex16(mem16(es.memory, zpAddresses.z_C))}, ${mem16(es.memory, zpAddresses.z_C)}`,
+      //   variablesReference: 0,
+      //   memoryReference: zpAddresses.z_C.toString(),
+      // });
+      // variables.push({
+      //   name: "z_D",
+      //   type: "integer",
+      //   value: `${hex16(mem16(es.memory, zpAddresses.z_D))}, ${mem16(es.memory, zpAddresses.z_D)}`,
+      //   variablesReference: 0,
+      //   memoryReference: zpAddresses.z_D.toString(),
+      // });
     }
 
     response.body = {
@@ -430,17 +444,22 @@ export class MinAsmDebugSession extends DebugSession {
         const label = cs.labels[args.expression.slice(2)];
         if (!label) return this.sendResponse(response);
         const addr = es.memory[label.address];
-        if (expr.endsWith("#w")) result = `(${hex16(addr)}) = ${hex16(mem16(es.memory, addr))}, ${mem16(es.memory, addr)}`;
-        else result = `(${hex16(addr)}) = ${hex8(es.memory[addr])}, ${es.memory[addr]}`;
+        if (expr.endsWith("#w"))
+          result = `(${hex16(addr)}) = ${hex16(mem16(es.memory, addr))}, ${mem16(es.memory, addr)}`;
+        else
+          result = `(${hex16(addr)}) = ${hex8(es.memory[addr])}, ${es.memory[addr]}`;
       } else if (expr.startsWith("*")) {
         const label = cs.labels[expr.split("#")[0].slice(1)];
         if (!label) return this.sendResponse(response);
         const addr = label.address;
-        if (expr.endsWith("#w")) result = `(${hex16(addr)}) = ${hex16(mem16(es.memory, addr))}, ${mem16(es.memory, addr)}`;
-        else result = `(${hex16(addr)}) = ${hex8(es.memory[addr])}, ${es.memory[addr]}`;
+        if (expr.endsWith("#w"))
+          result = `(${hex16(addr)}) = ${hex16(mem16(es.memory, addr))}, ${mem16(es.memory, addr)}`;
+        else
+          result = `(${hex16(addr)}) = ${hex8(es.memory[addr])}, ${es.memory[addr]}`;
       } else if (expr.startsWith("0x")) {
         const addr = parseInt(expr.slice(2), 16);
-        if (expr.endsWith("#w")) result = `${hex16(mem16(es.memory, addr))}, ${mem16(es.memory, addr)}`;
+        if (expr.endsWith("#w"))
+          result = `${hex16(mem16(es.memory, addr))}, ${mem16(es.memory, addr)}`;
         else result = `${hex8(es.memory[addr])}, ${es.memory[addr]}`;
       } else {
         const label = cs.labels[args.expression];
@@ -462,20 +481,31 @@ export class MinAsmDebugSession extends DebugSession {
   ): void {
     response.body = {
       address: args.memoryReference,
-      data: btoa(String.fromCharCode.apply(null, runtime.getMemory(args.memoryReference))),
+      data: btoa(
+        String.fromCharCode.apply(
+          null,
+          runtime.getMemory(args.memoryReference),
+        ),
+      ),
     };
     console.log("readMemoryRequest", args, response.body);
     runtime.showMemory(args.memoryReference);
     this.sendResponse(response);
   }
 
-  protected async continueRequest(response: DebugProtocol.ContinueResponse, _args: DebugProtocol.ContinueArguments): Promise<void> {
+  protected async continueRequest(
+    response: DebugProtocol.ContinueResponse,
+    _args: DebugProtocol.ContinueArguments,
+  ): Promise<void> {
     console.log("continueRequest");
     await runtime.step({ stepType: "continue" });
     this.sendResponse(response);
   }
 
-  protected async nextRequest(response: DebugProtocol.NextResponse, _args: DebugProtocol.NextArguments): Promise<void> {
+  protected async nextRequest(
+    response: DebugProtocol.NextResponse,
+    _args: DebugProtocol.NextArguments,
+  ): Promise<void> {
     await runtime.step({ stepType: "stepOver" });
     this.sendResponse(response);
   }
@@ -498,13 +528,19 @@ export class MinAsmDebugSession extends DebugSession {
     this.sendResponse(response);
   }
 
-  protected cancelRequest(_response: DebugProtocol.CancelResponse, args: DebugProtocol.CancelArguments) {
+  protected cancelRequest(
+    _response: DebugProtocol.CancelResponse,
+    args: DebugProtocol.CancelArguments,
+  ) {
     if (args.requestId) {
       this._cancelationTokens.set(args.requestId, true);
     }
   }
 
-  protected async terminateRequest(response: DebugProtocol.TerminateResponse, _args: DebugProtocol.TerminateArguments): Promise<void> {
+  protected async terminateRequest(
+    response: DebugProtocol.TerminateResponse,
+    _args: DebugProtocol.TerminateArguments,
+  ): Promise<void> {
     console.log("terminateRequest");
     this.sendResponse(response);
     this.sendEvent(new TerminatedEvent());

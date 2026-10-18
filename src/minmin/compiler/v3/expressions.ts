@@ -12,10 +12,18 @@ import {
   UnaryExpression,
   type Expression,
 } from "../../ls/generated/ast";
-import { cached, emitRuntimeCall, isCachedZA, nextLabel, out, runtimeUsed } from "./compiler";
+import {
+  cached,
+  emitRuntimeCall,
+  isCachedZA,
+  nextLabel,
+  out,
+  runtimeUsed,
+} from "./compiler";
 import { MinCompileError, hexWord } from "../utils";
-import { compileVariableReference, getSymbol, type IExpressionType } from "./variables";
+import { compileVariableReference, type IExpressionType } from "./variables";
 import { compileFunctionCall } from "./functions";
+import { frameStack } from "./stack";
 
 const VIRTUAL_STACK_BASE = 0xefff;
 export const ZP_BASE = 0x00;
@@ -63,32 +71,44 @@ export function getExpressionType(e: Expression): string {
     case isNumberLiteral(e):
       return e.value > 0xff ? "int" : "char";
     case isVariableReference(e):
-      return getSymbol(e.varName.$refText).symbolInfo.type;
+      return frameStack.getVariable(e.varName.$refText, e).varInfo.type;
     case isFunctionCall(e):
     case isUnaryExpression(e):
     case isBinaryExpression(e):
     case isComparisonExpression(e):
       return "int";
     default:
-      throw new MinCompileError(`Unsupported expression: ${JSON.stringify(e)}`, e);
+      throw new MinCompileError(
+        `Unsupported expression: ${JSON.stringify(e)}`,
+        e,
+      );
   }
 }
 
 export function isArrayExpression(e: Expression): boolean {
   if (!isVariableReference(e)) return false;
-  const varType = getSymbol(e.varName.$refText).symbolInfo.type;
+  const varType = frameStack.getVariable(e.varName.$refText, e).varInfo.type;
   if (!varType.endsWith("*")) return false;
   if (e.index && e.index.startExpr && !e.index.endExpr) return false; // eg a[5] which returns a primary value
   return true;
 }
 
-export function compileCompoundExpression(e: CompoundExpression, targetType: string, targetName: string): void {
+//*
+export function compileCompoundExpression(
+  e: CompoundExpression,
+  targetType: string,
+  targetName: string,
+): void {
   // prerequisite: z_PTR2 points to &target[index||0]
   // eg int a = 0_1_2_3
   // eg int a = a[0|3]; a = 0_1_2_3;
   // eg foo(0_1_2_3)
   // eg return 0_1_2_3
-  if (targetType != "int*" && targetType != "char*") throw new MinCompileError("Compound expression assignment target is not an array", e);
+  if (targetType != "int*" && targetType != "char*")
+    throw new MinCompileError(
+      "Compound expression assignment target is not an array",
+      e,
+    );
   const elementType = targetType === "int*" ? "int" : "char";
   for (let i = 0; i < e.exprs.length; i++) {
     emitHWPushZ("z_PTR");
@@ -140,7 +160,10 @@ export function compileExpression(e: Expression): IExpressionType {
     case isComparisonExpression(e):
       return compileComparison(e);
     default:
-      throw new MinCompileError(`Unsupported expression: ${JSON.stringify(e)}`, e);
+      throw new MinCompileError(
+        `Unsupported expression: ${JSON.stringify(e)}`,
+        e,
+      );
   }
 }
 
@@ -165,12 +188,22 @@ function compileUnary(e: UnaryExpression): IExpressionType {
 
 function compileBinary(e: BinaryExpression): IExpressionType {
   if (isArrayExpression(e.left)) {
-    throw new MinCompileError("Binary expression on array is not supported", e.left);
+    throw new MinCompileError(
+      "Binary expression on array is not supported",
+      e.left,
+    );
   }
   if (isArrayExpression(e.right)) {
-    throw new MinCompileError("Binary expression on array is not supported", e.right);
+    throw new MinCompileError(
+      "Binary expression on array is not supported",
+      e.right,
+    );
   }
-  const constSide = isNumberLiteral(e.left) ? e.left : isNumberLiteral(e.right) ? e.right : null;
+  const constSide = isNumberLiteral(e.left)
+    ? e.left
+    : isNumberLiteral(e.right)
+      ? e.right
+      : null;
   const otherSide = constSide === e.left ? e.right : e.left;
 
   if (constSide) {
@@ -262,10 +295,16 @@ function compileBinary(e: BinaryExpression): IExpressionType {
 // <=/>=/>) and branch on sign to produce 0xffff/0x0000 in __A.
 export function compileComparison(e: ComparisonExpression): IExpressionType {
   if (isArrayExpression(e.left)) {
-    throw new MinCompileError("Binary expression on array is not supported", e.left);
+    throw new MinCompileError(
+      "Binary expression on array is not supported",
+      e.left,
+    );
   }
   if (isArrayExpression(e.right)) {
-    throw new MinCompileError("Binary expression on array is not supported", e.right);
+    throw new MinCompileError(
+      "Binary expression on array is not supported",
+      e.right,
+    );
   }
   compileExpression(e.left);
   emitHWPushZ("z_A");

@@ -1,3 +1,10 @@
-int a = a[0|4]
-a[2] = 5_6
-
+bla(1,2)
+def bla(int a, int b):
+  int i = 3
+  if (i<5):
+    int j = 4
+    print(j)
+    return j
+  int k = 5
+  print(k)
+  int z = 1_2_3

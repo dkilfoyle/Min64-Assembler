@@ -1,9 +1,16 @@
-import type { Expression, GlobalElement, If, LocalElement, While } from "../../ls/generated/ast";
-import { compileStatement, format, nextLabel, out } from "./compiler";
+import type {
+  Expression,
+  GlobalElement,
+  If,
+  LocalElement,
+  While,
+} from "../../ls/generated/ast";
+import { compileBlock } from "./blocks";
+import { format, nextLabel, out } from "./compiler";
 import { compileExpression } from "./expressions";
-import { compileBlock } from "./functions";
 
 export function compileIf(node: If) {
+  debugger;
   const prefix = nextLabel("if");
   const endLabel = `${prefix}_end`;
   const chain: {
@@ -15,7 +22,10 @@ export function compileIf(node: If) {
   const branches: {
     condition: Expression;
     block: LocalElement[];
-  }[] = [{ condition: node.condition, block: node.block }, ...node.elifs.map((e) => ({ condition: e.condition, block: e.block }))];
+  }[] = [
+    { condition: node.condition, block: node.block },
+    ...node.elifs.map((e) => ({ condition: e.condition, block: e.block })),
+  ];
 
   let falseLabel = "";
   for (const branch of branches) {
