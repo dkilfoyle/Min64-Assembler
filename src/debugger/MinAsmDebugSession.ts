@@ -80,7 +80,7 @@ export class MinAsmDebugSession extends DebugSession {
     response: DebugProtocol.InitializeResponse,
     _args: DebugProtocol.InitializeRequestArguments,
   ): void {
-    console.log("initializeRequest", _args);
+    // console.log("initializeRequest", _args);
     response.body = response.body || {};
     response.body.supportsConfigurationDoneRequest = true;
     response.body.supportsEvaluateForHovers = true;
@@ -143,7 +143,7 @@ export class MinAsmDebugSession extends DebugSession {
     response: DebugProtocol.SetBreakpointsResponse,
     args: DebugProtocol.SetBreakpointsArguments,
   ): void {
-    console.log("setBreakPointsRequest", args);
+    // console.log("setBreakPointsRequest", args);
     const path = args.source.path;
     if (!path) throw new Error("no path");
     const cs = this.getCompileState(response); // ensure we have a compile state
@@ -164,14 +164,14 @@ export class MinAsmDebugSession extends DebugSession {
         }
       });
       if (valid) {
-        console.log(
-          "Breakpoint valid at PC",
-          valid[0],
-          "for line",
-          bp.line,
-          "column",
-          bp.column,
-        );
+        // console.log(
+        //   "Breakpoint valid at PC",
+        //   valid[0],
+        //   "for line",
+        //   bp.line,
+        //   "column",
+        //   bp.column,
+        // );
         runtime.breakpoints.get(path)!.push(parseInt(valid[0])); // push the PC
       }
       const breakpoint = new Breakpoint(true, bp.line, bp.column);
@@ -223,7 +223,7 @@ export class MinAsmDebugSession extends DebugSession {
     // const startFrame = typeof args.startFrame === "number" ? args.startFrame : 0;
     // const maxLevels = typeof args.levels === "number" ? args.levels : 1000;
     // const endFrame = startFrame + maxLevels;
-    console.log("stackTraceRequest", _args, runtime.stack);
+    // console.log("stackTraceRequest", _args, runtime.stack);
     response.body = {
       stackFrames: runtime.stack.map((f, i) => ({
         id: i,
@@ -488,7 +488,7 @@ export class MinAsmDebugSession extends DebugSession {
         ),
       ),
     };
-    console.log("readMemoryRequest", args, response.body);
+    // console.log("readMemoryRequest", args, response.body);
     runtime.showMemory(args.memoryReference);
     this.sendResponse(response);
   }
@@ -497,7 +497,7 @@ export class MinAsmDebugSession extends DebugSession {
     response: DebugProtocol.ContinueResponse,
     _args: DebugProtocol.ContinueArguments,
   ): Promise<void> {
-    console.log("continueRequest");
+    // console.log("continueRequest");
     await runtime.step({ stepType: "continue" });
     this.sendResponse(response);
   }
@@ -541,7 +541,7 @@ export class MinAsmDebugSession extends DebugSession {
     response: DebugProtocol.TerminateResponse,
     _args: DebugProtocol.TerminateArguments,
   ): Promise<void> {
-    console.log("terminateRequest");
+    // console.log("terminateRequest");
     this.sendResponse(response);
     this.sendEvent(new TerminatedEvent());
     runtime.run({ runType: "run" }); // let the emulator carry on running until it stops naturally, so that the user can see the final state of the program

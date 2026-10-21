@@ -1,9 +1,9 @@
 import type { AstNode } from "langium";
-import { MinCompileError } from "../utils";
+import { hexWord, MinCompileError } from "../utils";
 import type { IVariable } from "./variables";
 import type { NamedElement, VariableDeclaration } from "../../ls/generated/ast";
 import { constEval } from "./expressions";
-import { out } from "./compiler";
+import { options, out } from "./compiler";
 
 export function emitRTPushZ(sourceZ: string) {
   out(`MZT ${sourceZ}+1,z_SP DEV z_SP`, `push ${sourceZ} onto stack`);
@@ -33,23 +33,6 @@ class FrameStack {
     if (this.stack.length === 0)
       throw new MinCompileError("No stack frame to pop", node);
     return this.stack.pop()!;
-  }
-
-  popToFunctionFrame(node?: AstNode): {
-    frame: IStackFrame;
-    localSize: number;
-    frameCount: number;
-  } {
-    let frame = this.pop(node);
-    let localSize = 0;
-    let frameCount = 0;
-    while (frame && frame.kind !== "function") {
-      localSize += frame.frameSize;
-      frameCount++;
-      frame = this.pop(node);
-    }
-    if (!frame) throw new MinCompileError("No function frame to pop to", node);
-    return { frame, localSize, frameCount };
   }
 
   current(node?: AstNode): IStackFrame {
@@ -148,7 +131,7 @@ class FrameStack {
       frame.heapSize += 1;
     } else {
       varInfo.type = node.type;
-      varInfo.address = frame.frameSize;
+      varInfo.address = this.getSP();
       frame.variables.set(varInfo.name, varInfo);
       frame.frameSize += node.type === "int" ? 2 : 1;
     }
@@ -166,6 +149,16 @@ class FrameStack {
     };
     frame.variables.set(varInfo.name, varInfo);
     return varInfo;
+  }
+
+  printFrame() {
+    if (options.printFrame) {
+      const frame = this.stack[this.stack.length - 1];
+      out(`; frame summary for ${frame.name}`);
+      frame.variables.forEach((v) =>
+        out(`; ${v.name.padEnd(15)} : ${hexWord(v.address)} (${v.location})`),
+      );
+    }
   }
 }
 

@@ -132,13 +132,19 @@ export function emitCopyVarIntoZ(
       ? hexByte((targetAddr + 1) & 0xff)
       : `${targetAddr}+1`;
 
-  if (varInfo.type === "int") {
+  if (varInfo.type.startsWith("int")) {
     switch (varInfo.location) {
       case "stack":
         emitGetPtr("z_PTR", varName, varIndex, false);
         switch (targetAddr) {
           case "z_A":
-            out(`JPS __ldZA`, `${varName} -> z_A`);
+            if (varInfo.type == "int") {
+              out(`MTZ z_PTR,z_A+1 DEV z_PTR`, `move MSB from stack to z_A+1`);
+              out(`MTZ z_PTR,z_A+0 INV z_PTR`, `move LSB from stack to z_A+0`);
+            } else {
+              out(`MTZ z_PTR,z_A+0 INV z_PTR`, `move LSB from heap to z_A+0`);
+              out(`MTZ z_PTR,z_A+1 DEV z_PTR`, `move MSB from heap to z_A+1`);
+            }
             break;
           case "z_B":
             out(

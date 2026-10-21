@@ -26,7 +26,6 @@ import {
 } from "../../ls/generated/ast";
 import {
   compileDef,
-  printFrame,
   compileCallStatement,
   compileReturn,
   compileFunctionCall,
@@ -206,7 +205,7 @@ export function compileMain(mainProgram: Program) {
     if (isDef(el) || isUse(el)) continue;
     compileStatement(el);
   }
-  printFrame(frame);
+  frameStack.printFrame();
   out(`\nJPA ${os("_Prompt")}`);
   format.indent -= 2;
 }
@@ -238,7 +237,6 @@ export function compileStatement(node: LocalElement) {
 }
 
 export function compilePrint(print: PrintStatement) {
-  out("; " + print.$cstNode?.text);
   print.args.forEach((arg, i) => {
     arg.exprs.forEach((expr, j) => {
       if (isNumberLiteral(expr) || isStringLiteral(expr)) {
@@ -251,19 +249,18 @@ export function compilePrint(print: PrintStatement) {
         if (v.type == "char") {
           // print 0 terminated char(s)
           out(
-            `LDI ${lowOperand(v.address)} PHS LDI ${highOperand(v.address)} PHS JPS ${os("_PrintPtr")} PLS PLS`,
-            `print ${varName}`,
+            `LDI ${lowOperand(v.address)} PHS LDI ${highOperand(v.address)} PHS`,
+            `push &${varName}`,
           );
-
+          out(`JPS ${os("_PrintPtr")} PLS PLS`, `print ${varName}`);
           return;
         }
       }
       expressionCompiler.compileExpression(expr);
       // result will be int in z_A
       emitRuntimeCall(`inttostr`);
-      out(
-        `LDB __strptr+0 PHS LDB __strptr+1 PHS JPS ${os("_PrintPtr")} PLS PLS`,
-      );
+      out(`LDB __strptr+0 PHS LDB __strptr+1 PHS`, `print int`);
+      out(`JPS ${os("_PrintPtr")} PLS PLS`, `print int`);
     });
   });
 }

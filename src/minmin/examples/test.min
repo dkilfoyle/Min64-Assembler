@@ -1,6 +1,6 @@
 bla(1,2)
 def bla(int a, int b):
-  int i = 3
+  int i = 7
   if (i<5):
     int j = 4
     print(j)
@@ -8,3 +8,4 @@ def bla(int a, int b):
   int k = 5
   print(k)
   int z = 1_2_3
+  print(z[2])

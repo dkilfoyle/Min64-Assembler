@@ -10,7 +10,6 @@ import { format, nextLabel, out } from "./compiler";
 import { compileExpression } from "./expressions";
 
 export function compileIf(node: If) {
-  debugger;
   const prefix = nextLabel("if");
   const endLabel = `${prefix}_end`;
   const chain: {

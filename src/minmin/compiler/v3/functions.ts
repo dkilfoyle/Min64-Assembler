@@ -1,4 +1,4 @@
-import { hexWord } from "../utils";
+import { hexWord, MinCompileError } from "../utils";
 import * as expressionCompiler from "./expressions";
 import type { IExpressionType } from "./variables";
 import {
@@ -17,35 +17,30 @@ function emitFunctionPrologue(name: string) {
 
   out(`${newFrame.name}_prologue:`, `function prologue`);
   format.indent += 2;
-  out(`MVV z_SP,z_PTR`, `Save old stack top`);
   out(`MZT z_FP+1,z_SP DEV z_SP`, `Save caller's frame pointer`);
   out(`MZT z_FP+0,z_SP DEV z_SP`, `Save caller's frame pointer`);
   out(`MZT z_HP+1,z_SP DEV z_SP`, `Save caller's heap pointer`);
   out(`MZT z_HP+0,z_SP DEV z_SP`, `Save caller's heap pointer`);
-  out(`MVV z_PTR,z_FP`, `Set frame pointer to old stack top`);
-  newFrame.frameSize += 4;
+  out(`MVV z_SP,z_FP`, `Set frame pointer to current stack top`);
   format.indent -= 2;
 
   return newFrame;
 }
 
 function emitFunctionEpilogue() {
-  // make z_FP += this.variableCompiler.currentFrame().frameSize to pop the current frame off stack
-  const { localSize, frameCount, frame } = frameStack.popToFunctionFrame();
-
-  printFrame(frame);
-  if (localSize > 0) {
-    out(`ADD z_SP,${localSize}`, `Pop local stack frames (${frameCount})`);
-  }
+  frameStack.printFrame();
+  const frame = frameStack.pop();
+  if (frame.kind !== "function")
+    throw new MinCompileError("Popped frame is not a function frame");
 
   out(`${frame.name}_end:`, `function epilogue`);
   format.indent += 2;
 
-  out(`AIV ${frame.frameSize - 4},z_SP`, "Epilogue: pop locals off stack");
-  out(`INV z_SP MTZ z_SP,z_HP+0`, "Epilogue: restore caller heap pointer");
-  out(`INV z_SP MTZ z_SP,z_HP+1`, "Epilogue: restore caller heap pointer");
-  out(`INV z_SP MTZ z_SP,z_FP+0`, "Epilogue: restore caller frame pointer");
-  out(`INV z_SP MTZ z_SP,z_FP+1`, "Epilogue: restore caller frame pointer");
+  out(`MVV z_FP,z_SP`, "pop locals off stack");
+  out(`INV z_SP MTZ z_SP,z_HP+0`, "restore caller heap pointer");
+  out(`INV z_SP MTZ z_SP,z_HP+1`, "restore caller heap pointer");
+  out(`INV z_SP MTZ z_SP,z_FP+0`, "restore caller frame pointer");
+  out(`INV z_SP MTZ z_SP,z_FP+1`, "restore caller frame pointer");
 
   format.indent -= 2;
   cached.blockPath = cached.blockPath.slice(
@@ -65,7 +60,7 @@ export function compileDef(def: Def) {
   // Initialize the new stack frame for the function
   const frame = emitFunctionPrologue(def.name);
 
-  let offsetFromFP = 0;
+  let offsetFromFP = 4;
   def.params.forEach((param, i) => {
     offsetFromFP += param.type === "int" ? 2 : 1; // assuming all types are 2 bytes for now
     frameStack.addParamVariable(param, offsetFromFP);
@@ -80,30 +75,11 @@ export function compileDef(def: Def) {
   format.indent -= 2;
 }
 
-export function printFrame(frame: IStackFrame) {
-  if (options.printFrame) {
-    out(`; frame summary for ${frame.name} (${frame.kind})`);
-    frame.variables.forEach((v) =>
-      out(`; ${v.name.padEnd(15)} : ${hexWord(v.address)} (${v.location})`),
-    );
-  }
-}
-
-export function printFrameStack() {
-  for (let i = frameStack.getStack().length - 1; i >= 0; i--) {
-    const frame = frameStack.getStack()[i];
-    out(`; frame ${i}: ${frame.name} (${frame.kind})`);
-    frame.variables.forEach((v) =>
-      out(`;   ${v.name.padEnd(15)} : ${hexWord(v.address)} (${v.location})`),
-    );
-  }
-}
-
 export function compileReturn(node: ReturnStatement) {
   expressionCompiler.compileExpression(node.expr.exprs[0]);
   const functionFrame = frameStack.getFunctionFrame();
 
-  out(`JPS ${functionFrame.name}_end`, `jump to function epilogue`);
+  out(`JPA ${functionFrame.name}_end`, `jump to function epilogue`);
   // stack pop and RTS are in Def epilogue
 }
 
@@ -120,7 +96,7 @@ export function compileFunctionCall(e: FunctionCall): IExpressionType {
     if (argType == "char") {
       out(`MZT z_A+0,z_SP DEV z_SP`, `Push char argument ${i}`);
     } else {
-      out(`MZT z_A+0,z_SP DEV z_SP`, `Push int argument ${i}`);
+      out(`MZT z_A+1,z_SP DEV z_SP`, `Push int argument ${i}`);
       out(`MZT z_A+0,z_SP DEV z_SP`, `Push int argument ${i}`);
     }
   });

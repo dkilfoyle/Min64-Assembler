@@ -111,9 +111,7 @@ export function compileCompoundExpression(
     );
   const elementType = targetType === "int*" ? "int" : "char";
   for (let i = 0; i < e.exprs.length; i++) {
-    emitHWPushZ("z_PTR");
     compileExpression(e.exprs[i]);
-    emitHWPopZ("z_PTR");
     if (isArrayExpression(e.exprs[i])) {
       // compiling an array slice puts the slice information in z_PTR (pointer to start), z_CNT (number of items), and z_A (number of bytes)
       emitRuntimeCall(`memCopy`, `copy z_A bytes from z_PTR to z_PTR2`);
