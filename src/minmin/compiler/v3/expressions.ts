@@ -6,24 +6,21 @@ import {
   isComparisonExpression,
   isFunctionCall,
   isNumberLiteral,
+  isStringLiteral,
   isUnaryExpression,
   isVariableReference,
   NumberLiteral,
+  StringLiteral,
   UnaryExpression,
   type Expression,
 } from "../../ls/generated/ast";
-import {
-  cached,
-  emitRuntimeCall,
-  isCachedZA,
-  nextLabel,
-  out,
-  runtimeUsed,
-} from "./compiler";
+import { emitRuntimeCall, nextLabel, out } from "./compiler";
 import { MinCompileError, hexWord } from "../utils";
 import { compileVariableReference, type IExpressionType } from "./variables";
 import { compileFunctionCall } from "./functions";
 import { frameStack } from "./stack";
+import { cached } from "./cache";
+import { compileStringLiteral } from "./strings";
 
 const VIRTUAL_STACK_BASE = 0xefff;
 export const ZP_BASE = 0x00;
@@ -126,12 +123,6 @@ export function compileCompoundExpression(
   }
 }
 
-// TODO: handle array expressions
-// e could be a compound expression 0_1_2_3 -> z_A is pointer to a temporary array of length z_CNT
-// e could be an array reference -> z_A is pointer to the array element [0]
-// e could be an array slice -> z_A is pointer to the start of the slice
-// e could be a simple variable -> z_A is the value of the variable
-
 /** Compile expr, leaving the 16-bit result in the z_A zero-page word. */
 export function compileExpression(e: Expression): IExpressionType {
   // TODO: possible optimisations
@@ -139,30 +130,39 @@ export function compileExpression(e: Expression): IExpressionType {
   // check if e is a leaf
   // option to compile to different target virtual register eg z_B or z_TEMP
 
-  // if (isCachedZA(e)) {
-  //   out("", `cached z_A ${cached.z_A}`);
-  //   return "int";
-  // }
+  if (cached.isZA(e)) {
+    out("", `cached z_A ${cached.z_A!.id}`);
+    return cached.z_A!.type;
+  }
 
+  let resultType: IExpressionType;
   switch (true) {
     case isNumberLiteral(e):
-      return compileNum(e);
+      resultType = compileNum(e);
+      break;
+    case isStringLiteral(e):
+      resultType = compileStringLiteral(e);
+      break;
     case isVariableReference(e):
-      return compileVariableReference(e);
+      resultType = compileVariableReference(e);
+      break;
     case isFunctionCall(e):
-      return compileFunctionCall(e);
+      resultType = compileFunctionCall(e);
+      break;
     case isUnaryExpression(e):
-      return compileUnary(e);
+      resultType = compileUnary(e);
+      break;
     case isBinaryExpression(e):
-      return compileBinary(e);
+      resultType = compileBinary(e);
+      break;
     case isComparisonExpression(e):
-      return compileComparison(e);
+      resultType = compileComparison(e);
+      break;
     default:
-      throw new MinCompileError(
-        `Unsupported expression: ${JSON.stringify(e)}`,
-        e,
-      );
+      throw new MinCompileError(`Unsupported expression`, e);
   }
+  cached.setZA(e, resultType);
+  return resultType;
 }
 
 function compileNum(e: NumberLiteral): IExpressionType {
@@ -222,14 +222,14 @@ function compileBinary(e: BinaryExpression): IExpressionType {
     if (e.op == "-" && isNumberLiteral(e.right)) {
       if (e.right.value == 1) {
         out(`DEV z_A`, `--`);
+        return "int";
       } else if ((e.right.value & 0xff00) == 0) {
         // anything - byte constant
         compileExpression(e.left);
         out(`SIV ${e.right.value},z_A`, `- byte constant`);
+        return "int";
       }
-      return "int";
-    }
-    if (e.op == "*") {
+    } else if (e.op == "*") {
       // anything * power of 2 (or vice versa)
       const shift = Math.log2(constSide.value);
       if (Number.isInteger(shift) && shift >= 1 && shift <= 15) {

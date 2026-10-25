@@ -8,7 +8,7 @@ import {
   type VariableDeclaration,
   type VariableReference,
 } from "../../ls/generated/ast";
-import { cached, emitRuntimeCall, out, runtimeUsed } from "./compiler";
+import { emitRuntimeCall, out, runtimeUsed } from "./compiler";
 import {
   compileCompoundExpression,
   compileExpression,
@@ -17,6 +17,7 @@ import {
 } from "./expressions";
 import { emitGetPtr, emitGetArrayPtr } from "./pointers";
 import { emitRTPushZ, frameStack } from "./stack";
+import { cached } from "./cache";
 
 export type IExpressionType = "int" | "char" | "int*" | "char*";
 
@@ -30,12 +31,6 @@ export interface IVariable {
   count?: number; // for array types, the number of elements
   // offset (+ve to lower addresses) in the case of location=stack
   // 0x10000 if location=heap (to throw an error if address is used)
-}
-
-export function emitCachedZA(instr: string, comment: string, value: string) {
-  if (cached.z_A.id == value) return;
-  out(instr, comment);
-  cached.z_A.id = value;
 }
 
 export function emitCopyZIntoVar(
@@ -59,13 +54,13 @@ export function emitCopyZIntoVar(
       emitGetPtr("z_PTR", varName, varIndex, true);
       if (varInfo.type == "int") {
         emitRuntimeCall(
-          `sdZA`,
-          `${frame.name}.${varInfo.name}:int = z_A(${cached.z_A})`,
+          `storeZA`,
+          `${frame.name}.${varInfo.name}:int = z_A(${cached.z_A?.id})`,
         );
       } else {
         out(
           `MZT z_A+0,z_PTR`,
-          `${frame.name}.${varInfo.name}:char = z_A(${cached.z_A})`,
+          `${frame.name}.${varInfo.name}:char = z_A(${cached.z_A?.id})`,
         );
       }
       return;
@@ -75,7 +70,7 @@ export function emitCopyZIntoVar(
         emitGetPtr("z_PTR", varName, varIndex, true);
         emitRuntimeCall(
           `copyZA`,
-          `${frame.name}.${varInfo.name}:int[${typeof varIndex === "number" ? varIndex : varIndex.$cstNode?.text}] = z_A(${cached.z_A})`,
+          `${frame.name}.${varInfo.name}:int[${typeof varIndex === "number" ? varIndex : varIndex.$cstNode?.text}] = z_A(${cached.z_A?.id})`,
         );
       } else {
         if (varInfo.type == "int") {
@@ -92,9 +87,22 @@ export function emitCopyZIntoVar(
       }
       return;
     case "absolute":
+      out(
+        `MZB ${sourceZ}+0,${hexWord(varInfo.address)}`,
+        `${frame.name}.${varInfo.name} from ${sourceZ} -> global`,
+      );
+      out(
+        `MZB ${sourceZ}+1,${hexWord(varInfo.address + 1)}`,
+        `${frame.name}.${varInfo.name} from ${sourceZ} -> global`,
+      );
+      return;
     case "globalStack":
       out(
-        `MWV ${sourceZ},${hexWord(varInfo.address)}`,
+        `MZB ${sourceZ}+1,${hexWord(0xefff - varInfo.address)}`,
+        `${frame.name}.${varInfo.name} from ${sourceZ} -> global`,
+      );
+      out(
+        `MZB ${sourceZ}+0,${hexWord(0xefff - varInfo.address - 1)}`,
         `${frame.name}.${varInfo.name} from ${sourceZ} -> global`,
       );
       return;
@@ -110,6 +118,13 @@ export function emitCopyVarIntoZ(
   varIndex?: Expression,
 ) {
   const { frame, varInfo } = frameStack.getVariable(varName);
+  cached.setZA(
+    targetAddr.toString() +
+      (varIndex
+        ? `[${typeof varIndex === "number" ? varIndex : varIndex.$cstNode?.text}]`
+        : ""),
+    varInfo.type,
+  );
 
   // ensure valid targetAddr which must be in zero page
   if (typeof targetAddr === "number" && targetAddr > 0xff)
@@ -165,6 +180,11 @@ export function emitCopyVarIntoZ(
         );
         return;
       case "globalStack":
+        out(
+          `MWV ${hexWord(0xefff - varInfo.address - 1)},${targetLSB}`,
+          `${frame.name}.${varInfo.name} from global -> ${targetAddr}`,
+        );
+        return;
       case "absolute":
         out(
           `MWV ${hexWord(varInfo.address)},${targetLSB}`,
@@ -188,6 +208,11 @@ export function emitCopyVarIntoZ(
         );
         return;
       case "globalStack":
+        out(
+          `MBB ${hexWord(0xefff - varInfo.address)},${targetLSB}`,
+          `${frame.name}.${varInfo.name} from global -> ${targetAddr}`,
+        );
+        return;
       case "absolute":
         out(
           `MBZ ${hexWord(varInfo.address)},${targetLSB} JPS __signext`,
@@ -239,12 +264,12 @@ export function compileVariableDeclaration(node: VariableDeclaration) {
         varInfo.count = constEval(arraySizeDecl.endExpr) + 1; // +1 as array slice is inclusive of start and end
         if (varInfo.type == "int*") {
           out(
-            `MIV ${hexWord(varInfo.count * 2)},z_A AVV z_A,z_HP`,
+            `MIV ${hexWord(varInfo.count * 2)},z_TMP1 AVV z_TMP1,z_HP`,
             "Advance z_HP by size of int array",
           );
         } else {
           out(
-            `MIV ${hexWord(varInfo.count)},z_A AVV z_A,z_HP`,
+            `MIV ${hexWord(varInfo.count)},z_TMP1 AVV z_TMP1,z_HP`,
             "Advance z_HP by size of char array",
           );
         }
@@ -292,7 +317,7 @@ export function compileVariableAssignment(node: VariableAssignment) {
   // z_PTR2 = &lhs
   // z_PTR = &rhs
 
-  if (lhs.type == "int*") {
+  if (lhs.type.endsWith("*")) {
     // TODO: bounds checking
     emitGetPtr("z_PTR2", lhsVarName, node.indexExpr); // z_PTR2 = &lhs[index]
     if (rhs.exprs.length == 1) {
@@ -304,7 +329,7 @@ export function compileVariableAssignment(node: VariableAssignment) {
         emitRuntimeCall("memCopy", "copy z_B bytes from z_PTR to z_PTR2");
       } else {
         out(`MZT z_A+0,z_PTR2 INV z_PTR2`); // store the value into the pointer location
-        out(`MZT z_A+1,z_PTR2`); // store the value into the pointer location
+        if (lhs.type === "int*") out(`MZT z_A+1,z_PTR2`); // store the value into the pointer location
       }
     } else if (rhs.exprs.length > 1) {
       // rhs is compound expression, eg minos[5] = 1_2_3_4
@@ -322,11 +347,11 @@ export function compileVariableAssignment(node: VariableAssignment) {
         rhs,
       );
     const exprType = compileExpression(rhs.exprs[0]);
-    if (exprType != "int")
-      throw new MinCompileError(
-        `Type mismatch: expected int, got ${exprType}`,
-        rhs,
-      );
+    // if (exprType != "int")
+    //   throw new MinCompileError(
+    //     `Type mismatch: expected int, got ${exprType}`,
+    //     rhs,
+    //   );
     emitCopyZIntoVar("z_A", lhs.name, node.indexExpr);
   }
 }
@@ -351,7 +376,6 @@ export function compileVariableCalcAssignment(node: VariableCalcAssignment) {
           `${node.varName} += ${node.value}`,
         );
       }
-      cached.z_A.id = "";
       emitCopyZIntoVar("z_A", varName);
     } else {
       out(
@@ -361,7 +385,15 @@ export function compileVariableCalcAssignment(node: VariableCalcAssignment) {
     }
   } else {
     if (lhs.type === "int") {
-      throw new MinCompileError(`-= on integer type not supported yet`, node);
+      // TODO: check if this works
+      out(
+        `LDI ${hexByte(node.value & 0xff)} SU.T z_PTR `,
+        `${node.varName} -= ${node.value}`,
+      );
+      out(
+        `LDI ${hexByte(node.value >> 8)} SU.T z_PTR+1`,
+        `${node.varName} -= ${node.value}`,
+      );
     } else {
       out(
         `LDI ${hexByte(node.value)} SU.T z_PTR `,

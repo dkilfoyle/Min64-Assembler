@@ -4,4 +4,4 @@ __gteq16:
   LDS 3 AD.Z z_B+1 LDS 4 ADV z_B+0      ; z_B += l
   FPL __gteq16true
   CLV z_A RTS                           ; return false
-  __gteqtrue: MIV 0xffff,z_A RTS        ; return true
+  __gteq16true: MIV 0xffff,z_A RTS        ; return true

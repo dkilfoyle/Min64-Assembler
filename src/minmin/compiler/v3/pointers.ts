@@ -31,6 +31,25 @@ function emitGetGlobalStackPtr(z_PTR: string, varInfo: IVariable) {
   }
 }
 
+function emitGetGlobalStackPtrPtr(z_PTR: string, varInfo: IVariable) {
+  // variables in the global stack can be accessed from absolute address 0xefff rather than offset from z_FP
+  if (varInfo.address <= 0) {
+    throw new MinCompileError(
+      `Invalid global stack address for variable ${varInfo.name}: ${varInfo.address}`,
+    );
+  } else {
+    // targetPtr = z_FP + fpOffset
+    out(
+      `MBZ ${hexWord(0xefff - varInfo.address)},${z_PTR}+1`,
+      `${z_PTR} = &${varInfo.name} (global)`,
+    );
+    out(
+      `MBZ ${hexWord(0xefff - varInfo.address - 1)},${z_PTR}+0`,
+      `${z_PTR} = &${varInfo.name} (global)`,
+    );
+  }
+}
+
 function emitGetFrameStackPtr(z_PTR: string, varInfo: IVariable) {
   const x = `MVV z_FP,${z_PTR}`;
   if (varInfo.kind == "local") {
@@ -65,7 +84,8 @@ export function emitGetPtr(
       emitGetFrameStackPtr(z_PTR, varInfo);
       break;
     case "globalStack":
-      emitGetGlobalStackPtr(z_PTR, varInfo);
+      if (varInfo.type.endsWith("*")) emitGetGlobalStackPtrPtr(z_PTR, varInfo);
+      else emitGetGlobalStackPtr(z_PTR, varInfo);
       break;
     case "zeroPage":
       out(`MIV ${hexWord(varInfo.address)},${z_PTR}`, `${z_PTR} = &${varName}`);
@@ -82,8 +102,9 @@ export function emitGetPtr(
   if (
     varInfo.type.endsWith("*") &&
     varIndex &&
-    varInfo.location != "absolute"
+    (varInfo.location == "stack" || varInfo.location == "zeroPage")
   ) {
+    // don't need to dereference for globalStack or absolute locations which are already direct pointers
     // z_PTR is a pointer to the heap location
     // deference z_PTR to get the actual heap address
     emitDereferencePointer(z_PTR);
@@ -136,22 +157,19 @@ export function emitGetArrayPtr(ptrReg: string, varRef: VariableReference) {
   const { varInfo } = frameStack.getVariable(varName);
 
   if (!varRef.index) {
-    // a without an index, just the base pointer
-    if (varInfo.count === undefined)
-      throw new MinCompileError(
-        `Array size is not known at compile time`,
-        varRef,
-      );
+    // a without an index, just the base pointer assume length 1
+    let cnt = varInfo.count === undefined ? 1 : varInfo.count;
+
     emitGetPtr(ptrReg, varName);
     emitDereferencePointer(ptrReg);
     if (varInfo.type == "int*") {
       out(
-        `MIV ${hexWord(varInfo.count)},z_CNT MIV ${hexWord(varInfo.count * 2)},z_B`,
+        `MIV ${hexWord(cnt)},z_CNT MIV ${hexWord(cnt * 2)},z_B`,
         `z_CNT=num items, z_B=num of bytes in full array`,
       );
     } else if (varInfo.type == "char*") {
       out(
-        `MIV ${hexWord(varInfo.count)},z_CNT MIV ${hexWord(varInfo.count)},z_B`,
+        `MIV ${hexWord(cnt)},z_CNT MIV ${hexWord(cnt)},z_B`,
         `z_CNT=num items, z_B=num of bytes in full array`,
       );
     } else

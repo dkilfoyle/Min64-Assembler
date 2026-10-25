@@ -8,11 +8,12 @@ import {
   CallStatement,
   LocalElement,
 } from "../../ls/generated/ast";
-import { compileStatement, out, format, options, cached } from "./compiler";
+import { compileStatement, out, format, options } from "./compiler";
 import { frameStack, type IStackFrame } from "./stack";
+import { cached } from "./cache";
 
 function emitFunctionPrologue(name: string) {
-  cached.blockPath += "." + name;
+  cached.unsetZA();
   const newFrame = frameStack.addFrame(name, "function");
 
   out(`${newFrame.name}_prologue:`, `function prologue`);
@@ -43,10 +44,10 @@ function emitFunctionEpilogue() {
   out(`INV z_SP MTZ z_SP,z_FP+1`, "restore caller frame pointer");
 
   format.indent -= 2;
-  cached.blockPath = cached.blockPath.slice(
-    0,
-    cached.blockPath.lastIndexOf("."),
-  );
+  // cached.blockPath = cached.blockPath.slice(
+  //   0,
+  //   cached.blockPath.lastIndexOf("."),
+  // );
 }
 
 export function compileDef(def: Def) {

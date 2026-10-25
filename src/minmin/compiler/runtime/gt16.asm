@@ -6,4 +6,4 @@ __gt16:
   LDZ z_B+0 AD.Z z_C+0                  ; z_C += r
   FMI __gt16true
     CLV z_A RTS
-  __lt16true: MIV 0xffff,z_A RTS
+  __gt16true: MIV 0xffff,z_A RTS

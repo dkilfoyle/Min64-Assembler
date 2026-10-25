@@ -3,7 +3,6 @@ import { MinCompileError, hexWord, highOperand, lowOperand } from "../utils";
 import * as expressionCompiler from "./expressions";
 import { computeReachableDefs } from "../reachability";
 import * as variableCompiler from "./variables";
-import type { IExpressionType } from "./variables";
 import {
   Expression,
   isCallStatement,
@@ -33,6 +32,8 @@ import {
 import { compileIf, compileWhile } from "./controlflow";
 import { ZP_BASE } from "./expressions";
 import { frameStack } from "./stack";
+import { cached } from "./cache";
+import { emitStringLiterals } from "./strings";
 
 const runtimeGlob = import.meta.glob("../runtime/*.asm", {
   query: "?raw",
@@ -63,28 +64,15 @@ export const options = {
   printFrame: true,
 };
 
-interface ICachedValue {
-  id: string;
-  type: IExpressionType;
-}
-
-export const cached: {
-  z_PTR: ICachedValue;
-  z_A: ICachedValue;
-  blockPath: string;
-} = {
-  z_PTR: { id: "", type: "int" },
-  z_A: { id: "", type: "int" },
-  blockPath: "",
-};
-
 export function emitRuntimeCall(name: string, comment?: string) {
   const definition = runtime[`__${name}`];
-  if (!definition)
+  if (!definition) {
+    debugger;
     throw new MinCompileError(
       `Runtime definition not found for ${name}`,
       {} as any,
     );
+  }
   runtimeUsed.add(name);
   out(`JPS __${name}`, comment);
 }
@@ -121,12 +109,10 @@ export function reset() {
   runtimeUsed.add("storeZA");
 
   expressionCompiler.reset();
+  cached.reset();
   frameStack.reset();
   format.indent = 0;
-
-  cached.z_PTR = { id: "", type: "int" };
-  cached.z_A = { id: "", type: "int" };
-  cached.blockPath = "";
+  cached.reset();
 }
 
 export function nextLabel(prefix: string): string {
@@ -144,29 +130,6 @@ export function os(name: string) {
 export function out(instruction: string, comment: string = "") {
   const x = `${" ".repeat(format.indent)}${comment ? `${instruction.padEnd(40 - format.indent)}; ${comment}` : instruction}`;
   assembly.push(x);
-}
-
-export function isCachedPtr(name: string): boolean {
-  if (cached.z_PTR.id === name) return true;
-  else {
-    cached.z_PTR = { id: name, type: "int" };
-    return false;
-  }
-}
-
-export function isCachedZA(e: Expression): boolean {
-  const ename = e.$cstNode ? `${cached.blockPath}.${e.$cstNode.text}` : "";
-
-  if (ename == "") {
-    // new z_A value is uncacheable, so reset the cache
-    cached.z_A = { id: "", type: "int" };
-    return false;
-  }
-  if (cached.z_A.id === ename) return true;
-  else {
-    cached.z_A = { id: ename, type: "int" };
-    return false;
-  }
 }
 
 export function compile(
@@ -189,6 +152,7 @@ export function compile(
     compileDef(def);
   }
 
+  emitStringLiterals();
   emitRuntime();
   emitZeroPage();
   emitOsCalls();
