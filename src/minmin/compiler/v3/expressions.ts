@@ -84,8 +84,10 @@ export function getExpressionType(e: Expression): string {
 
 export function isArrayExpression(e: Expression): boolean {
   if (!isVariableReference(e)) return false;
-  const varType = frameStack.getVariable(e.varName.$refText, e).varInfo.type;
-  if (!varType.endsWith("*")) return false;
+  const varInfo = frameStack.getVariable(e.varName.$refText, e).varInfo;
+  if (!varInfo.type.endsWith("*")) return false;
+  if (varInfo.location == "absolute") return false; // absolute variables are not considered array expressions because length unknown
+  if (varInfo.location == "zeroPage") return false; // zero page variables are not considered array expressions because length unknown
   if (e.index && e.index.startExpr && !e.index.endExpr) return false; // eg a[5] which returns a primary value
   return true;
 }

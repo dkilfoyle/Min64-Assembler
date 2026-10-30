@@ -20,7 +20,7 @@ const EMPTY = 0xff;
 
 export class IoDevices {
   private uartRx: number = EMPTY;
-  private keyRx: number = EMPTY;
+  public keyRx: number = EMPTY;
 
   /** Called whenever the CPU executes OUT (byte sent from A to the terminal). */
   onUartTransmit: ((byte: number) => void) | null = null;

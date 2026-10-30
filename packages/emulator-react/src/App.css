@@ -86,9 +86,27 @@ body {
   border-radius: var(--bk-radius-sm);
 }
 
+.memory-cell-ptr2 {
+  background-color: #e27450;
+  color: rgb(38, 38, 38);
+  border-radius: var(--bk-radius-sm);
+}
+
 .memory-cell-fp {
   border-radius: var(--bk-radius-sm);
   background-color: #af4c99;
+}
+
+.memory-cell-sp {
+  border-radius: var(--bk-radius-sm);
+  background-color: #e7a3d8;
+  color: rgb(38, 38, 38);
+}
+
+.memory-cell-hp {
+  border-radius: var(--bk-radius-sm);
+  background-color: #e2ca50;
+  color: rgb(38, 38, 38);
 }
 
 .memory-row-address {
@@ -149,7 +167,7 @@ body {
 }
 
 .line-label {
-  width: 40px;
+  width: 40px !important;
 }
 
 .line {

@@ -1,6 +1,8 @@
 import type { AstNode } from "langium";
 import { MinCompileError, hexByte, hexWord } from "../utils";
 import {
+  isConstExpression,
+  isNumberLiteral,
   isVariableReference,
   type Expression,
   type VariableAssignment,
@@ -236,14 +238,55 @@ const getSelfSizeRangeExpr = (node: VariableDeclaration) => {
   return undefined;
 };
 
-export function compileVariableDeclaration(node: VariableDeclaration) {
+function compileVariableAtDeclaration(
+  node: VariableDeclaration,
+  varInfo: IVariable,
+) {
+  if (node.assignExpr) {
+    // char posx @ 0x00c0 = x
+    if (node.assignExpr.exprs.length !== 1)
+      throw new MinCompileError(
+        `Expected a single assignment expression for variable @ declaration`,
+        node.assignExpr,
+      );
+    const assignType = compileExpression(node.assignExpr.exprs[0]);
+    if (!varInfo.type.startsWith(assignType))
+      throw new MinCompileError(
+        `Type mismatch for variable @ declaration`,
+        node.assignExpr.exprs[0],
+      );
+    if (assignType == "char") {
+      out(
+        `MZB z_A+0,${hexWord(varInfo.address)}`,
+        `copy z_A to ${varInfo.name} @ ${varInfo.address}`,
+      );
+    }
+    if (assignType == "int") {
+      out(
+        `MZB z_A+1,${hexWord(varInfo.address + 1)}`,
+        `copy z_A to ${varInfo.name} @ ${varInfo.address}`,
+      );
+    }
+  } else {
+    // char r @ 0x00ff
+    // do nothing
+  }
+}
+
+export function isHeapAllocation(node: VariableDeclaration) {
   const arraySizeDecl = getSelfSizeRangeExpr(node);
   const isArrayAssignDecl =
     node.assignExpr != undefined && node.assignExpr.exprs.length > 1;
   const isArray = arraySizeDecl != undefined || isArrayAssignDecl;
-  const frame = frameStack.current(node);
+  return { isArray, arraySizeDecl, isArrayAssignDecl };
+}
 
+export function compileVariableDeclaration(node: VariableDeclaration) {
+  const { isArray, arraySizeDecl, isArrayAssignDecl } = isHeapAllocation(node);
+  const frame = frameStack.current(node);
   const varInfo = frameStack.addLocalVariable(node, isArray);
+
+  if (node.atExpr) return compileVariableAtDeclaration(node, varInfo);
 
   // z_SP should be ready to receive the variable's value
 

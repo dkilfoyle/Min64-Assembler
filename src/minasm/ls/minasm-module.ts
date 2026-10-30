@@ -13,12 +13,19 @@ import {
   createDefaultModule,
   createDefaultSharedModule,
 } from "langium/lsp";
-import { MinasmGeneratedSharedModule, MinasmModelGeneratedModule } from "./generated/module.js";
-import { MinasmValidator, registerValidationChecks } from "./minasm-validator.js";
+import {
+  MinasmGeneratedSharedModule,
+  MinasmModelGeneratedModule,
+} from "./generated/module.js";
+import {
+  MinasmValidator,
+  registerValidationChecks,
+} from "./minasm-validator.js";
 // import { MinasmScopeComputation } from "./minasm-scope.js";
 import { MinasmConverter } from "./minasm-value.js";
 import { MinasmHoverProvider } from "./minasm-hover.js";
 import { MinasmWorkspaceManager } from "./minasm-workspace.js";
+import { MinasmDocumentSymbolProvider } from "./minasm-symbols.js";
 
 /**
  * Declaration of custom services - add your own service classes here.
@@ -40,7 +47,10 @@ export type MinasmServices = LangiumServices & MinasmAddedServices;
  * declared custom services. The Langium defaults can be partially specified to override only
  * selected services, while the custom services must be fully specified.
  */
-const MinasmModule: Module<MinasmServices, PartialLangiumServices & MinasmAddedServices> = {
+const MinasmModule: Module<
+  MinasmServices,
+  PartialLangiumServices & MinasmAddedServices
+> = {
   validation: {
     MinasmValidator: () => new MinasmValidator(),
   },
@@ -53,10 +63,15 @@ const MinasmModule: Module<MinasmServices, PartialLangiumServices & MinasmAddedS
   },
   lsp: {
     HoverProvider: (services) => new MinasmHoverProvider(services),
+    DocumentSymbolProvider: (services) =>
+      new MinasmDocumentSymbolProvider(services),
   },
 };
 
-const MinasmSharedModule: Module<LangiumSharedServices, PartialLangiumSharedServices> = {
+const MinasmSharedModule: Module<
+  LangiumSharedServices,
+  PartialLangiumSharedServices
+> = {
   workspace: {
     WorkspaceManager: (services) => new MinasmWorkspaceManager(services),
   },
@@ -77,12 +92,22 @@ const MinasmSharedModule: Module<LangiumSharedServices, PartialLangiumSharedServ
  * @param context Optional module context with the LSP connection
  * @returns An object wrapping the shared services and the language-specific services
  */
-export async function createMinasmServices(context: DefaultSharedModuleContext): Promise<{
+export async function createMinasmServices(
+  context: DefaultSharedModuleContext,
+): Promise<{
   shared: LangiumSharedServices;
   minasm: MinasmServices;
 }> {
-  const shared = inject(createDefaultSharedModule(context), MinasmGeneratedSharedModule, MinasmSharedModule);
-  const minasm = inject(createDefaultModule({ shared }), MinasmModelGeneratedModule, MinasmModule);
+  const shared = inject(
+    createDefaultSharedModule(context),
+    MinasmGeneratedSharedModule,
+    MinasmSharedModule,
+  );
+  const minasm = inject(
+    createDefaultModule({ shared }),
+    MinasmModelGeneratedModule,
+    MinasmModule,
+  );
   shared.ServiceRegistry.register(minasm);
   registerValidationChecks(minasm);
   if (context.connection === undefined) {

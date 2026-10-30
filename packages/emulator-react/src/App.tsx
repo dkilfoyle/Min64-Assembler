@@ -15,12 +15,24 @@ import { type IEmulationState } from "./emulator14/machine";
 import "baukasten-ui/dist/baukasten-base.css";
 // import "baukasten-ui/dist/baukasten-vscode.css";
 import "baukasten-ui/dist/baukasten-web.css";
-import { Badge, Button, Divider, Heading, Icon, Input, Select, Slider } from "baukasten-ui/core";
+import {
+  Badge,
+  Button,
+  Divider,
+  Heading,
+  Icon,
+  Input,
+  Select,
+  Slider,
+} from "baukasten-ui/core";
 import clsx from "clsx";
 import { getScrollbarSize, List, type RowComponentProps } from "react-window";
 import "./App.css";
 
 import { osShortLabels } from "./emulator14/oslabels";
+
+const hexWord = (x: number) => x.toString(16).padStart(4, "0").toUpperCase();
+const hexByte = (x: number) => x.toString(16).padStart(2, "0").toUpperCase();
 
 const vscode =
   typeof acquireVsCodeApi == "function"
@@ -42,35 +54,62 @@ let worker_api: Comlink.Remote<{
   step(params: IStepParams): Promise<IEmulationState>;
 }>;
 
-const getWord = (memory: Uint8Array, addr: number) => (memory[addr + 1] << 8) | memory[addr];
+const getWord = (memory: Uint8Array, addr: number) =>
+  (memory[addr + 1] << 8) | memory[addr];
 
 export const App: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const divRef = useRef<HTMLDivElement | null>(null);
   const workerRef = useRef<Worker | null>(null);
-  const [emulationState, setEmulationState] = React.useState<IEmulationState | null>({
-    memory: new Uint8Array(0xffff + 1),
-    pc: 0,
-    sp: 0,
-    c: false,
-    z: false,
-    n: false,
-    a: 0,
-  });
+  const [emulationState, setEmulationState] =
+    React.useState<IEmulationState | null>({
+      memory: new Uint8Array(0xffff + 1),
+      pc: 0,
+      sp: 0,
+      c: false,
+      z: false,
+      n: false,
+      a: 0,
+      key: 0xff,
+    });
 
   const [addrTarget, setAddrTarget] = useState<number>(0);
   const [addrTargetEnd, setAddrTargetEnd] = useState<number>(1);
   const [addrHover, setAddrHover] = useState<number | null>(null);
   const [labels, setLabels] = useState<Record<number, string>>(osShortLabels);
 
-  const z_FP = useMemo(() => (emulationState ? getWord(emulationState.memory, 0) : 0), [emulationState]);
-  const z_PTR = useMemo(() => (emulationState ? getWord(emulationState.memory, 2) : 0), [emulationState]);
-  const z_HP = useMemo(() => (emulationState ? getWord(emulationState.memory, 4) : 0x8000), [emulationState]);
+  const z_FP = useMemo(
+    () => (emulationState ? getWord(emulationState.memory, 0) : 0xefff),
+    [emulationState],
+  );
+  const z_SP = useMemo(
+    () => (emulationState ? getWord(emulationState.memory, 2) : 0xefff),
+    [emulationState],
+  );
+  const z_PTR = useMemo(
+    () => (emulationState ? getWord(emulationState.memory, 4) : 0),
+    [emulationState],
+  );
+  const z_HP = useMemo(
+    () => (emulationState ? getWord(emulationState.memory, 6) : 0x8000),
+    [emulationState],
+  );
+  const z_PTR2 = useMemo(
+    () => (emulationState ? getWord(emulationState.memory, 16) : 0),
+    [emulationState],
+  );
 
   const addrStart = useMemo(() => addrTarget & 0xfff0, [addrTarget]);
-  const hoverByte = useMemo(() => (addrHover !== null ? emulationState?.memory[addrHover] : null), [addrHover, emulationState]);
+  const hoverByte = useMemo(
+    () => (addrHover !== null ? emulationState?.memory[addrHover] : null),
+    [addrHover, emulationState],
+  );
   const hoverWord = useMemo(
-    () => (addrHover !== null && emulationState ? (emulationState.memory[addrHover + 1] << 8) | emulationState.memory[addrHover] : null),
+    () =>
+      addrHover !== null && emulationState
+        ? (emulationState.memory[addrHover + 1] << 8) |
+          emulationState.memory[addrHover]
+        : null,
     [addrHover, emulationState],
   );
 
@@ -78,7 +117,10 @@ export const App: React.FC = () => {
     if (!canvasRef.current) return;
 
     // 1. Initialize Worker using standard Vite / Webpack 5 URL syntax
-    const worker = new Worker(new URL("./emulator.worker.ts", import.meta.url), { type: "module" });
+    const worker = new Worker(
+      new URL("./emulator.worker.ts", import.meta.url),
+      { type: "module" },
+    );
     workerRef.current = worker;
 
     worker_api = Comlink.wrap<{
@@ -97,6 +139,7 @@ export const App: React.FC = () => {
     worker_api.init(transfer(offscreen, [offscreen]));
 
     const handleKeyDown = (e: KeyboardEvent) => {
+      console.log("Key down:", e.code, e.key.charCodeAt(0));
       worker_api.keyDown(e.code);
     };
 
@@ -122,9 +165,12 @@ export const App: React.FC = () => {
       setAddrTargetEnd(params.addrTargetEnd);
     });
 
-    webview_messenger.onNotification(BreakpointsNotification, async (params) => {
-      await worker_api.setBreakpoints(params);
-    });
+    webview_messenger.onNotification(
+      BreakpointsNotification,
+      async (params) => {
+        await worker_api.setBreakpoints(params);
+      },
+    );
 
     webview_messenger.onRequest(StepRequest, async (params) => {
       const state = await worker_api.step(params);
@@ -151,26 +197,39 @@ export const App: React.FC = () => {
     const rowAddress = addrStart + index * 16;
     return (
       <div key={"row-" + rowAddress} className="memory-row" style={style}>
-        <div className="memory-row-address">{rowAddress.toString(16).padStart(4, "0").toUpperCase()}</div>
+        <div className="memory-row-address">
+          {rowAddress.toString(16).padStart(4, "0").toUpperCase()}
+        </div>
         <div className="memory-row-bytes">
-          {Array.from(emulationState!.memory.slice(rowAddress, rowAddress + 16)).map((byte, index) => (
+          {Array.from(
+            emulationState!.memory.slice(rowAddress, rowAddress + 16),
+          ).map((byte, index) => (
             <div
               key={index}
               onMouseEnter={() => {
                 setAddrHover(rowAddress + index);
               }}
               className={clsx("memory-cell", {
-                "memory-cell-target": rowAddress + index >= addrTarget && rowAddress + index <= addrTargetEnd,
+                "memory-cell-target":
+                  rowAddress + index >= addrTarget &&
+                  rowAddress + index <= addrTargetEnd,
                 "memory-cell-ptr": rowAddress + index === z_PTR,
+                "memory-cell-ptr2": rowAddress + index === z_PTR2,
                 "memory-cell-fp": rowAddress + index === z_FP,
-                "memory-cell-hover": addrHover !== null && rowAddress + index === addrHover,
-              })}>
+                "memory-cell-sp": rowAddress + index === z_SP,
+                "memory-cell-hp": rowAddress + index === z_HP,
+                "memory-cell-hover":
+                  addrHover !== null && rowAddress + index === addrHover,
+              })}
+            >
               {byte.toString(16).padStart(2, "0").toUpperCase()}
             </div>
           ))}
         </div>
         <div className="memory-row-chars">
-          {Array.from(emulationState!.memory.slice(rowAddress, rowAddress + 16)).map((byte, index) => (
+          {Array.from(
+            emulationState!.memory.slice(rowAddress, rowAddress + 16),
+          ).map((byte, index) => (
             <div key={index} className="memory-cell">
               {String.fromCharCode(byte || 46)}
             </div>
@@ -197,14 +256,17 @@ export const App: React.FC = () => {
                   const newStartAddress = emulationState.pc & 0xfff0;
                   setAddrTarget(newStartAddress);
                   setAddrTargetEnd(newStartAddress + 15); // Assuming a 16-byte range
-                }}>
+                }}
+              >
                 {emulationState.pc.toString(16).padStart(4, "0").toUpperCase()}
               </Button>
               <div className="info-label" style={{ width: "100px" }}>
                 {labels[emulationState.pc] || "-"}
               </div>
               <span>A</span>
-              <div className="info-value-byte">{emulationState.a.toString(16).padStart(2, "0").toUpperCase()}</div>
+              <div className="info-value-byte">
+                {emulationState.a.toString(16).padStart(2, "0").toUpperCase()}
+              </div>
               <Badge variant={emulationState.n ? "error" : "default"}>N</Badge>
               <Badge variant={emulationState.z ? "error" : "default"}>Z</Badge>
               <Badge variant={emulationState.c ? "error" : "default"}>C</Badge>
@@ -216,7 +278,8 @@ export const App: React.FC = () => {
                   const newStartAddress = emulationState.sp & 0xfff0;
                   setAddrTarget(newStartAddress);
                   setAddrTargetEnd(newStartAddress + 15); // Assuming a 16-byte range
-                }}>
+                }}
+              >
                 {emulationState.sp.toString(16).padStart(4, "0").toUpperCase()}
               </Button>
               <Button size="sm">
@@ -227,8 +290,72 @@ export const App: React.FC = () => {
               className="memory-view-table"
               onMouseLeave={() => {
                 setAddrHover(null);
-              }}>
-              <List rowComponent={memoryRow} rowCount={256} rowHeight={20} rowProps={{}}></List>
+              }}
+            >
+              <div className="memory-row">
+                <div style={{ width: "30px" }}></div>
+                <div className="memory-row-bytes" style={{ color: "darkgrey" }}>
+                  {Array.from({ length: 16 }).map((_, colIndex) => (
+                    <div key={colIndex} className="memory-cell">
+                      {colIndex.toString(16).padStart(2, "0").toUpperCase()}
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <List
+                rowComponent={memoryRow}
+                rowCount={256}
+                rowHeight={20}
+                rowProps={{}}
+              ></List>
+            </div>
+
+            <div className="line">
+              <Button
+                variant="secondary"
+                className="memory-cell-fp"
+                onClick={() => {
+                  setAddrTarget(z_FP - 16 * 8);
+                }}
+              >
+                FP
+              </Button>
+              <Button
+                variant="secondary"
+                className="memory-cell-sp"
+                onClick={() => {
+                  setAddrTarget(z_SP - 16 * 8);
+                }}
+              >
+                SP
+              </Button>
+              <Button
+                variant="secondary"
+                className="memory-cell-hp"
+                onClick={() => {
+                  setAddrTarget(z_HP - 16 * 8);
+                }}
+              >
+                HP
+              </Button>
+              <Button
+                variant="secondary"
+                className="memory-cell-ptr"
+                onClick={() => {
+                  setAddrTarget(z_PTR - 16 * 8);
+                }}
+              >
+                PTR
+              </Button>
+              <Button
+                variant="secondary"
+                className="memory-cell-ptr2"
+                onClick={() => {
+                  setAddrTarget(z_PTR2 - 16 * 8);
+                }}
+              >
+                PT2
+              </Button>
             </div>
 
             <div className="line">
@@ -244,31 +371,22 @@ export const App: React.FC = () => {
                     const newTargetAddress = parseInt(value, 10);
                     setAddrTarget(newTargetAddress);
                     setAddrTargetEnd(newTargetAddress + 1);
-                  }}></Select>
-                <Button
-                  variant="secondary"
-                  onClick={() => {
-                    setAddrTarget(z_FP - 16 * 8);
-                  }}>
-                  FP
-                </Button>
-                <Button
-                  variant="secondary"
-                  onClick={() => {
-                    setAddrTarget(z_HP - 16 * 8);
-                  }}>
-                  HP
-                </Button>
+                  }}
+                ></Select>
+
                 <div className="info-field">
                   <span style={{ marginLeft: "10px" }}>Address:</span>
                   <Input
-                    value={addrTarget.toString(16).padStart(4, "0").toUpperCase()}
-                    onChange={(e) => setAddrTarget(parseInt(e.target.value, 16))}
+                    value={hexWord(addrTarget)}
+                    onChange={(e) =>
+                      setAddrTarget(parseInt(e.target.value, 16))
+                    }
                     style={{
                       width: "60px",
                       textAlign: "center",
                       marginLeft: "5px",
-                    }}></Input>
+                    }}
+                  ></Input>
                 </div>
               </div>
             </div>
@@ -277,17 +395,39 @@ export const App: React.FC = () => {
               <span className="line-label">Hover</span>
               <div className="spread">
                 <div className="collect">
-                  <span className="info-value-word">{addrHover !== null ? addrHover.toString(16).padStart(4, "0").toUpperCase() : "-"}</span>
+                  <span className="info-value-word">
+                    {addrHover !== null
+                      ? addrHover.toString(16).padStart(4, "0").toUpperCase()
+                      : "-"}
+                  </span>
                   <span className="info-label" style={{ width: "100px" }}>
                     {addrHover !== null ? labels[addrHover] || "-" : "-"}
                   </span>
                 </div>
                 <div className="collect">
-                  <span className="info-value-word">{addrHover !== null ? hoverByte : 0}</span>
-                  <span className="info-value-word">{(hoverWord !== null ? hoverWord : 0).toString(10)}</span>
-                  <span className="info-value-word">{(hoverWord !== null ? hoverWord : 0).toString(16).padStart(4, "0").toUpperCase()}</span>
+                  <span className="info-value-word">
+                    {addrHover !== null ? hoverByte : 0}
+                  </span>
+                  <span className="info-value-word">
+                    {(hoverWord !== null ? hoverWord : 0).toString(10)}
+                  </span>
+                  <span className="info-value-word">
+                    {hexWord(hoverWord !== null ? hoverWord : 0)}
+                  </span>
                 </div>
               </div>
+            </div>
+            <div className="line">
+              <span className="line-label">Key</span>
+              <span
+                className="info-value-word"
+                style={{ width: "100px", textAlign: "center" }}
+              >
+                '{String.fromCharCode(emulationState.key)}' (0x
+                {hexByte(emulationState.key)})
+              </span>
+              <Input></Input>
+              <Button>Add</Button>
             </div>
           </div>
         </>

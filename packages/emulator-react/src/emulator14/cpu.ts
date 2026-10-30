@@ -94,44 +94,68 @@ export class CPU {
   /** 'Z': direct zero-page byte, operand = 1-byte ZP address. */
   private zpTarget(): ByteTarget {
     const zp = this.fetch8();
-    return { get: () => this.mem.read(zp), set: (v) => this.mem.write(zp, v & 0xff) };
+    return {
+      get: () => this.mem.read(zp),
+      set: (v) => this.mem.write(zp, v & 0xff),
+    };
   }
   /** 'V': direct zero-page word, operand = 1-byte ZP address. */
   private zpWordTarget(): WordTarget {
     const zp = this.fetch8();
-    return { get16: () => this.mem.read16(zp), set16: (v) => this.mem.write16(zp, v & 0xffff) };
+    return {
+      get16: () => this.mem.read16(zp),
+      set16: (v) => this.mem.write16(zp, v & 0xffff),
+    };
   }
   /** 'Q': direct zero-page long (4 bytes), operand = 1-byte ZP address. */
   private zpLongTarget(): LongTarget {
     const zp = this.fetch8();
-    return { get32: () => this.mem.read32(zp), set32: (v) => this.mem.write32(zp, v >>> 0) };
+    return {
+      get32: () => this.mem.read32(zp),
+      set32: (v) => this.mem.write32(zp, v >>> 0),
+    };
   }
   /** 'B'/'addr': direct absolute byte, operand = 2-byte address. */
   private absTarget(): ByteTarget {
     const addr = this.fetch16();
-    return { get: () => this.mem.read(addr), set: (v) => this.mem.write(addr, v & 0xff) };
+    return {
+      get: () => this.mem.read(addr),
+      set: (v) => this.mem.write(addr, v & 0xff),
+    };
   }
   /** 'W': direct absolute word, operand = 2-byte address. */
   private absWordTarget(): WordTarget {
     const addr = this.fetch16();
-    return { get16: () => this.mem.read16(addr), set16: (v) => this.mem.write16(addr, v & 0xffff) };
+    return {
+      get16: () => this.mem.read16(addr),
+      set16: (v) => this.mem.write16(addr, v & 0xffff),
+    };
   }
   /** 'L': direct absolute long, operand = 2-byte address. */
   private absLongTarget(): LongTarget {
     const addr = this.fetch16();
-    return { get32: () => this.mem.read32(addr), set32: (v) => this.mem.write32(addr, v >>> 0) };
+    return {
+      get32: () => this.mem.read32(addr),
+      set32: (v) => this.mem.write32(addr, v >>> 0),
+    };
   }
   /** 'T': relative (pointer) byte via a 2-byte pointer stored at a ZP address: **Z. */
   private zpIndirectTarget(): ByteTarget {
     const zp = this.fetch8();
     const ptr = this.mem.read16(zp);
-    return { get: () => this.mem.read(ptr), set: (v) => this.mem.write(ptr, v & 0xff) };
+    return {
+      get: () => this.mem.read(ptr),
+      set: (v) => this.mem.write(ptr, v & 0xff),
+    };
   }
   /** 'R': relative (pointer) byte via a 2-byte pointer stored at an absolute address: **addr. */
   private absIndirectTarget(): ByteTarget {
     const addr = this.fetch16();
     const ptr = this.mem.read16(addr);
-    return { get: () => this.mem.read(ptr), set: (v) => this.mem.write(ptr, v & 0xff) };
+    return {
+      get: () => this.mem.read(ptr),
+      set: (v) => this.mem.write(ptr, v & 0xff),
+    };
   }
 
   // ---------------------------------------------------------------------------------
@@ -1934,12 +1958,20 @@ export class CPU {
     const carry = (value & 0x8000) !== 0;
     return { result: ((value << 1) | (this.c ? 1 : 0)) & 0xffff, carry };
   }
-  private shiftLeftLong(value: number): { result: number; topByte: number; carry: boolean } {
+  private shiftLeftLong(value: number): {
+    result: number;
+    topByte: number;
+    carry: boolean;
+  } {
     const carry = (value & 0x80000000) !== 0;
     const result = (value << 1) >>> 0;
     return { result, topByte: (result >>> 24) & 0xff, carry };
   }
-  private rotateLeftLong(value: number): { result: number; topByte: number; carry: boolean } {
+  private rotateLeftLong(value: number): {
+    result: number;
+    topByte: number;
+    carry: boolean;
+  } {
     const carry = (value & 0x80000000) !== 0;
     const result = (((value << 1) >>> 0) | (this.c ? 1 : 0)) >>> 0;
     return { result, topByte: (result >>> 24) & 0xff, carry };
@@ -1956,10 +1988,15 @@ export class CPU {
 }
 
 const cycles = [
-  16, 160, 3, 4, 6, 2, 3, 4, 5, 6, 7, 8, 9, 2, 3, 4, 5, 6, 7, 8, 9, 10, 2, 10, 15, 15, 15, 15, 13, 5, 4, 6, 6, 8, 10, 12, 11, 13, 4, 6, 6, 8,
-  10, 12, 11, 13, 4, 5, 7, 7, 9, 11, 4, 5, 7, 7, 9, 11, 3, 4, 6, 7, 9, 4, 6, 7, 9, 3, 4, 6, 7, 9, 4, 6, 7, 9, 7, 8, 10, 11, 13, 7, 10, 10, 13,
-  2, 2, 2, 2, 2, 2, 2, 2, 2, 4, 4, 4, 4, 4, 4, 4, 4, 4, 7, 9, 11, 14, 10, 8, 6, 6, 11, 8, 11, 7, 9, 14, 16, 2, 3, 5, 6, 8, 4, 7, 6, 9, 3, 5, 6,
-  8, 6, 4, 6, 7, 9, 6, 13, 5, 7, 8, 10, 7, 9, 10, 12, 8, 10, 11, 13, 10, 12, 13, 15, 7, 9, 3, 4, 6, 4, 7, 6, 11, 16, 3, 5, 7, 7, 9, 11, 3, 5, 7,
-  7, 9, 11, 3, 4, 6, 7, 9, 4, 6, 7, 9, 7, 9, 11, 5, 7, 8, 10, 8, 10, 12, 6, 9, 9, 13, 10, 13, 9, 12, 14, 3, 4, 6, 7, 9, 5, 7, 8, 10, 8, 10, 12,
-  5, 7, 8, 10, 8, 10, 12, 6, 9, 9, 13, 10, 13, 9, 12, 14, 3, 4, 6, 7, 9, 5, 7, 8, 10, 12, 16, 6, 9, 10, 9, 14, 14, 3, 4, 4, 3, 4, 5, 0,
+  16, 160, 3, 4, 6, 2, 3, 4, 5, 6, 7, 8, 9, 2, 3, 4, 5, 6, 7, 8, 9, 10, 2, 10,
+  15, 15, 15, 15, 13, 5, 4, 6, 6, 8, 10, 12, 11, 13, 4, 6, 6, 8, 10, 12, 11, 13,
+  4, 5, 7, 7, 9, 11, 4, 5, 7, 7, 9, 11, 3, 4, 6, 7, 9, 4, 6, 7, 9, 3, 4, 6, 7,
+  9, 4, 6, 7, 9, 7, 8, 10, 11, 13, 7, 10, 10, 13, 2, 2, 2, 2, 2, 2, 2, 2, 2, 4,
+  4, 4, 4, 4, 4, 4, 4, 4, 7, 9, 11, 14, 10, 8, 6, 6, 11, 8, 11, 7, 9, 14, 16, 2,
+  3, 5, 6, 8, 4, 7, 6, 9, 3, 5, 6, 8, 6, 4, 6, 7, 9, 6, 13, 5, 7, 8, 10, 7, 9,
+  10, 12, 8, 10, 11, 13, 10, 12, 13, 15, 7, 9, 3, 4, 6, 4, 7, 6, 11, 16, 3, 5,
+  7, 7, 9, 11, 3, 5, 7, 7, 9, 11, 3, 4, 6, 7, 9, 4, 6, 7, 9, 7, 9, 11, 5, 7, 8,
+  10, 8, 10, 12, 6, 9, 9, 13, 10, 13, 9, 12, 14, 3, 4, 6, 7, 9, 5, 7, 8, 10, 8,
+  10, 12, 5, 7, 8, 10, 8, 10, 12, 6, 9, 9, 13, 10, 13, 9, 12, 14, 3, 4, 6, 7, 9,
+  5, 7, 8, 10, 12, 16, 6, 9, 10, 9, 14, 14, 3, 4, 4, 3, 4, 5, 0,
 ];

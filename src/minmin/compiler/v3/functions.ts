@@ -1,34 +1,42 @@
 import { hexWord, MinCompileError } from "../utils";
 import * as expressionCompiler from "./expressions";
-import type { IExpressionType } from "./variables";
+import { isHeapAllocation, type IExpressionType } from "./variables";
 import {
   FunctionCall,
   type ReturnStatement,
   Def,
   CallStatement,
   LocalElement,
+  isVariableDeclaration,
+  isWhile,
+  isIf,
+  isFunctionCall,
+  isDef,
 } from "../../ls/generated/ast";
-import { compileStatement, out, format, options } from "./compiler";
+import { compileStatement, out, format, options, assembly } from "./compiler";
 import { frameStack, type IStackFrame } from "./stack";
 import { cached } from "./cache";
+import type { AstNode } from "langium";
 
-function emitFunctionPrologue(name: string) {
+function emitFunctionPrologue(name: string, hasHeapAllocation: boolean) {
   cached.unsetZA();
   const newFrame = frameStack.addFrame(name, "function");
 
   out(`${newFrame.name}_prologue:`, `function prologue`);
   format.indent += 2;
-  out(`MZT z_FP+1,z_SP DEV z_SP`, `Save caller's frame pointer`);
-  out(`MZT z_FP+0,z_SP DEV z_SP`, `Save caller's frame pointer`);
-  out(`MZT z_HP+1,z_SP DEV z_SP`, `Save caller's heap pointer`);
-  out(`MZT z_HP+0,z_SP DEV z_SP`, `Save caller's heap pointer`);
+  out(`MZT z_SP+1,z_SP DEV z_SP`, `Save caller's stack pointer`);
+  out(`MZT z_SP+0,z_SP DEV z_SP`, `Save caller's stack pointer`);
+  if (hasHeapAllocation) {
+    out(`MZT z_HP+1,z_SP DEV z_SP`, `Save caller's heap pointer`);
+    out(`MZT z_HP+0,z_SP DEV z_SP`, `Save caller's heap pointer`);
+  }
   out(`MVV z_SP,z_FP`, `Set frame pointer to current stack top`);
   format.indent -= 2;
 
   return newFrame;
 }
 
-function emitFunctionEpilogue() {
+function emitFunctionEpilogue(hasHeapAllocation: boolean) {
   frameStack.printFrame();
   const frame = frameStack.pop();
   if (frame.kind !== "function")
@@ -36,19 +44,66 @@ function emitFunctionEpilogue() {
 
   out(`${frame.name}_end:`, `function epilogue`);
   format.indent += 2;
-
   out(`MVV z_FP,z_SP`, "pop locals off stack");
-  out(`INV z_SP MTZ z_SP,z_HP+0`, "restore caller heap pointer");
-  out(`INV z_SP MTZ z_SP,z_HP+1`, "restore caller heap pointer");
+  if (hasHeapAllocation) {
+    out(`INV z_SP MTZ z_SP,z_HP+0`, "restore caller heap pointer");
+    out(`INV z_SP MTZ z_SP,z_HP+1`, "restore caller heap pointer");
+  }
   out(`INV z_SP MTZ z_SP,z_FP+0`, "restore caller frame pointer");
   out(`INV z_SP MTZ z_SP,z_FP+1`, "restore caller frame pointer");
-
   format.indent -= 2;
   // cached.blockPath = cached.blockPath.slice(
   //   0,
   //   cached.blockPath.lastIndexOf("."),
   // );
 }
+
+function findHeapAllocation(node: AstNode) {
+  if (isVariableDeclaration(node)) {
+    if (isHeapAllocation(node).isArray) return true;
+  }
+  if (isWhile(node)) {
+    for (const stmt of node.block) {
+      if (findHeapAllocation(stmt)) return true;
+    }
+  }
+  if (isIf(node)) {
+    const stmts = [
+      ...node.block,
+      ...(node.elseBlock?.block ?? []),
+      ...node.elifs.map((e) => e.block).flat(),
+    ];
+    for (const stmt of stmts) {
+      if (findHeapAllocation(stmt)) return true;
+    }
+  }
+  return false;
+}
+
+// function findStackAllocation(node: AstNode) {
+//   if (isVariableDeclaration(node)) {
+//     return node.atExpr == undefined; // atExprs don't go on stack
+//   }
+//   if (isDef(node)) {
+//     return node.params.length > 0 ? true : false;
+//   }
+//   if (isWhile(node)) {
+//     for (const stmt of node.block) {
+//       if (findStackAllocation(stmt)) return true;
+//     }
+//   }
+//   if (isIf(node)) {
+//     const stmts = [
+//       ...node.block,
+//       ...(node.elseBlock?.block ?? []),
+//       ...node.elifs.map((e) => e.block).flat(),
+//     ];
+//     for (const stmt of stmts) {
+//       if (findStackAllocation(stmt)) return true;
+//     }
+//   }
+//   return false;
+// }
 
 export function compileDef(def: Def) {
   out("\n");
@@ -58,19 +113,25 @@ export function compileDef(def: Def) {
   );
   format.indent += 2;
 
-  // Initialize the new stack frame for the function
-  const frame = emitFunctionPrologue(def.name);
+  const hasHeapAllocation = findHeapAllocation(def);
 
-  let offsetFromFP = 4;
+  // Initialize the new stack frame for the function
+  const frame = emitFunctionPrologue(def.name, hasHeapAllocation);
+
+  let offsetFromFP = hasHeapAllocation ? 4 : 2;
   def.params.forEach((param, i) => {
-    offsetFromFP += param.type === "int" ? 2 : 1; // assuming all types are 2 bytes for now
-    frameStack.addParamVariable(param, offsetFromFP);
+    // all params, int and char, are received on the stack as 2 byte values
+    offsetFromFP += 2; // assuming all types are 2 bytes for now
+    frameStack.addParamVariable(
+      param,
+      param.type == "char" ? offsetFromFP - 1 : offsetFromFP, // if char offset adjust to LSB
+    );
   });
 
   def.block.forEach((stmt) => compileStatement(stmt));
 
   // Function epilogue
-  emitFunctionEpilogue();
+  emitFunctionEpilogue(hasHeapAllocation);
 
   out(`RTS`);
   format.indent -= 2;
@@ -89,17 +150,15 @@ export function compileFunctionCall(e: FunctionCall): IExpressionType {
   const functionName = e.functionName.$refText;
   const comment = `call ${functionName}(${e.args.length} arg${e.args.length === 1 ? "" : "s"})`;
 
-  // push the arguments onto caller's frame
+  // push the arguments onto caller's frame in reverse order (right to left)
   let argsSize = 0;
-  e.args.forEach((arg, i) => {
+  const args = e.args.slice().reverse(); // reverse the arguments for right-to-left pushing
+  args.forEach((arg, i) => {
     const argType = expressionCompiler.compileExpression(arg.exprs[0]); // result -> z_A
     argsSize += argType === "char" ? 1 : 2;
-    if (argType == "char") {
-      out(`MZT z_A+0,z_SP DEV z_SP`, `Push char argument ${i}`);
-    } else {
-      out(`MZT z_A+1,z_SP DEV z_SP`, `Push int argument ${i}`);
-      out(`MZT z_A+0,z_SP DEV z_SP`, `Push int argument ${i}`);
-    }
+    // arguments are always pushed as 2 byte in the stack, MSB first
+    out(`MZT z_A+1,z_SP DEV z_SP`, `Push MSB argument ${i}`);
+    out(`MZT z_A+0,z_SP DEV z_SP`, `Push LSB argument ${i}`);
   });
 
   out(`JPS ${functionName}`, comment);

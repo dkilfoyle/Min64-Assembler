@@ -1,5 +1,5 @@
 import * as Comlink from "comlink";
-import { keycodes } from "./emulator11/io";
+import { keycodes } from "./emulator14/keycodes";
 import type { IRunParams, IStepParams } from "./api";
 import { machine } from "./emulator14/machine";
 
@@ -8,7 +8,8 @@ import { machine } from "./emulator14/machine";
 
 let ctx: OffscreenCanvasRenderingContext2D | null = null;
 let animationFrameId: number | null = null;
-const nextFrame = () => new Promise((resolve) => (animationFrameId = requestAnimationFrame(resolve)));
+const nextFrame = () =>
+  new Promise((resolve) => (animationFrameId = requestAnimationFrame(resolve)));
 
 // Track active key states
 const keyPressedState: Record<string, boolean> = {};
@@ -39,6 +40,7 @@ const api = {
       }
     } else {
       // initial key down
+      console.log(key);
       keyPressedState[key] = true;
       keyPressedTime[key] = tnow;
       if (key in keycodes) machine.io.pushKeyByte(keycodes[key]);
@@ -56,7 +58,9 @@ const api = {
     if (params.hex) {
       const totalBytes = machine.loadHexIntoRam(params.hex);
       const pc = parseInt(params.hex.slice(3, 7), 16);
-      console.info(`EMULATOR received ${totalBytes} bytes, starting at PC=${pc.toString(16).padStart(4, "0")}`);
+      console.info(
+        `EMULATOR received ${totalBytes} bytes, starting at PC=${pc.toString(16).padStart(4, "0")}`,
+      );
       machine.cpu.pc = pc;
     } else {
       if (params.pc != undefined) machine.cpu.pc = params.pc;
@@ -81,7 +85,10 @@ const api = {
     return machine.getEmulationState();
   },
   setBreakpoints: (breakpoints: number[]) => {
-    machine.breakpoints = breakpoints.map((addr) => ({ pc: addr, onceOnly: false }));
+    machine.breakpoints = breakpoints.map((addr) => ({
+      pc: addr,
+      onceOnly: false,
+    }));
   },
 };
 
