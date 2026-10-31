@@ -30,8 +30,7 @@ class FrameStack {
   }
 
   pop(node?: AstNode): IStackFrame {
-    if (this.stack.length === 0)
-      throw new MinCompileError("No stack frame to pop", node);
+    if (this.stack.length === 0) throw new MinCompileError("No stack frame to pop", node);
     return this.stack.pop()!;
   }
 
@@ -79,10 +78,7 @@ class FrameStack {
     return sp;
   }
 
-  getVariable(
-    name: string,
-    node?: AstNode,
-  ): { frame: IStackFrame; varInfo: IVariable } {
+  getVariable(name: string, node?: AstNode): { frame: IStackFrame; varInfo: IVariable } {
     let fpName = name;
     let inReach = true;
 
@@ -155,9 +151,7 @@ class FrameStack {
     if (options.printFrame) {
       const frame = this.stack[this.stack.length - 1];
       out(`; frame summary for ${frame.name}`);
-      frame.variables.forEach((v) =>
-        out(`; ${v.name.padEnd(15)} : ${hexWord(v.address)} (${v.location})`),
-      );
+      frame.variables.forEach((v) => out(`; ${v.name.padEnd(15)} : ${hexWord(v.address)} (${v.location})`));
     }
   }
 }

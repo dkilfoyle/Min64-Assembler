@@ -23,12 +23,7 @@ import {
   PrintStatement,
   Program,
 } from "../../ls/generated/ast";
-import {
-  compileDef,
-  compileCallStatement,
-  compileReturn,
-  compileFunctionCall,
-} from "./functions";
+import { compileDef, compileCallStatement, compileReturn, compileFunctionCall } from "./functions";
 import { compileIf, compileWhile } from "./controlflow";
 import { ZP_BASE } from "./expressions";
 import { frameStack } from "./stack";
@@ -44,8 +39,7 @@ const runtimeGlob = import.meta.glob("../runtime/*.asm", {
 const runtime = Object.fromEntries(
   Object.entries(runtimeGlob).map(([path, definition]) => {
     // Extract file name without extension to use as the new key
-    const fileName =
-      "__" + path.slice(path.lastIndexOf("/") + 1).replace(".asm", "");
+    const fileName = "__" + path.slice(path.lastIndexOf("/") + 1).replace(".asm", "");
     return [fileName, definition];
   }),
 );
@@ -68,10 +62,7 @@ export function emitRuntimeCall(name: string, comment?: string) {
   const definition = runtime[`__${name}`];
   if (!definition) {
     debugger;
-    throw new MinCompileError(
-      `Runtime definition not found for ${name}`,
-      {} as any,
-    );
+    throw new MinCompileError(`Runtime definition not found for ${name}`, {} as any);
   }
   runtimeUsed.add(name);
   out(`JPS __${name}`, comment);
@@ -132,11 +123,7 @@ export function out(instruction: string, comment: string = "") {
   assembly.push(x);
 }
 
-export function compile(
-  fname: string,
-  mainProgram: Program,
-  libraries: Program[],
-): string {
+export function compile(fname: string, mainProgram: Program, libraries: Program[]): string {
   reset();
 
   out(`; Code compiled from ${fname}\n`);
@@ -212,10 +199,7 @@ export function compilePrint(print: PrintStatement) {
         const v = frameStack.getVariable(varName, expr).varInfo;
         if (v.type == "char") {
           // print 0 terminated char(s)
-          out(
-            `LDI ${lowOperand(v.address)} PHS LDI ${highOperand(v.address)} PHS`,
-            `push &${varName}`,
-          );
+          out(`LDI ${lowOperand(v.address)} PHS LDI ${highOperand(v.address)} PHS`, `push &${varName}`);
           out(`JPS ${os("_PrintPtr")} PLS PLS`, `print ${varName}`);
           return;
         }

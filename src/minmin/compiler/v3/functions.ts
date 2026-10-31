@@ -24,8 +24,8 @@ function emitFunctionPrologue(name: string, hasHeapAllocation: boolean) {
 
   out(`${newFrame.name}_prologue:`, `function prologue`);
   format.indent += 2;
-  out(`MZT z_SP+1,z_SP DEV z_SP`, `Save caller's stack pointer`);
-  out(`MZT z_SP+0,z_SP DEV z_SP`, `Save caller's stack pointer`);
+  out(`MZT z_FP+1,z_SP DEV z_SP`, `Save caller's frame pointer`);
+  out(`MZT z_FP+0,z_SP DEV z_SP`, `Save caller's frame pointer`);
   if (hasHeapAllocation) {
     out(`MZT z_HP+1,z_SP DEV z_SP`, `Save caller's heap pointer`);
     out(`MZT z_HP+0,z_SP DEV z_SP`, `Save caller's heap pointer`);
@@ -39,8 +39,7 @@ function emitFunctionPrologue(name: string, hasHeapAllocation: boolean) {
 function emitFunctionEpilogue(hasHeapAllocation: boolean) {
   frameStack.printFrame();
   const frame = frameStack.pop();
-  if (frame.kind !== "function")
-    throw new MinCompileError("Popped frame is not a function frame");
+  if (frame.kind !== "function") throw new MinCompileError("Popped frame is not a function frame");
 
   out(`${frame.name}_end:`, `function epilogue`);
   format.indent += 2;
@@ -68,11 +67,7 @@ function findHeapAllocation(node: AstNode) {
     }
   }
   if (isIf(node)) {
-    const stmts = [
-      ...node.block,
-      ...(node.elseBlock?.block ?? []),
-      ...node.elifs.map((e) => e.block).flat(),
-    ];
+    const stmts = [...node.block, ...(node.elseBlock?.block ?? []), ...node.elifs.map((e) => e.block).flat()];
     for (const stmt of stmts) {
       if (findHeapAllocation(stmt)) return true;
     }
@@ -107,10 +102,7 @@ function findHeapAllocation(node: AstNode) {
 
 export function compileDef(def: Def) {
   out("\n");
-  out(
-    `${def.name}:`,
-    `params ${def.params.map((p) => p.type + ": " + p.name).join(", ")}`,
-  );
+  out(`${def.name}:`, `params ${def.params.map((p) => p.type + ": " + p.name).join(", ")}`);
   format.indent += 2;
 
   const hasHeapAllocation = findHeapAllocation(def);
@@ -170,8 +162,5 @@ export function compileFunctionCall(e: FunctionCall): IExpressionType {
 }
 
 export function compileCallStatement(node: CallStatement) {
-  out(
-    `JPS ${hexWord(node.address.value)}`,
-    `Call statement to address ${node.address.value}`,
-  );
+  out(`JPS ${hexWord(node.address.value)}`, `Call statement to address ${node.address.value}`);
 }
