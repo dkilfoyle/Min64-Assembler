@@ -8,8 +8,7 @@ import { machine } from "./emulator14/machine";
 
 let ctx: OffscreenCanvasRenderingContext2D | null = null;
 let animationFrameId: number | null = null;
-const nextFrame = () =>
-  new Promise((resolve) => (animationFrameId = requestAnimationFrame(resolve)));
+const nextFrame = () => new Promise((resolve) => (animationFrameId = requestAnimationFrame(resolve)));
 
 // Track active key states
 const keyPressedState: Record<string, boolean> = {};
@@ -58,9 +57,7 @@ const api = {
     if (params.hex) {
       const totalBytes = machine.loadHexIntoRam(params.hex);
       const pc = parseInt(params.hex.slice(3, 7), 16);
-      console.info(
-        `EMULATOR received ${totalBytes} bytes, starting at PC=${pc.toString(16).padStart(4, "0")}`,
-      );
+      console.info(`EMULATOR received ${totalBytes} bytes, starting at PC=${pc.toString(16).padStart(4, "0")}`);
       machine.cpu.pc = pc;
     } else {
       if (params.pc != undefined) machine.cpu.pc = params.pc;
@@ -77,6 +74,10 @@ const api = {
     cancelAnimationFrame(animationFrameId!);
     animationFrameId = null;
     machine.runType = params.stepType;
+    if (params.stepType == "stepOver" && params.nextPC === undefined) {
+      debugger;
+      throw Error("No nextPC for stepOver at pc=" + machine.cpu.pc.toString(16));
+    }
     if (params.nextPC != undefined) machine.stopStepOverPC = params.nextPC;
     lastTime = performance.now();
     return await runLoop();

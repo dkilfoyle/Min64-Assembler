@@ -98,7 +98,7 @@ export class Memory {
 
   /** CPU-visible memory read (RO): used by every regular instruction operand fetch. */
   read(addr: number): number {
-    if (addr === A_REG_ADDRESS) {
+    if (addr === A_REG_ADDRESS && !this.flashWindowActive()) {
       // Memory-mapped accumulator: reads return the current value of the A register.
       // This is a special case for the emulator; in real hardware, the A register is
       return machine.cpu.a;

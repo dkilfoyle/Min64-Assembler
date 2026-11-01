@@ -4,11 +4,7 @@ import type { IEmulationState } from "../../packages/emulator/src/emulator14/mac
 import { MinAsmDebugSession } from "../debugger/MinAsmDebugSession";
 import type { AsmCompileResult } from "../minasm/worker/api";
 import { useDocStore } from "../store/myStore";
-import {
-  OutputEvent,
-  StoppedEvent,
-  TerminatedEvent,
-} from "../debugger/dap/events";
+import { OutputEvent, StoppedEvent, TerminatedEvent } from "../debugger/dap/events";
 import {
   BreakpointsNotification,
   EmulationStateRequest,
@@ -126,20 +122,20 @@ class Runtime {
   }
 
   public run(runParams: IRunParams) {
-    messenger.sendNotification(
-      RunNotification,
-      { type: "webview", webviewType: "emulatorPanel" },
-      runParams,
-    );
+    messenger.sendNotification(RunNotification, { type: "webview", webviewType: "emulatorPanel" }, runParams);
   }
 
   public async step(stepParams: IStepParams) {
     if (!this.compileResult) throw Error("No source");
     if (!this.emulationState) throw Error("No emulation state");
-    const nextPC =
-      stepParams.stepType == "stepOver"
-        ? this.compileResult.locations[this.emulationState.pc]?.nextPC
-        : undefined;
+    const nextPC = stepParams.stepType == "stepOver" ? this.compileResult.locations[this.emulationState.pc]?.nextPC : undefined;
+
+    // if (stepParams.stepType == "stepOver" && nextPC === undefined) {
+    //   debugger;
+    //   throw Error("No nextPC for stepOver at pc=" + this.emulationState.pc.toString(16));
+    // }
+
+    console.log({ ...stepParams, nextPC });
 
     this.emulationState = await messenger.sendRequest(
       StepRequest,
@@ -160,21 +156,12 @@ class Runtime {
     const bps = this.breakpoints.get(path);
     // console.log("Setting breakpoints for", path, bps);
     if (!bps) return;
-    messenger.sendNotification(
-      BreakpointsNotification,
-      { type: "webview", webviewType: "emulatorPanel" },
-      bps,
-    );
+    messenger.sendNotification(BreakpointsNotification, { type: "webview", webviewType: "emulatorPanel" }, bps);
   }
 
   getMemory(memoryReference: string) {
     if (!this.emulationState) throw Error("No emulation state");
-    return Array.from(
-      this.emulationState.memory.slice(
-        parseInt(memoryReference, 16),
-        parseInt(memoryReference, 16) + 256,
-      ),
-    );
+    return Array.from(this.emulationState.memory.slice(parseInt(memoryReference, 16), parseInt(memoryReference, 16) + 256));
   }
 
   start(stopOnEntry: boolean) {
@@ -204,22 +191,15 @@ class Runtime {
     }
   }
 
-  async stop(
-    type: "step" | "hlt" | "breakpoint" | "entry",
-    output?: string,
-  ): Promise<IStepResult> {
+  async stop(type: "step" | "hlt" | "breakpoint" | "entry", output?: string): Promise<IStepResult> {
     const more = await this.updateState();
     if (!more) type = "hlt";
     switch (type) {
       case "entry":
-        this.debugSession!.sendEvent(
-          new StoppedEvent("entry", MinAsmDebugSession.THREAD_ID),
-        );
+        this.debugSession!.sendEvent(new StoppedEvent("entry", MinAsmDebugSession.THREAD_ID));
         break;
       case "step":
-        this.debugSession!.sendEvent(
-          new StoppedEvent("step", MinAsmDebugSession.THREAD_ID),
-        );
+        this.debugSession!.sendEvent(new StoppedEvent("step", MinAsmDebugSession.THREAD_ID));
         break;
       case "hlt":
         // console.log("Runtime stop: hlt");
@@ -229,9 +209,7 @@ class Runtime {
         vscode.commands.executeCommand("workbench.view.explorer");
         break;
       case "breakpoint":
-        this.debugSession!.sendEvent(
-          new StoppedEvent("breakpoint", MinAsmDebugSession.THREAD_ID),
-        );
+        this.debugSession!.sendEvent(new StoppedEvent("breakpoint", MinAsmDebugSession.THREAD_ID));
         break;
     }
     if (output) {

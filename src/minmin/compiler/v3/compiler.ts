@@ -29,6 +29,7 @@ import { ZP_BASE } from "./expressions";
 import { frameStack } from "./stack";
 import { cached } from "./cache";
 import { emitStringLiterals } from "./strings";
+import { emitGetPtr } from "./pointers";
 
 const runtimeGlob = import.meta.glob("../runtime/*.asm", {
   query: "?raw",
@@ -93,6 +94,7 @@ export function reset() {
   labelPrefixCounters = new Map();
   assembly = [];
   osUsed.clear();
+
   runtimeUsed.clear();
   runtimeUsed.add("getPtr");
   runtimeUsed.add("signext");
@@ -194,21 +196,30 @@ export function compilePrint(print: PrintStatement) {
         out(`JPS ${os("_Print")} "${expr.value}", 0`, "_Print");
         return;
       }
-      if (isVariableReference(expr)) {
-        const varName = expr.varName.$refText;
-        const v = frameStack.getVariable(varName, expr).varInfo;
-        if (v.type == "char") {
-          // print 0 terminated char(s)
-          out(`LDI ${lowOperand(v.address)} PHS LDI ${highOperand(v.address)} PHS`, `push &${varName}`);
-          out(`JPS ${os("_PrintPtr")} PLS PLS`, `print ${varName}`);
-          return;
-        }
+      const resType = expressionCompiler.compileExpression(expr);
+      switch (resType) {
+        case "char":
+          // handle char type if needed
+          out(`LDZ z_A+0 JPS ${os("_PrintChar")}`);
+          break;
+        case "int":
+          // result will be int in z_A
+          emitRuntimeCall(`inttostr`);
+          out(`LDB __strptr+0 PHS LDB __strptr+1 PHS`, `print int`);
+          out(`JPS ${os("_PrintPtr")} PLS PLS`, `print int`);
+          break;
+        case "char*":
+          // z_A = &a[slicestart], z_CNT = num items, z_B = num bytes
+          osUsed.add("_PrintChar");
+          emitRuntimeCall(`printCharArr`);
+          break;
+        case "int*":
+          // handle int* type if needed
+          throw new MinCompileError(`Unhandled int* type in print statement`, expr);
+        default:
+          // handle other types if needed
+          break;
       }
-      expressionCompiler.compileExpression(expr);
-      // result will be int in z_A
-      emitRuntimeCall(`inttostr`);
-      out(`LDB __strptr+0 PHS LDB __strptr+1 PHS`, `print int`);
-      out(`JPS ${os("_PrintPtr")} PLS PLS`, `print int`);
     });
   });
 }
