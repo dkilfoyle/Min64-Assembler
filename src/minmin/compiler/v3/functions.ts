@@ -146,11 +146,17 @@ export function compileFunctionCall(e: FunctionCall): IExpressionType {
   let argsSize = 0;
   const args = e.args.slice().reverse(); // reverse the arguments for right-to-left pushing
   args.forEach((arg, i) => {
+    const argn = args.length - i;
     const argType = expressionCompiler.compileExpression(arg.exprs[0]); // result -> z_A
-    argsSize += argType === "char" ? 1 : 2;
-    // arguments are always pushed as 2 byte in the stack, MSB first
-    out(`MZT z_A+1,z_SP DEV z_SP`, `Push MSB argument ${i}`);
-    out(`MZT z_A+0,z_SP DEV z_SP`, `Push LSB argument ${i}`);
+    if (argType == "char") {
+      argsSize += 1;
+      out(`MZT z_A+0,z_SP DEV z_SP`, `Push LSB argument ${argn} (${arg.exprs[0].$cstNode?.text})`);
+    } else {
+      // argtype = char* or int or int*
+      argsSize += 2;
+      out(`MZT z_A+1,z_SP DEV z_SP`, `Push MSB argument ${argn} (${arg.exprs[0].$cstNode?.text})`);
+      out(`MZT z_A+0,z_SP DEV z_SP`, `Push LSB argument ${argn} (${arg.exprs[0].$cstNode?.text})`);
+    }
   });
 
   out(`JPS ${functionName}`, comment);
