@@ -36,12 +36,12 @@ function emitGetGlobalStackPtrPtr(z_PTR: string, varInfo: IVariable) {
 
 function emitGetFrameStackPtr(z_PTR: string, varInfo: IVariable) {
   const x = `MVV z_FP,${z_PTR}`;
-  if (varInfo.kind == "local") {
+  if (varInfo.address == 0) {
+    out(`${x}`, `${z_PTR} = &${varInfo.name}`);
+  } else if (varInfo.kind == "local") {
     // targetPtr = z_FP - abs(fpOffset)
     out(`${x} SIV ${varInfo.address},${z_PTR}`, `${z_PTR} = &${varInfo.name}`);
-  } else if (varInfo.address == 0) {
-    out(`${x}`, `${z_PTR} = &${varInfo.name}`);
-  } else {
+  } else if (varInfo.kind == "param") {
     // targetPtr = z_FP + fpOffset
     out(`${x} AIV ${varInfo.address},${z_PTR}`, `${z_PTR} = &${varInfo.name}`);
   }

@@ -39,7 +39,6 @@ export class MinCompileError extends Error {
 
   constructor(message: string, node?: AstNode) {
     if (node) {
-      debugger;
       const line = node.$cstNode?.range.start.line ?? 0;
       super(`${message} (line ${line})`);
       this.range = node.$cstNode?.range;

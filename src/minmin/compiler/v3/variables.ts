@@ -16,7 +16,7 @@ import { emitGetPtr, emitGetArrayPtr } from "./pointers";
 import { emitRTPushZ, frameStack } from "./stack";
 import { cached } from "./cache";
 
-export type IExpressionType = "int" | "char" | "int*" | "char*";
+export type IExpressionType = "int" | "char";
 
 export interface IVariable {
   name: string;
@@ -26,11 +26,34 @@ export interface IVariable {
   // global is for variables stored in the global stack frame and address is the absolute address in memory
   address: number; // for stack var this is the offset from the frame pointer
   count?: number; // for array types, the number of elements
-  // offset (+ve to lower addresses) in the case of location=stack
-  // 0x10000 if location=heap (to throw an error if address is used)
 }
 
-export function emitCopyZIntoVar(sourceZ: string, varName: string, varIndex?: Expression | number) {
+export function emitCopyZToPtr(z: string, ptr: string, type: IExpressionType, comment?: string) {
+  if (type === "int") {
+    out(`MZT ${z}+0,${ptr} INV ${ptr}`, comment || `copy LSB of ${z} to ${ptr}`);
+    out(`MZT ${z}+1,${ptr} DEV ${ptr}`, comment || `copy MSB of ${z} to ${ptr}`);
+  } else {
+    out(`MZT ${z}+0,${ptr}`, comment || `copy char from ${z} to ${ptr}`);
+  }
+}
+
+export function emitCopyZToAddr(z: string, addr: number, type: IExpressionType, comment?: string) {
+  out(`MZB ${z}+0,${hexWord(addr)}`, comment || `copy LSB of ${z} to ${hexWord(addr)}`);
+  if (type == "int") {
+    out(`MZB ${z}+1,${hexWord(addr + 1)}`, comment || `copy MSB of ${z} to ${hexWord(addr + 1)}`);
+  }
+}
+
+export function emitCopyPtrToZ(ptr: string, z: string, type: IExpressionType, comment?: string) {
+  if (type === "int") {
+    out(`MTZ ${ptr},${z}+0 INV ${ptr}`, comment || `copy LSB of ${z} to ${ptr}`);
+    out(`MTZ ${ptr},${z}+1 DEV ${ptr}`, comment || `copy MSB of ${z} to ${ptr}`);
+  } else {
+    out(`MTZ ${ptr},${z}+0`, comment || `copy char from ${ptr} to ${z}`);
+  }
+}
+
+export function emitCopyZToVar(sourceZ: string, varName: string, varIndex?: Expression | number) {
   if (sourceZ !== "z_A") throw new MinCompileError(`Unsupported sourceZ ${sourceZ} for copying into variable ${varName}`);
   const { frame, varInfo } = frameStack.getVariable(varName);
 
@@ -39,21 +62,13 @@ export function emitCopyZIntoVar(sourceZ: string, varName: string, varIndex?: Ex
       // copying from z_A on to the stack
       if (varInfo.address > 255) throw new MinCompileError(`Maximum frame size is 255, got ${varInfo.address} for ${varName}`);
       emitGetPtr("z_PTR", varName, varIndex, true);
-      if (varInfo.type == "int") {
-        out(`MZT z_A+1,z_PTR DEV z_PTR`, `${frame.name}.${varInfo.name}:int = z_A(${cached.z_A?.id})`);
-        out(`MZT z_A+0,z_PTR INV z_PTR`, `${frame.name}.${varInfo.name}:int = z_A(${cached.z_A?.id})`);
-      } else {
-        out(`MZT z_A+0,z_PTR`, `${frame.name}.${varInfo.name}:char = z_A(${cached.z_A?.id})`);
-      }
+      emitCopyZToPtr("z_A", "z_PTR", varInfo.type);
       return;
     case "zeroPage":
       // copying from z_A on to zeroPage
       if (varIndex) {
         emitGetPtr("z_PTR", varName, varIndex, true);
-        emitRuntimeCall(
-          `copyZA`,
-          `${frame.name}.${varInfo.name}:int[${typeof varIndex === "number" ? varIndex : varIndex.$cstNode?.text}] = z_A(${cached.z_A?.id})`,
-        );
+        emitCopyZToPtr("z_A", "z_PTR", varInfo.type);
       } else {
         if (varInfo.type == "int") {
           out(`MVV z_A,${hexByte(varInfo.address)}`, `${frame.name}.${varInfo.name}:int = z_A ()`);
@@ -67,8 +82,8 @@ export function emitCopyZIntoVar(sourceZ: string, varName: string, varIndex?: Ex
       out(`MZB ${sourceZ}+1,${hexWord(varInfo.address + 1)}`, `${frame.name}.${varInfo.name} from ${sourceZ} -> global`);
       return;
     case "globalStack":
-      out(`MZB ${sourceZ}+1,${hexWord(0xefff - varInfo.address)} DEV z_SP`, `${frame.name}.${varInfo.name} from ${sourceZ} -> global`);
-      out(`MZB ${sourceZ}+0,${hexWord(0xefff - varInfo.address - 1)} DEV z_SP`, `${frame.name}.${varInfo.name} from ${sourceZ} -> global`);
+      out(`MZB ${sourceZ}+0,${hexWord(0xefff - varInfo.address)}`, `${frame.name}.${varInfo.name} from ${sourceZ} -> global`);
+      out(`MZB ${sourceZ}+1,${hexWord(0xefff - varInfo.address + 1)}`, `${frame.name}.${varInfo.name} from ${sourceZ} -> global`);
       return;
     default:
       throw new MinCompileError(`Unsupported location for variable ${varName}`);
@@ -76,7 +91,7 @@ export function emitCopyZIntoVar(sourceZ: string, varName: string, varIndex?: Ex
 }
 
 /** z_PTR = &VarOnStack z_A/B = **z_PTR */
-export function emitCopyVarIntoZ(targetAddr: number | string, varName: string, varIndex?: Expression) {
+export function emitCopyVarToZ(targetAddr: number | string, varName: string, varIndex?: Expression) {
   const { frame, varInfo } = frameStack.getVariable(varName);
   cached.setZA(
     targetAddr.toString() + (varIndex ? `[${typeof varIndex === "number" ? varIndex : varIndex.$cstNode?.text}]` : ""),
@@ -92,51 +107,36 @@ export function emitCopyVarIntoZ(targetAddr: number | string, varName: string, v
   const targetLSB = typeof targetAddr === "number" ? hexByte((targetAddr + 0) & 0xff) : `${targetAddr}+0`;
   const targetMSB = typeof targetAddr === "number" ? hexByte((targetAddr + 1) & 0xff) : `${targetAddr}+1`;
 
-  if (varInfo.type.startsWith("int")) {
+  if (varInfo.type == "int") {
     switch (varInfo.location) {
       case "stack":
         emitGetPtr("z_PTR", varName, varIndex, false);
-        switch (targetAddr) {
-          case "z_A":
-            if (varInfo.type == "int") {
-              out(`MTZ z_PTR,z_A+1 DEV z_PTR`, `move MSB from stack to z_A+1`);
-              out(`MTZ z_PTR,z_A+0 INV z_PTR`, `move LSB from stack to z_A+0`);
-            } else {
-              out(`MTZ z_PTR,z_A+0 INV z_PTR`, `move LSB from heap to z_A+0`);
-              out(`MTZ z_PTR,z_A+1 DEV z_PTR`, `move MSB from heap to z_A+1`);
-            }
-            break;
-          case "z_B":
-            out(`LDI ${varInfo.address} PHS JPS __ldZB PLS`, `z_B=${varInfo.name}`);
-            break;
-          default:
-            throw new MinCompileError(`Unsupported target address ${targetAddr}`);
-        }
+        emitCopyPtrToZ("z_PTR", "z_A", varInfo.type, `copy ${varInfo.name} from stack to z_A`);
         return;
       case "zeroPage":
-        out(`MVV ${hexByte(varInfo.address)},${targetLSB}`, `${frame.name}.${varInfo.name} from zeroPage -> ${targetAddr}`);
+        out(`MVV ${hexByte(varInfo.address)},${targetLSB}`, `copy ${varInfo.name} from zeroPage to ${targetAddr}`);
         return;
       case "globalStack":
-        out(`MWV ${hexWord(0xefff - varInfo.address - 1)},${targetLSB}`, `${frame.name}.${varInfo.name} from global -> ${targetAddr}`);
+        out(`MWV ${hexWord(0xefff - varInfo.address - 1)},${targetLSB}`, `copy ${varInfo.name} from global to ${targetAddr}`);
         return;
       case "absolute":
-        out(`MWV ${hexWord(varInfo.address)},${targetLSB}`, `${frame.name}.${varInfo.name} from global -> ${targetAddr}`);
+        out(`MWV ${hexWord(varInfo.address)},${targetLSB}`, `copy ${varInfo.name} from global to ${targetAddr}`);
         return;
     }
   } else {
     switch (varInfo.location) {
       case "stack":
         emitGetPtr("z_PTR", varName, varIndex, false); // z_PTR = &varName
-        out(`MTZ z_PTR,${targetLSB} JPS __signext`, `${frame.name}.${varInfo.name} from stack -> ${targetAddr}`);
+        out(`MTZ z_PTR,${targetLSB} JPS __signext`, `copy ${varInfo.name} from stack to ${targetAddr}`);
         return;
       case "zeroPage":
-        out(`MZZ ${hexByte(varInfo.address)},${targetLSB} JPS __signext`, `${frame.name}.${varInfo.name} from zeroPage -> ${targetAddr}`);
+        out(`MZZ ${hexByte(varInfo.address)},${targetLSB} JPS __signext`, `copy ${varInfo.name} from zeroPage to ${targetAddr}`);
         return;
       case "globalStack":
-        out(`MBB ${hexWord(0xefff - varInfo.address)},${targetLSB}`, `${frame.name}.${varInfo.name} from global -> ${targetAddr}`);
+        out(`MBB ${hexWord(0xefff - varInfo.address)},${targetLSB}`, `copy ${varInfo.name} from global to ${targetAddr}`);
         return;
       case "absolute":
-        out(`MBZ ${hexWord(varInfo.address)},${targetLSB} JPS __signext`, `${frame.name}.${varInfo.name} from global -> ${targetAddr}`);
+        out(`MBZ ${hexWord(varInfo.address)},${targetLSB} JPS __signext`, `copy ${varInfo.name} from global to ${targetAddr}`);
         return;
     }
   }
@@ -157,12 +157,7 @@ function compileVariableAtDeclaration(node: VariableDeclaration, varInfo: IVaria
       throw new MinCompileError(`Expected a single assignment expression for variable @ declaration`, node.assignExpr);
     const assignType = compileExpression(node.assignExpr.exprs[0]);
     if (!varInfo.type.startsWith(assignType)) throw new MinCompileError(`Type mismatch for variable @ declaration`, node.assignExpr.exprs[0]);
-    if (assignType == "char") {
-      out(`MZB z_A+0,${hexWord(varInfo.address)}`, `copy z_A to ${varInfo.name} @ ${varInfo.address}`);
-    }
-    if (assignType == "int") {
-      out(`MZB z_A+1,${hexWord(varInfo.address + 1)}`, `copy z_A to ${varInfo.name} @ ${varInfo.address}`);
-    }
+    emitCopyZToAddr("z_A", varInfo.address, assignType, `copy z_A to ${varInfo.address}`);
   } else {
     // char r @ 0x00ff
     // do nothing
@@ -223,7 +218,7 @@ export function compileVariableDeclaration(node: VariableDeclaration) {
       // not an array
       // int a = 6
       compileExpression(node.assignExpr.exprs[0]); // z_A = result of expression
-      emitCopyZIntoVar("z_A", varInfo.name);
+      emitCopyZToVar("z_A", varInfo.name);
     }
   } else {
     // variable has no initializer, so we need to allocate space for it
@@ -270,7 +265,7 @@ export function compileVariableAssignment(node: VariableAssignment) {
     //     `Type mismatch: expected int, got ${exprType}`,
     //     rhs,
     //   );
-    emitCopyZIntoVar("z_A", lhs.name, node.indexExpr);
+    emitCopyZToVar("z_A", lhs.name, node.indexExpr);
   }
 }
 
@@ -279,26 +274,26 @@ export function compileVariableCalcAssignment(node: VariableCalcAssignment) {
   const varName = node.varName.$refText;
   const { varInfo: lhs } = frameStack.getVariable(varName);
 
-  emitCopyVarIntoZ("z_A", varName, node.indexExpr); // z_PTR = &varName
+  emitCopyVarToZ("z_A", varName, node.indexExpr); // z_PTR = &varName
 
   if (node.op === "+=") {
     if (lhs.type === "int") {
       if (node.value <= 0xff) {
-        out(`LDI ${hexByte(node.value)} ADV z_A`, `${node.varName} += ${node.value}`);
+        out(`LDI ${hexByte(node.value)} ADV z_A`, `${varName} += ${node.value}`);
       } else {
-        out(`LDI ${hexByte(node.value & 0xff)} ADV z_A LDI ${hexByte(node.value >> 8)} AD.Z z_A+1`, `${node.varName} += ${node.value}`);
+        out(`LDI ${hexByte(node.value & 0xff)} ADV z_A LDI ${hexByte(node.value >> 8)} AD.Z z_A+1`, `${varName} += ${node.value}`);
       }
-      emitCopyZIntoVar("z_A", varName);
+      emitCopyZToVar("z_A", varName);
     } else {
-      out(`LDI ${hexByte(node.value)} AD.T z_PTR `, `${node.varName} += ${node.value}`);
+      out(`LDI ${hexByte(node.value)} AD.T z_PTR `, `${varName} += ${node.value}`);
     }
   } else {
     if (lhs.type === "int") {
       // TODO: check if this works
-      out(`LDI ${hexByte(node.value & 0xff)} SU.T z_PTR `, `${node.varName} -= ${node.value}`);
-      out(`LDI ${hexByte(node.value >> 8)} SU.T z_PTR+1`, `${node.varName} -= ${node.value}`);
+      out(`LDI ${hexByte(node.value & 0xff)} SU.T z_PTR `, `${varName} -= ${node.value}`);
+      out(`LDI ${hexByte(node.value >> 8)} SU.T z_PTR+1`, `${varName} -= ${node.value}`);
     } else {
-      out(`LDI ${hexByte(node.value)} SU.T z_PTR `, `${node.varName} -= ${node.value}`);
+      out(`LDI ${hexByte(node.value)} SU.T z_PTR `, `${varName} -= ${node.value}`);
     }
   }
 }
@@ -319,7 +314,7 @@ export function compileVariableReference(e: VariableReference): IExpressionType 
       if (varInfo.type.endsWith("*")) throw new MinCompileError(`Cannot take address of pointer type`, e);
       return (varInfo.type + "*") as IExpressionType; // int* or char*
     } else {
-      emitCopyVarIntoZ("z_A", varName, e.index?.startExpr);
+      emitCopyVarToZ("z_A", varName, e.index?.startExpr);
       return varInfo.type; // int or char
     }
   }

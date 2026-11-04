@@ -13,7 +13,7 @@ import {
   isFunctionCall,
   isDef,
 } from "../../ls/generated/ast";
-import { compileStatement, out, format, options, assembly } from "./compiler";
+import { compileStatement, out, format, options, assembly, reachableDefs } from "./compiler";
 import { frameStack, type IStackFrame } from "./stack";
 import { cached } from "./cache";
 import type { AstNode } from "langium";
@@ -110,14 +110,12 @@ export function compileDef(def: Def) {
   // Initialize the new stack frame for the function
   const frame = emitFunctionPrologue(def.name, hasHeapAllocation);
 
+  // FP OldFP OldFP paramL paramH
+  // 0  1     2     3      4
   let offsetFromFP = hasHeapAllocation ? 4 : 2;
   def.params.forEach((param, i) => {
-    // all params, int and char, are received on the stack as 2 byte values
-    offsetFromFP += 2; // assuming all types are 2 bytes for now
-    frameStack.addParamVariable(
-      param,
-      param.type == "char" ? offsetFromFP - 1 : offsetFromFP, // if char offset adjust to LSB
-    );
+    offsetFromFP += param.type == "char" ? 1 : 2;
+    frameStack.addParamVariable(param, offsetFromFP);
   });
 
   def.block.forEach((stmt) => compileStatement(stmt));
@@ -140,6 +138,9 @@ export function compileReturn(node: ReturnStatement) {
 /** a function call statement ie  foo(arg1, arg2) with no or ignored return value */
 export function compileFunctionCall(e: FunctionCall): IExpressionType {
   const functionName = e.functionName.$refText;
+  const functionDef = reachableDefs.find((def) => def.name === functionName);
+  if (!functionDef) throw new MinCompileError(`Function definition not found for ${functionName}`, e);
+
   const comment = `call ${functionName}(${e.args.length} arg${e.args.length === 1 ? "" : "s"})`;
 
   // push the arguments onto caller's frame in reverse order (right to left)
@@ -148,14 +149,57 @@ export function compileFunctionCall(e: FunctionCall): IExpressionType {
   args.forEach((arg, i) => {
     const argn = args.length - i;
     const argType = expressionCompiler.compileExpression(arg.exprs[0]); // result -> z_A
-    if (argType == "char") {
-      argsSize += 1;
-      out(`MZT z_A+0,z_SP DEV z_SP`, `Push LSB argument ${argn} (${arg.exprs[0].$cstNode?.text})`);
-    } else {
-      // argtype = char* or int or int*
-      argsSize += 2;
-      out(`MZT z_A+1,z_SP DEV z_SP`, `Push MSB argument ${argn} (${arg.exprs[0].$cstNode?.text})`);
-      out(`MZT z_A+0,z_SP DEV z_SP`, `Push LSB argument ${argn} (${arg.exprs[0].$cstNode?.text})`);
+    const paramType = functionDef.params[i].type;
+
+    // in min everything is passed by value
+    // given:
+    // def bla(char c):...
+    // char x = 0_1_2_3_4
+    // then:
+    // bla("a") pushes a.charCode
+    // bla(x) pushes a full copy of x (all 8-bit elements) so bla can refer to eg c[2]
+    // so:
+    // any variable can be referenced with an index
+    // to make this work the variable stack offset must be for the LSB for both locals and params
+
+    // cast args to the parameter type if necessary
+    if (paramType == "char") {
+      switch (argType) {
+        case "char":
+        case "int": // cast int to char
+          argsSize += 1;
+          out(`MZT z_A+0,z_SP DEV z_SP`, `Push LSB argument ${argn} (${arg.exprs[0].$cstNode?.text})`);
+          break;
+        case "int*":
+          throw new MinCompileError(`Cannot cast int* to char`, arg.exprs[0]);
+        // TODO: push a full copy of the array onto the stack in reverse element order or error or warning??
+        case "char*":
+          // TODO: push a full copy of the array onto the stack in reverse element order
+          throw new MinCompileError(`Cannot cast char* to char - should this be char[0]?`, arg.exprs[0]);
+        default:
+          throw Error(`Unsupported argument type ${argType}`);
+      }
+    } else if (paramType == "int") {
+      switch (argType) {
+        case "char":
+          // sign extend char to int
+          argsSize += 2;
+          out(`LDZ z_A+0 JPS _signext`, `Sign extend LSB to MSB for argument ${argn} (${arg.exprs[0].$cstNode?.text})`);
+          out(`MZT z_A+1,z_SP DEV z_SP`, `Push MSB argument ${argn} (${arg.exprs[0].$cstNode?.text})`);
+          out(`MZT z_A+0,z_SP DEV z_SP`, `Push LSB argument ${argn} (${arg.exprs[0].$cstNode?.text})`);
+          break;
+        case "int":
+          argsSize += 2;
+          out(`MZT z_A+1,z_SP DEV z_SP`, `Push MSB argument ${argn} (${arg.exprs[0].$cstNode?.text})`);
+          out(`MZT z_A+0,z_SP DEV z_SP`, `Push LSB argument ${argn} (${arg.exprs[0].$cstNode?.text})`);
+          break;
+        case "int*":
+          throw new MinCompileError(`Cannot cast int* to int`, arg.exprs[0]);
+        case "char*":
+          throw new MinCompileError(`Cannot cast char* to int`, arg.exprs[0]);
+        default:
+          throw Error(`Unsupported argument type ${argType}`);
+      }
     }
   });
 

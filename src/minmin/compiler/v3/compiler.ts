@@ -4,6 +4,7 @@ import * as expressionCompiler from "./expressions";
 import { computeReachableDefs } from "../reachability";
 import * as variableCompiler from "./variables";
 import {
+  Def,
   Expression,
   isCallStatement,
   isDef,
@@ -46,6 +47,7 @@ const runtime = Object.fromEntries(
 );
 
 export let assembly: string[] = [];
+export let reachableDefs: Def[] = [];
 export let labelPrefixCounters: Map<string, number> = new Map();
 export const osUsed: Set<string> = new Set();
 export const runtimeUsed = new Set<string>();
@@ -132,10 +134,10 @@ export function compile(fname: string, mainProgram: Program, libraries: Program[
   out("#org 0x0100");
 
   currentUri = mainProgram.$document?.uri.toString();
+  reachableDefs = computeReachableDefs(mainProgram, libraries);
 
   compileMain(mainProgram);
 
-  const reachableDefs = computeReachableDefs(mainProgram, libraries);
   for (const def of reachableDefs) {
     currentUri = def.$document?.uri.toString();
     compileDef(def);
