@@ -145,31 +145,28 @@ class FrameStack {
     throw new MinCompileError(`Symbol ${name} not found in frameStack`, node);
   }
 
-  addLocalVariable(node: VariableDeclaration, isArray: boolean) {
+  addLocalVariable(node: VariableDeclaration, arraySize: number) {
     const frame = this.current(node);
     const isGlobalFrame = frame.name.startsWith("__global");
 
     const varInfo: IVariable = {
       name: node.name,
       kind: "local",
-      type: "int",
+      type: node.type,
       location: isGlobalFrame ? "globalStack" : "stack",
       address: 0,
     };
 
     if (node.atExpr) {
       const address = constEval(node.atExpr);
-      varInfo.type = node.type === "int" ? "int*" : "char*";
       varInfo.location = address <= 0xff ? "zeroPage" : "absolute";
       varInfo.address = address;
       frame.variables.set(varInfo.name, varInfo);
-    } else if (isArray) {
-      varInfo.type = node.type === "int" ? "int*" : "char*";
+    } else if (arraySize > 0) {
       varInfo.address = this.getSP();
       frame.variables.set(varInfo.name, varInfo);
-      frame.frameSize += 2;
+      frame.frameSize += arraySize * (node.type === "int" ? 2 : 1);
     } else {
-      varInfo.type = node.type;
       varInfo.address = this.getSP();
       frame.variables.set(varInfo.name, varInfo);
       frame.frameSize += node.type === "int" ? 2 : 1;

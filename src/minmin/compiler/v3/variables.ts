@@ -16,7 +16,7 @@ import { emitGetPtr, emitGetArrayPtr } from "./pointers";
 import { emitRTPushZ, frameStack } from "./stack";
 import { cached } from "./cache";
 
-export type IExpressionType = "int" | "char";
+export type IExpressionType = "int" | "char" | "char*";
 
 export interface IVariable {
   name: string;
@@ -142,14 +142,6 @@ export function emitCopyVarToZ(targetAddr: number | string, varName: string, var
   }
 }
 
-const getSelfSizeRangeExpr = (node: VariableDeclaration) => {
-  if (!node.assignExpr) return undefined;
-  if (node.assignExpr.exprs.length !== 1) return undefined;
-  const expr = node.assignExpr.exprs[0];
-  if (isVariableReference(expr) && expr.varName.$refText === node.name && !!expr.index) return expr.index;
-  return undefined;
-};
-
 function compileVariableAtDeclaration(node: VariableDeclaration, varInfo: IVariable) {
   if (node.assignExpr) {
     // char posx @ 0x00c0 = x
@@ -164,56 +156,52 @@ function compileVariableAtDeclaration(node: VariableDeclaration, varInfo: IVaria
   }
 }
 
-export function isHeapAllocation(node: VariableDeclaration) {
-  const arraySizeDecl = getSelfSizeRangeExpr(node);
-  const isArrayAssignDecl = node.assignExpr != undefined && node.assignExpr.exprs.length > 1;
-  const isArray = arraySizeDecl != undefined || isArrayAssignDecl;
-  return { isArray, arraySizeDecl, isArrayAssignDecl };
+function isArrayAssignDecl(node: VariableDeclaration): { isArrayAssign: boolean; assignCount: number } {
+  return {
+    isArrayAssign: node.assignExpr != undefined && node.assignExpr.exprs.length > 1,
+    assignCount: node.assignExpr ? node.assignExpr.exprs.length : 0,
+  };
 }
 
+function isArraySizeDecl(node: VariableDeclaration): { isArraySize: boolean; sizeCount: number } {
+  // int a = a[0|n] where n is a numeric literal
+  const res = {
+    isArraySize: false,
+    sizeCount: 0,
+  };
+  if (!node.assignExpr) return res;
+  if (node.assignExpr.exprs.length !== 1) return res;
+  const rhs = node.assignExpr.exprs[0];
+  if (isVariableReference(rhs) && rhs.varName.$refText === node.name && !!rhs.index) {
+    const index = rhs.index;
+    if (index.startExpr && constEval(index.startExpr) !== 0) throw new MinCompileError(`Start index must be 0 or undefined`, index.startExpr);
+    if (!index.endExpr) throw new MinCompileError(`End index must be specified`, index);
+    try {
+      res.sizeCount = constEval(index.endExpr) + 1; // +1 as array slice is inclusive of start and end
+    } catch {
+      throw new MinCompileError(`Array size must be a constant`, index.endExpr);
+      // TODO: implement handling for runtime specified array size
+    }
+    res.isArraySize = true;
+    return res;
+  }
+  return res;
+}
 export function compileVariableDeclaration(node: VariableDeclaration) {
-  const { isArray, arraySizeDecl, isArrayAssignDecl } = isHeapAllocation(node);
-  const frame = frameStack.current(node);
-  const varInfo = frameStack.addLocalVariable(node, isArray);
+  const { isArrayAssign, assignCount } = isArrayAssignDecl(node);
+  const { isArraySize, sizeCount } = isArraySizeDecl(node);
+  const varInfo = frameStack.addLocalVariable(node, assignCount || sizeCount);
+  const elemSize = varInfo.type == "int" ? 2 : 1;
 
   if (node.atExpr) return compileVariableAtDeclaration(node, varInfo);
 
-  // z_SP should be ready to receive the variable's value
-
   if (node.assignExpr) {
-    if (arraySizeDecl) {
+    if (isArraySize) {
       // int a = a[0|n]
-      if (arraySizeDecl.startExpr && constEval(arraySizeDecl.startExpr) !== 0)
-        throw new MinCompileError(`Start index must be 0 or undefined`, arraySizeDecl.startExpr);
-      if (!arraySizeDecl.endExpr) throw new MinCompileError(`End index must be specified`, arraySizeDecl);
-
-      emitRTPushZ("z_HP");
-
-      try {
-        varInfo.count = constEval(arraySizeDecl.endExpr) + 1; // +1 as array slice is inclusive of start and end
-        if (varInfo.type == "int*") {
-          out(`MIV ${hexWord(varInfo.count * 2)},z_TMP1 AVV z_TMP1,z_HP`, "Advance z_HP by size of int array");
-        } else {
-          out(`MIV ${hexWord(varInfo.count)},z_TMP1 AVV z_TMP1,z_HP`, "Advance z_HP by size of char array");
-        }
-      } catch {
-        throw new MinCompileError(`Array size must be a constant`, arraySizeDecl.endExpr);
-        // TODO: implement handling for runtime array sizes
-        // could store the array size at runtime, e.g., in the first 2 bytes of the array
-        // compileExpression(arraySizeDecl.endExpr); // z_A = length of array
-        // array size will be z_A + 1 [0|x] or [|x] is length x+1
-        // if (symbolInfo.type == "int*") {
-        //   out(`LLV z_A AVV z_A,z_HP`, "Advance z_HP by size of int array");
-        // } else {
-        //   out(`AVV z_A,z_HP`, "Advance z_HP by size of char array");
-        // }
-      }
-    } else if (isArrayAssignDecl) {
+      out(`MIV ${hexWord(sizeCount * elemSize)},z_TMP1 AVV z_TMP1,z_SP`, "Advance z_SP by size of array");
+    } else if (isArrayAssign) {
       // int a = 1_2_3
-      emitRTPushZ("z_HP");
-      out(`MVV z_HP,z_PTR2`);
-      compileCompoundExpression(node.assignExpr, varInfo.type, varInfo.name);
-      out(`MVV z_PTR2,z_HP`, "Update z_HP from z_PTR2");
+      compileCompoundExpression(node.assignExpr, varInfo.type, "z_SP");
     } else {
       // not an array
       // int a = 6
@@ -223,8 +211,8 @@ export function compileVariableDeclaration(node: VariableDeclaration) {
   } else {
     // variable has no initializer, so we need to allocate space for it
     varInfo.type == "char"
-      ? out(`DEV z_SP`, `Allocate space for uninitialized char`)
-      : out(`DEV z_SP DEV z_SP`, `Allocate space for uninitialized int`);
+      ? out(`INV z_SP`, `Allocate space for uninitialized char`)
+      : out(`INV z_SP INV z_SP`, `Allocate space for uninitialized int`);
   }
 }
 

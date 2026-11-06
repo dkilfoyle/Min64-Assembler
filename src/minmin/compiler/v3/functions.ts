@@ -1,6 +1,6 @@
 import { hexWord, MinCompileError } from "../utils";
 import * as expressionCompiler from "./expressions";
-import { isHeapAllocation, type IExpressionType } from "./variables";
+import { isArrayDecl, type IExpressionType } from "./variables";
 import {
   FunctionCall,
   type ReturnStatement,
@@ -59,7 +59,7 @@ function emitFunctionEpilogue(hasHeapAllocation: boolean) {
 
 function findHeapAllocation(node: AstNode) {
   if (isVariableDeclaration(node)) {
-    if (isHeapAllocation(node).isArray) return true;
+    if (isArrayDecl(node).isArray) return true;
   }
   if (isWhile(node)) {
     for (const stmt of node.block) {

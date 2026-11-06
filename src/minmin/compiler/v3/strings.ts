@@ -27,14 +27,11 @@ export function emitStringLiterals() {
 export function compileStringLiteral(e: StringLiteral): IExpressionType {
   const str = e.value;
   if (str.length == 1) {
-    out(
-      `MIV ${hexWord(str.charCodeAt(0))},z_A+0`,
-      `load character literal '${str}' into z_A`,
-    );
+    out(`MIV ${hexWord(str.charCodeAt(0))},z_A+0`, `load character literal '${str}' into z_A`);
     return "char";
   } else {
     const label = addStringLiteral(e.value);
-    out(`MIV ${label},z_A`, `load address of string literal ${label} into z_A`);
+    out(`MIV ${label},z_A MIV ${hexWord(label.length)},z_CNT`, `z_A=&str, z_CNT=length(str)`);
     return "char*";
   }
 }
