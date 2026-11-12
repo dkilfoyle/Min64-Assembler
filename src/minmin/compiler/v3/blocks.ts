@@ -6,7 +6,7 @@ import { frameStack } from "./stack";
 export function compileBlock(name: string, stmts: LocalElement[]) {
   format.indent += 2;
   cached.unsetZA();
-  const newFrame = frameStack.addFrame(name, "block");
+  frameStack.buildBlockFrame(name, stmts);
   stmts.forEach((stmt) => compileStatement(stmt));
 
   // epilog

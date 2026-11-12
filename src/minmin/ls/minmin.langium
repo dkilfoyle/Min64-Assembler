@@ -113,10 +113,13 @@ FunctionCall:
   functionName=[Def:ID] '(' (args+=CompoundExpression ("," args+=CompoundExpression)*)? ')';
 
 ConstExpression:
-  NumberLiteral | StringLiteral;
+  NumberLiteral | CharLiteral |StringLiteral;
 
 NumberLiteral:
   value=(HEXNUMBER|DECIMALNUMBER);
+
+CharLiteral:  
+  value=CHAR;
 
 StringLiteral:
   value=STRING;
@@ -137,5 +140,6 @@ hidden terminal COMMENT: /#[^\n\r]*/;
 // terminal US: /_/;
 terminal HEXNUMBER returns number: /0x[0-9A-Fa-f]+/;
 terminal DECIMALNUMBER returns number: /[0-9]+/;
+terminal CHAR: /"(\\.|[^"])"|'(\\.|[^'])'/;
 terminal STRING: /"(\\.|[^"])*"|'(\\.|[^'])*'/;
 terminal ID: /[a-zA-Z][a-zA-Z0-9]*/;

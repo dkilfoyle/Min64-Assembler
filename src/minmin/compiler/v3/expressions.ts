@@ -1,8 +1,8 @@
 import {
   BinaryExpression,
   ComparisonExpression,
-  CompoundExpression,
   isBinaryExpression,
+  isCharLiteral,
   isComparisonExpression,
   isFunctionCall,
   isNumberLiteral,
@@ -10,7 +10,6 @@ import {
   isUnaryExpression,
   isVariableReference,
   NumberLiteral,
-  StringLiteral,
   UnaryExpression,
   type Expression,
 } from "../../ls/generated/ast";
@@ -20,7 +19,14 @@ import { compileVariableReference, type IExpressionType } from "./variables";
 import { compileFunctionCall } from "./functions";
 import { frameStack } from "./stack";
 import { cached } from "./cache";
-import { compileStringLiteral } from "./strings";
+import { compileCharLiteral, compileStringLiteral } from "./strings";
+import { isArrayExpression } from "./arrays";
+
+/*
+Expressions can evaluate to a scalar value (int or char) or a pointer (int* or char*)
+if scalar then z_A = value of the scalar
+if pointer then z_A = address, z_B = numBytes
+*/
 
 const VIRTUAL_STACK_BASE = 0xefff;
 export const ZP_BASE = 0x00;
@@ -35,16 +41,20 @@ export function emitHWPopZ(z = "z_A") {
   out(`PLS SDZ ${z}+1 PLS SDZ ${z}+0`, `pop ${z}   from hardware stack`);
 }
 
-export function constEval(expr: Expression): number {
+export function constEval(expr: Expression): number | undefined {
   switch (true) {
     case isNumberLiteral(expr):
       return expr.value;
     case isUnaryExpression(expr):
-      if (expr.op === "-") return -constEval(expr.inner);
-      throw new MinCompileError("unsupported constant expression", expr);
+      if (expr.op === "-") {
+        const u = constEval(expr.inner);
+        if (u === undefined) return undefined;
+        return -u;
+      } else throw new MinCompileError("unsupported constant expression", expr);
     case isBinaryExpression(expr): {
       const l = constEval(expr.left);
       const r = constEval(expr.right);
+      if (l === undefined || r === undefined) return undefined;
       switch (expr.op) {
         case "+":
           return l + r;
@@ -58,8 +68,8 @@ export function constEval(expr: Expression): number {
           throw new MinCompileError("unsupported constant expression", expr);
       }
     }
-    default:
-      throw new MinCompileError("expected a constant expression", expr);
+    default: // eg a variable
+      return undefined;
   }
 }
 
@@ -75,43 +85,17 @@ export function getExpressionType(e: Expression): string {
     case isComparisonExpression(e):
       return "int";
     default:
-      throw new MinCompileError(`Unsupported expression: ${JSON.stringify(e)}`, e);
+      throw new MinCompileError(
+        `Unsupported expression: ${JSON.stringify(e)}`,
+        e,
+      );
   }
 }
 
-export function isArrayExpression(e: Expression): boolean {
-  if (!isVariableReference(e)) return false;
-  const varInfo = frameStack.getVariable(e.varName.$refText, e).varInfo;
-  if (!varInfo.type.endsWith("*")) return false;
-  if (varInfo.location == "absolute") return false; // absolute variables are not considered array expressions because length unknown
-  if (varInfo.location == "zeroPage") return false; // zero page variables are not considered array expressions because length unknown
-  if (e.index && e.index.startExpr && !e.index.endExpr) return false; // eg a[5] which returns a primary value
-  return true;
-}
-
-//*
-export function compileCompoundExpression(e: CompoundExpression, elementType: IExpressionType, ptr: string): void {
-  // prerequisite: ptr points to &target[index||0]
-  // eg int a = 0_1_2_3
-  // eg int a = a[0|3]; a = 0_1_2_3;
-  // eg foo(0_1_2_3)
-  // eg return 0_1_2_3
-
-  for (let i = 0; i < e.exprs.length; i++) {
-    compileExpression(e.exprs[i]);
-    if (isArrayExpression(e.exprs[i])) {
-      // compiling an array slice puts the slice information in z_PTR (pointer to start), z_CNT (number of items), and z_A (number of bytes)
-      emitRuntimeCall(`memCopy`, `copy z_A bytes from z_PTR to z_PTR2`);
-    } else {
-      out(`MZT z_A+0,${ptr} INV ${ptr}`, `move z_A to ${ptr}[${i}]`);
-      if (elementType == "int") {
-        out(`MZT z_A+1,${ptr} INV ${ptr}`);
-      }
-    }
-  }
-}
-
-/** Compile expr, leaving the 16-bit result in the z_A zero-page word. */
+/** Evaluate expression into z_A
+ * if int or char scalar in z_A
+ * if int* or char* pointer in z_A, numBytes in z_B
+ **/
 export function compileExpression(e: Expression): IExpressionType {
   // TODO: possible optimisations
   // option to preserve z_A or not
@@ -126,25 +110,28 @@ export function compileExpression(e: Expression): IExpressionType {
   let resultType: IExpressionType;
   switch (true) {
     case isNumberLiteral(e):
-      resultType = compileNum(e);
+      resultType = compileNum(e); // result is int
       break;
     case isStringLiteral(e):
-      resultType = compileStringLiteral(e);
+      resultType = compileStringLiteral(e); // result is char*
+      break;
+    case isCharLiteral(e):
+      resultType = compileCharLiteral(e); // result is char
       break;
     case isVariableReference(e):
-      resultType = compileVariableReference(e);
+      resultType = compileVariableReference(e); // result is variable type
       break;
     case isFunctionCall(e):
-      resultType = compileFunctionCall(e);
+      resultType = compileFunctionCall(e); // result is return statement type
       break;
     case isUnaryExpression(e):
-      resultType = compileUnary(e);
+      resultType = compileUnary(e); // result is int
       break;
     case isBinaryExpression(e):
-      resultType = compileBinary(e);
+      resultType = compileBinary(e); // result is int
       break;
     case isComparisonExpression(e):
-      resultType = compileComparison(e);
+      resultType = compileComparison(e); // result is int
       break;
     default:
       throw new MinCompileError(`Unsupported expression`, e);
@@ -160,10 +147,13 @@ function compileNum(e: NumberLiteral): IExpressionType {
 }
 
 function compileUnary(e: UnaryExpression): IExpressionType {
-  if (isArrayExpression(e.inner)) {
-    throw new MinCompileError("Unary expression on array is not supported", e);
+  const resultType = compileExpression(e.inner);
+  if (resultType.endsWith("*")) {
+    throw new MinCompileError(
+      "Unary expression on pointer type is not supported",
+      e,
+    );
   }
-  compileExpression(e.inner);
   if (e.op === "-") {
     out(`NEV z_A`, `z_A = -z_A`);
   } else {
@@ -173,13 +163,23 @@ function compileUnary(e: UnaryExpression): IExpressionType {
 }
 
 function compileBinary(e: BinaryExpression): IExpressionType {
-  if (isArrayExpression(e.left)) {
-    throw new MinCompileError("Binary expression on array is not supported", e.left);
+  if (isArrayExpression(e.left) || isStringLiteral(e.left)) {
+    throw new MinCompileError(
+      "Binary expression on array or string is not supported",
+      e.left,
+    );
   }
-  if (isArrayExpression(e.right)) {
-    throw new MinCompileError("Binary expression on array is not supported", e.right);
+  if (isArrayExpression(e.right) || isStringLiteral(e.right)) {
+    throw new MinCompileError(
+      "Binary expression on array or string is not supported",
+      e.right,
+    );
   }
-  const constSide = isNumberLiteral(e.left) ? e.left : isNumberLiteral(e.right) ? e.right : null;
+  const constSide = isNumberLiteral(e.left)
+    ? e.left
+    : isNumberLiteral(e.right)
+      ? e.right
+      : null;
   const otherSide = constSide === e.left ? e.right : e.left;
 
   if (constSide) {
@@ -270,11 +270,17 @@ function compileBinary(e: BinaryExpression): IExpressionType {
 // __A then moved to __B; combine into __B via negate+add (or plain subtract for
 // <=/>=/>) and branch on sign to produce 0xffff/0x0000 in __A.
 export function compileComparison(e: ComparisonExpression): IExpressionType {
-  if (isArrayExpression(e.left)) {
-    throw new MinCompileError("Binary expression on array is not supported", e.left);
+  if (isArrayExpression(e.left) || isStringLiteral(e.left)) {
+    throw new MinCompileError(
+      "Binary expression on array or string is not supported",
+      e.left,
+    );
   }
-  if (isArrayExpression(e.right)) {
-    throw new MinCompileError("Binary expression on array is not supported", e.right);
+  if (isArrayExpression(e.right) || isStringLiteral(e.right)) {
+    throw new MinCompileError(
+      "Binary expression on array or stringis not supported",
+      e.right,
+    );
   }
   compileExpression(e.left);
   emitHWPushZ("z_A");

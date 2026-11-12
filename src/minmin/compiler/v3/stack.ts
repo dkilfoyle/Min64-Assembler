@@ -1,9 +1,24 @@
 import type { AstNode } from "langium";
 import { hexWord, MinCompileError } from "../utils";
 import type { IVariable } from "./variables";
-import type { NamedElement, VariableDeclaration } from "../../ls/generated/ast";
+import {
+  isVariableDeclaration,
+  VariableReference,
+  type Def,
+  type LocalElement,
+  type NamedElement,
+  type ParameterDeclaration,
+  type SimpleStatement,
+  type VariableDeclaration,
+} from "../../ls/generated/ast";
 import { constEval } from "./expressions";
 import { options, out } from "./compiler";
+import {
+  getCompoundExpressionArraySize,
+  getSliceLength,
+  isArray,
+  isArraySizeDecl,
+} from "./arrays";
 
 export function emitRTPushZ(sourceZ: string, type = "int") {
   if (type === "int") {
@@ -32,30 +47,6 @@ export function emitRTPullZ(destZ: string, type = "int") {
   }
 }
 
-// Frame layout
-// stack grows upwards, all int values stored as LSB MSB
-// each frame starts with it's parents frame pointer (FP) = offset 0
-// then come the function arguments, followed by local variables
-// z_PTR points to the top of the stack, the next free address
-// z_PTR points to the currently selected stack variable, address of the LSB
-
-/*
-def bla():
-  int x = 0
-  int y = 0
-  char c = c[0|3]
-  foo(x,y,c)
-  return
-def foo(int j, int k, char myarray):
-  int z = 0
-  return
-
-  varName  | mainFP0 | mainFP1 | x0 | x1 | y0 | y1 | c0 | c1 | c2 | c3 | blaFP0 | blaFP1 | j0 | j1 | k0 | k1 | myarray0 | myarray1 | myarray2 | myarray3 | z0 | z1
-  z_FP     | bla     |         |    |    |    |    |    |    |    |    | foo    |        |    |    |    |    |          |          |          |          |    |
-  FPOffset | 0       | 1       | 2  | 3  | 4  | 5  | 6  | 7  | 8  | 9  | 0      | 1      | 2  | 3  | 4  | 5  | 6        | 7        | 8        | 9        | 10 | 11
-
-*/
-
 export interface IStackFrame {
   name: string;
   kind: "function" | "block" | "global";
@@ -75,7 +66,8 @@ class FrameStack {
   }
 
   pop(node?: AstNode): IStackFrame {
-    if (this.stack.length === 0) throw new MinCompileError("No stack frame to pop", node);
+    if (this.stack.length === 0)
+      throw new MinCompileError("No stack frame to pop", node);
     return this.stack.pop()!;
   }
 
@@ -122,7 +114,10 @@ class FrameStack {
     return sp;
   }
 
-  getVariable(name: string, node?: AstNode): { frame: IStackFrame; varInfo: IVariable } {
+  getVariable(
+    name: string,
+    node?: AstNode,
+  ): { frame: IStackFrame; varInfo: IVariable } {
     let fpName = name;
     let inReach = true;
 
@@ -145,7 +140,7 @@ class FrameStack {
     throw new MinCompileError(`Symbol ${name} not found in frameStack`, node);
   }
 
-  addLocalVariable(node: VariableDeclaration, arraySize: number) {
+  addLocalVariable(node: VariableDeclaration) {
     const frame = this.current(node);
     const isGlobalFrame = frame.name.startsWith("__global");
 
@@ -159,30 +154,43 @@ class FrameStack {
 
     if (node.atExpr) {
       const address = constEval(node.atExpr);
+      if (address === undefined)
+        throw new MinCompileError(
+          "Address must be a constant expression",
+          node.atExpr,
+        );
       varInfo.location = address <= 0xff ? "zeroPage" : "absolute";
       varInfo.address = address;
-      frame.variables.set(varInfo.name, varInfo);
-    } else if (arraySize > 0) {
-      varInfo.address = this.getSP();
-      frame.variables.set(varInfo.name, varInfo);
-      frame.frameSize += arraySize * (node.type === "int" ? 2 : 1);
     } else {
       varInfo.address = this.getSP();
-      frame.variables.set(varInfo.name, varInfo);
-      frame.frameSize += node.type === "int" ? 2 : 1;
+      const arrayInfo = isArray(node.assignExpr);
+      if (arrayInfo.arrayType) {
+        varInfo.type = `${node.type}*`;
+        varInfo.count = arrayInfo.count;
+        // if a fixed-size array, allocate space for it in the frame else allocate space (2 bytes) for a hidden pointer
+        frame.frameSize +=
+          arrayInfo.count == undefined
+            ? 2 // variable-length array pointer
+            : arrayInfo.count * (node.type == "int" ? 2 : 1);
+      } else {
+        frame.frameSize += node.type === "int" ? 2 : 1;
+      }
     }
+
+    frame.variables.set(varInfo.name, varInfo);
     return varInfo;
   }
 
-  addParamVariable(node: NamedElement, offsetFromFP: number) {
+  addParamVariable(node: NamedElement) {
     const frame = this.current(node);
     const varInfo: IVariable = {
       name: node.name,
       kind: "param",
       type: node.type,
       location: "stack",
-      address: offsetFromFP,
+      address: frame.frameSize,
     };
+    frame.frameSize += 2; // all stack entries are 2 bytes because a char could be a char or a char array pointer
     frame.variables.set(varInfo.name, varInfo);
     return varInfo;
   }
@@ -191,8 +199,34 @@ class FrameStack {
     if (options.printFrame) {
       const frame = this.stack[this.stack.length - 1];
       out(`; frame summary for ${frame.name}`);
-      frame.variables.forEach((v) => out(`; ${v.name.padEnd(15)} : ${hexWord(v.address)} (${v.location})`));
+      frame.variables.forEach((v) =>
+        out(`; ${v.name.padEnd(15)} : ${hexWord(v.address)} (${v.location})`),
+      );
     }
+  }
+
+  buildFunctionFrame(def: Def) {
+    // function stack frame is
+    //           callerFP callerFP param0 param0 ... paramn paramn local0 local1  ... localn localn vla00 vla01 ....
+    // fpOffset   0       1        2      3          ?      ?      ?      ?           ?      ?      ?     ?
+    const frame = this.addFrame(def.name, "function");
+
+    // add parameters to the frame
+    def.params.forEach((param, i) => {
+      frameStack.addParamVariable(param);
+    });
+
+    // add locals to the frame
+    def.block.forEach((stmt) => {
+      if (isVariableDeclaration(stmt)) this.addLocalVariable(stmt);
+    });
+  }
+
+  buildBlockFrame(name: string, block: Array<LocalElement | SimpleStatement>) {
+    const frame = this.addFrame(name, "block");
+    block.forEach((stmt) => {
+      if (isVariableDeclaration(stmt)) this.addLocalVariable(stmt);
+    });
   }
 }
 

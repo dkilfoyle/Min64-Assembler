@@ -14,6 +14,7 @@ export const MinminTerminals = {
     COMMENT: /#[^\n\r]*/,
     HEXNUMBER: /0x[0-9A-Fa-f]+/,
     DECIMALNUMBER: /[0-9]+/,
+    CHAR: /"(\\.|[^"])"|'(\\.|[^'])'/,
     STRING: /"(\\.|[^"])*"|'(\\.|[^'])*'/,
     ID: /[a-zA-Z][a-zA-Z0-9]*/,
 };
@@ -115,6 +116,21 @@ export function isCallStatement(item: unknown): item is CallStatement {
     return reflection.isInstance(item, CallStatement.$type);
 }
 
+export interface CharLiteral extends langium.AstNode {
+    readonly $container: BinaryExpression | ComparisonExpression | CompoundExpression | ElIf | If | RangeIndex | UnaryExpression | VariableAssignment | VariableCalcAssignment | VariableDeclaration | While;
+    readonly $type: 'CharLiteral';
+    value: string;
+}
+
+export const CharLiteral = {
+    $type: 'CharLiteral',
+    value: 'value'
+} as const;
+
+export function isCharLiteral(item: unknown): item is CharLiteral {
+    return reflection.isInstance(item, CharLiteral.$type);
+}
+
 export interface ComparisonExpression extends langium.AstNode {
     readonly $container: BinaryExpression | ComparisonExpression | CompoundExpression | ElIf | If | RangeIndex | UnaryExpression | VariableAssignment | VariableCalcAssignment | VariableDeclaration | While;
     readonly $type: 'ComparisonExpression';
@@ -149,7 +165,7 @@ export function isCompoundExpression(item: unknown): item is CompoundExpression 
     return reflection.isInstance(item, CompoundExpression.$type);
 }
 
-export type ConstExpression = NumberLiteral | StringLiteral;
+export type ConstExpression = CharLiteral | NumberLiteral | StringLiteral;
 
 export const ConstExpression = {
     $type: 'ConstExpression'
@@ -541,6 +557,7 @@ export type MinminAstType = {
     BinaryExpression: BinaryExpression
     BreakStatement: BreakStatement
     CallStatement: CallStatement
+    CharLiteral: CharLiteral
     ComparisonExpression: ComparisonExpression
     CompoundExpression: CompoundExpression
     ConstExpression: ConstExpression
@@ -604,6 +621,15 @@ export class MinminAstReflection extends langium.AbstractAstReflection {
                 }
             },
             superTypes: [SimpleStatement.$type]
+        },
+        CharLiteral: {
+            name: CharLiteral.$type,
+            properties: {
+                value: {
+                    name: CharLiteral.value
+                }
+            },
+            superTypes: [ConstExpression.$type]
         },
         ComparisonExpression: {
             name: ComparisonExpression.$type,
