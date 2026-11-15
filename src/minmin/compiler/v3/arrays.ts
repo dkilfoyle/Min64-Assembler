@@ -1,12 +1,8 @@
-import {
-  emitCopyZToAddr,
-  emitCopyZToPtr,
-  type IExpressionType,
-  type IVariable,
-} from "./variables";
+import { emitCopyZToAddr, emitCopyZToPtr, type IExpressionType, type IVariable } from "./variables";
 import { MinCompileError, hexWord } from "../utils";
 import {
   CompoundExpression,
+  isBinaryExpression,
   isCompoundExpression,
   isStringLiteral,
   isVariableReference,
@@ -58,45 +54,44 @@ export function getSliceLength(r: RangeIndex): number | undefined {
     const start = r.startExpr ? constEval(r.startExpr) : 0;
     const end = constEval(r.endExpr);
     if (start === undefined || end === undefined) return undefined;
-    if (end < start)
-      throw new MinCompileError("Slice end must be greater than start", r);
+    if (end < start) throw new MinCompileError("Slice end must be greater than start", r);
     return end - start + 1;
   } else throw new MinCompileError("Expecting slice end expression", r);
 }
 
 interface IArrayInfo {
   count?: number;
-  arrayType: "slice" | "string" | "compound" | undefined;
+  arrayType: "slice" | "string" | "compound";
 }
 
-export function isArrayExpression(e: Expression): IArrayInfo {
+export function isArrayExpression(e: Expression): IArrayInfo | undefined {
+  if (isBinaryExpression(e)) return undefined;
   if (isStringLiteral(e))
     return {
       count: e.value.length,
       arrayType: "string",
     };
-  if (!isVariableReference(e)) return { count: 0, arrayType: undefined };
+  if (!isVariableReference(e)) return undefined;
   const varInfo = frameStack.getVariable(e.varName.$refText, e).varInfo;
-  if (!varInfo.type.endsWith("*")) return { count: 0, arrayType: undefined };
-  if (varInfo.location == "absolute") return { count: 0, arrayType: undefined }; // absolute variables are not considered array expressions because length unknown
-  if (varInfo.location == "zeroPage") return { count: 0, arrayType: undefined }; // zero page variables are not considered array expressions because length unknown
-  if (e.index && e.index.startExpr && !e.index.endExpr)
-    return { count: 0, arrayType: undefined }; // eg a[5] which returns a primary value
-  if (e.index && e.index.endExpr)
-    return { count: getSliceLength(e.index), arrayType: "slice" }; // eg a[2|5]
+  if (!varInfo.type.endsWith("*")) return undefined;
+  if (varInfo.location == "absolute") return undefined; // absolute variables are not considered array expressions because length unknown
+  if (varInfo.location == "zeroPage") return undefined; // zero page variables are not considered array expressions because length unknown
+  if (e.index && e.index.startExpr && !e.index.endExpr) return undefined; // eg a[5] which returns a primary value
+  if (e.index && e.index.endExpr) return { count: getSliceLength(e.index), arrayType: "slice" }; // eg a[2|5]
   return { count: varInfo.count, arrayType: "slice" };
 }
 
-export function isArray(e?: CompoundExpression): IArrayInfo {
-  if (!e) return { count: 0, arrayType: undefined };
+export function isArray(e?: CompoundExpression): IArrayInfo | undefined {
+  if (!e) return undefined;
   if (e.exprs.length > 1) {
     return {
-      count: e.exprs.reduce<number | undefined>((acc, expr) => {
-        const info = isArrayExpression(expr);
-        if (info.count === undefined) return undefined;
-        if (acc === undefined) return undefined;
-        return acc + info.count;
-      }, 0),
+      count:
+        e.exprs.reduce<number | undefined>((acc, expr) => {
+          const info = isArrayExpression(expr);
+          if (info?.count === undefined) return undefined;
+          if (acc === undefined) return undefined;
+          return acc + info.count;
+        }, 0) ?? undefined,
       arrayType: "compound",
     };
   } else if (e.exprs.length == 1) {
@@ -104,34 +99,22 @@ export function isArray(e?: CompoundExpression): IArrayInfo {
   } else throw new MinCompileError("Empty compound expression", e); // shouldn't be possible
 }
 
-export function isArraySizeDecl(
-  node: VariableDeclaration,
-): undefined | Expression {
+export function isArraySizeDecl(node: VariableDeclaration): undefined | Expression {
   // int a = a[0|n] where n is a numeric literal
 
   if (!node.assignExpr) return undefined;
   if (node.assignExpr.exprs.length !== 1) return undefined;
 
   const rhs = node.assignExpr.exprs[0];
-  if (
-    isVariableReference(rhs) &&
-    rhs.varName.$refText === node.name &&
-    !!rhs.index
-  ) {
+  if (isVariableReference(rhs) && rhs.varName.$refText === node.name && !!rhs.index) {
     if (rhs.index.startExpr && constEval(rhs.index.startExpr) !== 0)
-      throw new MinCompileError(
-        `Sized array declaration: slice start must be 0 or undefined`,
-        rhs.index.startExpr,
-      );
+      throw new MinCompileError(`Sized array declaration: slice start must be 0 or undefined`, rhs.index.startExpr);
     return rhs.index.endExpr;
   }
   return undefined;
 }
 
-export function getCompoundExpressionArraySize(
-  e: CompoundExpression | undefined,
-  type: "int" | "char",
-): number | undefined {
+export function getCompoundExpressionArraySize(e: CompoundExpression | undefined, type: "int" | "char"): number | undefined {
   if (!e) return undefined;
   let size = 0;
   e.exprs.forEach((expr) => {
@@ -149,11 +132,7 @@ export function getCompoundExpressionArraySize(
   return size;
 }
 
-export function compileCompoundExpression(
-  e: CompoundExpression,
-  targetPtr: "z_PTR2" | "z_SP",
-  targetType: "int" | "char" | "unknown",
-): void {
+export function compileCompoundExpression(e: CompoundExpression, targetPtr: "z_PTR2" | "z_SP", targetType: "int" | "char" | "unknown"): void {
   // prerequisite: ptr points to &target[index||0]
   // eg int a = 0_1_2_3 // compile to z_SP
   // eg int a = a[0|3]; a = 0_1_2_3; // compile to z_PTR2
@@ -186,29 +165,17 @@ export function compileArrayDeclaration(
     // int a = a[0|n]
     if (count !== undefined) {
       // compile time known array size
-      out(
-        `MIV ${hexWord(count * (node.type === "int" ? 2 : 1))},z_TMP1 AVV z_TMP1,z_SP`,
-        "Advance z_SP by size of array",
-      );
+      out(`MIV ${hexWord(count * (node.type === "int" ? 2 : 1))},z_TMP1 AVV z_TMP1,z_SP`, "Advance z_SP by size of array");
     } else {
       // variable length array
       // store the current stack pointer at varInfo.address which is the invisible pointer to the variable length array
-      emitCopyZToAddr(
-        "z_SP",
-        varInfo.address,
-        "int",
-        `Store pointer to variable length array at ${varInfo.address}`,
-      );
+      emitCopyZToAddr("z_SP", varInfo.address, "int", `Store pointer to variable length array at ${varInfo.address}`);
       // need to compile the array endExpr eg int a = a[0|n] compile n
       compileExpression(arraySizeExpr); // evaluate the array size expression
       // advance the stack pointer by the array size
       out(`AIV ${hexWord(1)},z_A`, `z_A = array count = endExpr+1`);
-      if (node.type === "int")
-        out(`LLZ z_A`, `Multiply array count by 2 for int`);
-      out(
-        `AVV z_FP,z_A`,
-        `Advance z_SP to reserve space for variable length array`,
-      );
+      if (node.type === "int") out(`LLZ z_A`, `Multiply array count by 2 for int`);
+      out(`AVV z_FP,z_A`, `Advance z_SP to reserve space for variable length array`);
     }
   } else {
     // int a = 1_2_3

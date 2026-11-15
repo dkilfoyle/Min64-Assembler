@@ -1,5 +1,5 @@
 import { osAddr } from "../oslabels";
-import { MinCompileError, hexWord, highOperand, lowOperand } from "../utils";
+import { MinCompileError, hexByte, hexWord, highOperand, lowOperand } from "../utils";
 import * as expressionCompiler from "./expressions";
 import { computeReachableDefs } from "../reachability";
 import * as variableCompiler from "./variables";
@@ -24,7 +24,7 @@ import {
   PrintStatement,
   Program,
 } from "../../ls/generated/ast";
-import { compileDef, compileCallStatement, compileReturn, compileFunctionCall } from "./functions";
+import { compileDef, compileCallStatement, compileReturn, compileFunctionCall, emitPreallocateStack } from "./functions";
 import { compileIf, compileWhile } from "./controlflow";
 import { ZP_BASE } from "./expressions";
 import { frameStack } from "./stack";
@@ -71,24 +71,28 @@ export function emitRuntimeCall(name: string, comment?: string) {
   out(`JPS __${name}`, comment);
 }
 
+export const zpAddresses: { name: string; size: 2 | 1; init: number; comment?: string }[] = [
+  { name: "z_FP", size: 2, init: 0xefff, comment: "frame start pointer" },
+  { name: "z_SP", size: 2, init: 0xefff, comment: "top of stack pointer" },
+  { name: "z_PTR", size: 2, init: 0x0000, comment: "ptr to current var in runtime stack" },
+  { name: "z_PTR2", size: 2, init: 0x0000, comment: "secondary pointer for array operations" },
+  { name: "z_A", size: 2, init: 0x0000, comment: "acc / expr result / fn return value" },
+  { name: "z_B", size: 2, init: 0x0000, comment: "secondary operand" },
+  { name: "z_C", size: 2, init: 0x0000, comment: "scratch (mul/div/cmp)" },
+  { name: "z_D", size: 2, init: 0x0000, comment: "scratch (div quotient)" },
+  { name: "z_TMP1", size: 2, init: 0x0000, comment: "temporary storage" },
+  { name: "z_TMP2", size: 2, init: 0x0000, comment: "temporary storage" },
+  { name: "z_CNT", size: 2, init: 0x0000, comment: "array slice count" },
+  { name: "z_cnt", size: 1, init: 0x00, comment: "loop counter" },
+  { name: "z_flag", size: 1, init: 0x00, comment: "sign flag (div)" },
+  { name: "z_SP2", size: 2, init: 0xefff, comment: "top of fixed stack pointer" },
+];
+
 export function emitZeroPage() {
   out("");
   out(`; ---- Compiler zero-page working storage ----`);
   out(`#org ${hexWord(ZP_BASE)}`);
-  out(`z_FP:     0xEFFF    ; frame start pointer`);
-  out(`z_SP:     0xEFFF    ; top of stack pointer`);
-  out(`z_PTR:    0x0000    ; ptr to current var in runtime stack`);
-  out(`z_HP:     0x8000    ; heap pointer`);
-  out(`z_A:      0x0000    ; acc / expr result / fn return value`);
-  out(`z_B:      0x0000    ; secondary operand`);
-  out(`z_C:      0x0000    ; scratch (mul/div/cmp)`);
-  out(`z_D:      0x0000    ; scratch (div quotient)`);
-  out(`z_PTR2:   0x0000    ; secondary pointer for array operations`);
-  out(`z_TMP1:   0x0000    ; temporary storage`);
-  out(`z_TMP2:   0x0000    ; temporary storage`);
-  out(`z_cnt:    0x00      ; loop counter (mul/div/shifts)`);
-  out(`z_flag:   0x00      ; sign flag (div)`);
-  out(`z_CNT:    0x0000    ; array slice count`);
+  zpAddresses.forEach((zp) => out(`${zp.name}:   ${zp.size == 2 ? hexWord(zp.init) : hexByte(zp.init)}    ; ${zp.comment}`));
   out(``);
 }
 
@@ -132,6 +136,7 @@ export function compile(fname: string, mainProgram: Program, libraries: Program[
 
   out(`; Code compiled from ${fname}\n`);
   out("#org 0x0100");
+  out(`MIV CompileEnd,z_FP MVV z_FP,z_SP`);
 
   currentUri = mainProgram.$document?.uri.toString();
   reachableDefs = computeReachableDefs(mainProgram, libraries);
@@ -145,8 +150,10 @@ export function compile(fname: string, mainProgram: Program, libraries: Program[
 
   emitStringLiterals();
   emitRuntime();
+  out(`CompileEnd:`);
   emitZeroPage();
   emitOsCalls();
+
   return assembly.join("\n");
 }
 
@@ -154,7 +161,15 @@ export function compileMain(mainProgram: Program) {
   // Main program body: everything except Def/Use at top level.
   const frame = frameStack.addFrame("__global", "global");
 
+  // precompute the local frame
+  for (const el of mainProgram.elements) {
+    if (isVariableDeclaration(el)) {
+      frameStack.addLocalVariable(el);
+    }
+  }
+
   out(`__main:`);
+  emitPreallocateStack();
   format.indent += 2;
   for (const el of mainProgram.elements) {
     if (isDef(el) || isUse(el)) continue;

@@ -85,10 +85,7 @@ export function getExpressionType(e: Expression): string {
     case isComparisonExpression(e):
       return "int";
     default:
-      throw new MinCompileError(
-        `Unsupported expression: ${JSON.stringify(e)}`,
-        e,
-      );
+      throw new MinCompileError(`Unsupported expression: ${JSON.stringify(e)}`, e);
   }
 }
 
@@ -149,10 +146,7 @@ function compileNum(e: NumberLiteral): IExpressionType {
 function compileUnary(e: UnaryExpression): IExpressionType {
   const resultType = compileExpression(e.inner);
   if (resultType.endsWith("*")) {
-    throw new MinCompileError(
-      "Unary expression on pointer type is not supported",
-      e,
-    );
+    throw new MinCompileError("Unary expression on pointer type is not supported", e);
   }
   if (e.op === "-") {
     out(`NEV z_A`, `z_A = -z_A`);
@@ -164,22 +158,12 @@ function compileUnary(e: UnaryExpression): IExpressionType {
 
 function compileBinary(e: BinaryExpression): IExpressionType {
   if (isArrayExpression(e.left) || isStringLiteral(e.left)) {
-    throw new MinCompileError(
-      "Binary expression on array or string is not supported",
-      e.left,
-    );
+    throw new MinCompileError("Binary expression on array or string is not supported", e.left);
   }
   if (isArrayExpression(e.right) || isStringLiteral(e.right)) {
-    throw new MinCompileError(
-      "Binary expression on array or string is not supported",
-      e.right,
-    );
+    throw new MinCompileError("Binary expression on array or string is not supported", e.right);
   }
-  const constSide = isNumberLiteral(e.left)
-    ? e.left
-    : isNumberLiteral(e.right)
-      ? e.right
-      : null;
+  const constSide = isNumberLiteral(e.left) ? e.left : isNumberLiteral(e.right) ? e.right : null;
   const otherSide = constSide === e.left ? e.right : e.left;
 
   if (constSide) {
@@ -271,16 +255,10 @@ function compileBinary(e: BinaryExpression): IExpressionType {
 // <=/>=/>) and branch on sign to produce 0xffff/0x0000 in __A.
 export function compileComparison(e: ComparisonExpression): IExpressionType {
   if (isArrayExpression(e.left) || isStringLiteral(e.left)) {
-    throw new MinCompileError(
-      "Binary expression on array or string is not supported",
-      e.left,
-    );
+    throw new MinCompileError("Binary expression on array or string is not supported", e.left);
   }
   if (isArrayExpression(e.right) || isStringLiteral(e.right)) {
-    throw new MinCompileError(
-      "Binary expression on array or stringis not supported",
-      e.right,
-    );
+    throw new MinCompileError("Binary expression on array or stringis not supported", e.right);
   }
   compileExpression(e.left);
   emitHWPushZ("z_A");

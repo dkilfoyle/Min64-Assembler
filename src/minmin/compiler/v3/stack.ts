@@ -2,7 +2,9 @@ import type { AstNode } from "langium";
 import { hexWord, MinCompileError } from "../utils";
 import type { IVariable } from "./variables";
 import {
+  isDef,
   isVariableDeclaration,
+  Program,
   VariableReference,
   type Def,
   type LocalElement,
@@ -13,12 +15,7 @@ import {
 } from "../../ls/generated/ast";
 import { constEval } from "./expressions";
 import { options, out } from "./compiler";
-import {
-  getCompoundExpressionArraySize,
-  getSliceLength,
-  isArray,
-  isArraySizeDecl,
-} from "./arrays";
+import { getCompoundExpressionArraySize, getSliceLength, isArray, isArraySizeDecl } from "./arrays";
 
 export function emitRTPushZ(sourceZ: string, type = "int") {
   if (type === "int") {
@@ -47,49 +44,105 @@ export function emitRTPullZ(destZ: string, type = "int") {
   }
 }
 
-export interface IStackFrame {
+class Frame {
   name: string;
   kind: "function" | "block" | "global";
   variables: Map<string, IVariable>;
   frameSize: number;
+
+  constructor(name: string, kind: "function" | "block" | "global") {
+    this.name = name;
+    this.kind = kind;
+    this.variables = new Map();
+    this.frameSize = kind == "function" ? 2 : 0;
+  } 
+
+addLocalVariable(node: VariableDeclaration) {
+    const isGlobalFrame = this.name.startsWith("__global");
+
+    const varInfo: IVariable = {
+      name: node.name,
+      kind: "local",
+      type: node.type,
+      location: isGlobalFrame ? "globalStack" : "stack",
+      address: 0,
+    };
+
+    if (node.atExpr) {
+      const address = constEval(node.atExpr);
+      if (address === undefined) throw new MinCompileError("Address must be a constant expression", node.atExpr);
+      varInfo.location = address <= 0xff ? "zeroPage" : "absolute";
+      varInfo.address = address;
+    } else {
+      varInfo.address = this.getSP();
+      const arrayInfo = isArray(node.assignExpr);
+      if (arrayInfo?.arrayType) {
+        varInfo.type = `${node.type}*`;
+        varInfo.count = arrayInfo.count;
+        // if a fixed-size array, allocate space for it in the frame else allocate space (2 bytes) for a hidden pointer
+        this.frameSize +=
+          arrayInfo.count == undefined
+            ? 2 // variable-length array pointer
+            : arrayInfo.count * (node.type == "int" ? 2 : 1);
+      } else {
+        this.frameSize += node.type === "int" ? 2 : 1;
+      }
+    }
+
+    this.variables.set(varInfo.name, varInfo);
+    return varInfo;
+  }
+
+  addParamVariable(node: NamedElement, index: number) {
+    const varInfo: IVariable = {
+      name: node.name,
+      kind: "param",
+      type: node.type,
+      location: "stack",
+      address: index * 2 - 2, // address is a negative offset from FP0 with params added right to left
+    };
+    this.frameSize += 2; // all stack param entries are 2 bytes because a char could be a char or a char array pointer
+    this.variables.set(varInfo.name, varInfo);
+    return varInfo;
+  }
+
+  print() {
+    if (options.printFrame) {
+      out(`; frame summary for ${this.name}`);
+      this.variables.forEach((v) => out(`; ${v.name.padEnd(15)} : ${hexWord(v.address)} (${v.location})`));
+    }
+  }
+
+
+
 }
 
 class FrameStack {
-  private stack: IStackFrame[] = [];
+  private stack:  Frame[] = [];
+  private functionFrames = new Map<string, Frame>(); // precomputed function frames
 
   reset() {
     this.stack = [];
+    this.functionFrames.clear();
   }
 
-  push(frame: IStackFrame) {
+  push(frame: Frame) {
     this.stack.push(frame);
   }
 
-  pop(node?: AstNode): IStackFrame {
-    if (this.stack.length === 0)
-      throw new MinCompileError("No stack frame to pop", node);
+  pop(node?: AstNode): Frame {
+    if (this.stack.length === 0) throw new MinCompileError("No stack frame to pop", node);
     return this.stack.pop()!;
   }
 
-  current(node?: AstNode): IStackFrame {
+  current(node?: AstNode): Frame {
     const frame = this.stack.at(-1);
     if (!frame) throw new MinCompileError("No current stack frame", node);
     return frame;
   }
 
-  getStack(): IStackFrame[] {
+  getStack(): Frame[] {
     return this.stack;
-  }
-
-  addFrame(name: string, kind: "function" | "block" | "global") {
-    const frame: IStackFrame = {
-      name,
-      kind,
-      variables: new Map(),
-      frameSize: kind == "function" ? 2 : 0, // function frames store the parents frame pointer (FP) at offset 0 and 1
-    };
-    this.push(frame);
-    return frame;
   }
 
   getFunctionFrame() {
@@ -114,10 +167,7 @@ class FrameStack {
     return sp;
   }
 
-  getVariable(
-    name: string,
-    node?: AstNode,
-  ): { frame: IStackFrame; varInfo: IVariable } {
+  getVariable(name: string, node?: AstNode): { frame: Frame; varInfo: IVariable } {
     let fpName = name;
     let inReach = true;
 
@@ -140,81 +190,26 @@ class FrameStack {
     throw new MinCompileError(`Symbol ${name} not found in frameStack`, node);
   }
 
-  addLocalVariable(node: VariableDeclaration) {
-    const frame = this.current(node);
-    const isGlobalFrame = frame.name.startsWith("__global");
-
-    const varInfo: IVariable = {
-      name: node.name,
-      kind: "local",
-      type: node.type,
-      location: isGlobalFrame ? "globalStack" : "stack",
-      address: 0,
-    };
-
-    if (node.atExpr) {
-      const address = constEval(node.atExpr);
-      if (address === undefined)
-        throw new MinCompileError(
-          "Address must be a constant expression",
-          node.atExpr,
-        );
-      varInfo.location = address <= 0xff ? "zeroPage" : "absolute";
-      varInfo.address = address;
-    } else {
-      varInfo.address = this.getSP();
-      const arrayInfo = isArray(node.assignExpr);
-      if (arrayInfo.arrayType) {
-        varInfo.type = `${node.type}*`;
-        varInfo.count = arrayInfo.count;
-        // if a fixed-size array, allocate space for it in the frame else allocate space (2 bytes) for a hidden pointer
-        frame.frameSize +=
-          arrayInfo.count == undefined
-            ? 2 // variable-length array pointer
-            : arrayInfo.count * (node.type == "int" ? 2 : 1);
-      } else {
-        frame.frameSize += node.type === "int" ? 2 : 1;
-      }
-    }
-
-    frame.variables.set(varInfo.name, varInfo);
-    return varInfo;
-  }
-
-  addParamVariable(node: NamedElement) {
-    const frame = this.current(node);
-    const varInfo: IVariable = {
-      name: node.name,
-      kind: "param",
-      type: node.type,
-      location: "stack",
-      address: frame.frameSize,
-    };
-    frame.frameSize += 2; // all stack entries are 2 bytes because a char could be a char or a char array pointer
-    frame.variables.set(varInfo.name, varInfo);
-    return varInfo;
-  }
-
-  printFrame() {
-    if (options.printFrame) {
-      const frame = this.stack[this.stack.length - 1];
-      out(`; frame summary for ${frame.name}`);
-      frame.variables.forEach((v) =>
-        out(`; ${v.name.padEnd(15)} : ${hexWord(v.address)} (${v.location})`),
-      );
-    }
-  }
+  
 
   buildFunctionFrame(def: Def) {
     // function stack frame is
-    //           callerFP callerFP param0 param0 ... paramn paramn local0 local1  ... localn localn vla00 vla01 ....
-    // fpOffset   0       1        2      3          ?      ?      ?      ?           ?      ?      ?     ?
-    const frame = this.addFrame(def.name, "function");
+    // params - 2 bytes each, right to left, address is a negative offset from FP0
+    // FP - 2 bytes = FP0
+    // locals with known compile time size
+    // variable sized arrays and parameters to called functions
+
+           const frame: IStackFrame = {
+      name: def.name,
+      kind: "function",
+      variables: new Map(),
+      frameSize: 2, // function frame includes framepointer
+    };
 
     // add parameters to the frame
-    def.params.forEach((param, i) => {
-      frameStack.addParamVariable(param);
-    });
+    for (let i = def.params.length - 1; i >= 0; i--) {
+      frameStack.addParamVariable(def.params[i], i);
+    }
 
     // add locals to the frame
     def.block.forEach((stmt) => {
@@ -228,6 +223,19 @@ class FrameStack {
       if (isVariableDeclaration(stmt)) this.addLocalVariable(stmt);
     });
   }
+
+  precomputeFunctionFrame(def: Def) {
+
+    this.functionFrames.set(def.name, frame);
+  }
+
+  precomputeAllFunctionFrames(mainProgram: Program) {
+  mainProgram.elements.forEach((el) => {
+    if (isDef(el)) frameStack.precomputeFunctionFrame(el);
+  });
 }
+}
+
+export function 
 
 export const frameStack = new FrameStack();

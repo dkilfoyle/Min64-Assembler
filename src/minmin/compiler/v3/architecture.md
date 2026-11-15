@@ -20,14 +20,33 @@ z_FP - frame base, stack locations are relative to this
 
 The stack frame grows upwards from the end of the binary data
 Every function adds a new frame with z_FP = current z_SP
-Order of variables on the frame is:
+Order of items on the frame is:
 
-1. CallerFP starting at z_FP+0
-2. Params left to right starting at z_FP+2
-3. Locals in order of declaration
+1. params left to right
+2. callerFP  <-- FP
+3. locals
+5. arrays and calls
 
-- Fixed length arrays are stored as bytes
-- Variable length arrays are stored as pointer
+```
+int a = 3;
+char b = "c";
+foo(a,b)
+def foo(int x, char y):
+  int z = 5
+  char bla = "bla"
+```
 
-4. z_SP is set to z_FP + frameSize
-5. Variable length array data pushed to z_SP as the array is declared, saving the starting z_SP into reserved pointer earlier in the stack
+| -04 | xLSB        | param0  |                   |
+| -03 | xMSB        | param0  |                   |
+| -02 | yLSB        | param1  |                   |
+| -01 | yMSB        | param1  | all param 2 bytes |
+| +00 | CallerFPLSB |         |                   |
+| +01 | CallerFPMSB |         |                   |
+| +02 | zLSB        | local0  |                   |
+| +03 | zMSB        | local0  |                   |
+| +04 | *blaLSB     | local1  |                   |
+| +05 | *blaMSB     | local1  |                   |
+| +06 | b           |         | z_SP starts here  |
+| +07 | l           |         |                   |
+| +08 | a           |         |                   |
+

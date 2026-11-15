@@ -36,26 +36,17 @@ export function emitStringLiterals() {
 //   }
 // }
 
+// TODO: String literals should be compiled to fixed data segment rather than dynamically on to stack
 export function compileStringLiteral(e: StringLiteral): IExpressionType {
   out(`MVV z_SP,z_A`, `copy z_A =&str`);
   const str = e.value;
-  str
-    .split("")
-    .forEach((c) =>
-      out(
-        `MIV ${hexWord(c.charCodeAt(0))},z_SP INV z_SP`,
-        `push character '${c}' onto stack`,
-      ),
-    );
+  str.split("").forEach((c) => out(`MIV ${hexWord(c.charCodeAt(0))},z_SP INV z_SP`, `push character '${c}' onto stack`));
   out(`MIV ${hexWord(str.length)},z_B`, `set z_B to length of string`);
   return "char*";
 }
 
 export function compileCharLiteral(e: CharLiteral): IExpressionType {
   const char = e.value;
-  out(
-    `MIV ${hexWord(char.charCodeAt(0))},z_A+0`,
-    `load character literal '${char}' into z_A`,
-  );
+  out(`MIV ${hexWord(char.charCodeAt(0))},z_A+0`, `load character literal '${char}' into z_A`);
   return "char";
 }
