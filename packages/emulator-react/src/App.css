@@ -103,6 +103,12 @@ body {
   color: rgb(38, 38, 38);
 }
 
+.memory-cell-sp2 {
+  border-radius: var(--bk-radius-sm);
+  background-color: #e4c3dd;
+  color: rgb(38, 38, 38);
+}
+
 .memory-cell-hp {
   border-radius: var(--bk-radius-sm);
   background-color: #e2ca50;

@@ -8,18 +8,18 @@ import {
 } from "../../ls/generated/ast";
 import { emitRuntimeCall, out } from "./compiler";
 import { compileExpression } from "./expressions";
-import { frameStack } from "./stack";
+import { emitRTPushZ, frameStack } from "./stack";
 import { cached } from "./cache";
 import { emitGetPtr, emitGetArrayPtr } from "./pointers";
 import { compileArrayDeclaration, compileCompoundExpression, isArray, isArrayExpression, isArraySizeDecl } from "./arrays";
 
-export type IExpressionType = "int" | "char" | "char*" | "int*";
+export type IExpressionType = "int" | "char" | "char*" | "int*" | "unknown";
 
 export interface IVariable {
   name: string;
-  kind: "param" | "local";
+  kind: "param" | "local" | "return";
   type: IExpressionType;
-  location: "stack" | "globalStack" | "zeroPage" | "absolute";
+  location: "stack" | "zeroPage" | "absolute";
   // global is for variables stored in the global stack frame and address is the absolute address in memory
   address: number; // for stack var this is the offset from the frame pointer
   count?: number; // for array types, the number of elements
@@ -28,13 +28,13 @@ export interface IVariable {
 export function emitCopyZToPtr(
   z: string,
   zType: IExpressionType,
-  targetPtr: "z_PTR2" | "z_SP",
+  targetPtr: "z_PTR2" | "z_SP" | "z_SP2",
   targetType: "int" | "char" | "unknown",
   comment?: string,
 ) {
   switch (zType) {
     case "char":
-      if (targetType == "int") out(`JPS _signExt`, `sign extend char in z_A to int`);
+      if (targetType == "int") out(`JPS __signext`, `sign extend char in z_A to int`);
       out(`MZT ${z}+0,${targetPtr} INV ${targetPtr}`, comment || `move char ${z}+0 to ${targetPtr}`);
       if (targetType == "int") out(`MZT ${z}+1,${targetPtr} INV ${targetPtr}`, comment || `move signExtended ${z}+1 to ${targetPtr}`);
       break;
@@ -98,10 +98,10 @@ export function emitCopyZToVar(sourceZ: string, varName: string, varIndex?: Expr
       out(`MZB ${sourceZ}+0,${hexWord(varInfo.address)}`, `${frame.name}.${varInfo.name} from ${sourceZ} -> global`);
       out(`MZB ${sourceZ}+1,${hexWord(varInfo.address + 1)}`, `${frame.name}.${varInfo.name} from ${sourceZ} -> global`);
       return;
-    case "globalStack":
-      out(`MZB ${sourceZ}+0,${hexWord(0xefff - varInfo.address)}`, `${frame.name}.${varInfo.name} from ${sourceZ} -> global`);
-      out(`MZB ${sourceZ}+1,${hexWord(0xefff - varInfo.address + 1)}`, `${frame.name}.${varInfo.name} from ${sourceZ} -> global`);
-      return;
+    // case "globalStack":
+    // out(`MZB ${sourceZ}+0,${hexWord(0xefff - varInfo.address)}`, `${frame.name}.${varInfo.name} from ${sourceZ} -> global`);
+    // out(`MZB ${sourceZ}+1,${hexWord(0xefff - varInfo.address + 1)}`, `${frame.name}.${varInfo.name} from ${sourceZ} -> global`);
+    // return;
     default:
       throw new MinCompileError(`Unsupported location for variable ${varName}`);
   }
@@ -133,9 +133,9 @@ export function emitCopyVarToZ(targetAddr: number | string, varName: string, var
       case "zeroPage":
         out(`MVV ${hexByte(varInfo.address)},${targetLSB}`, `copy ${varInfo.name} from zeroPage to ${targetAddr}`);
         return;
-      case "globalStack":
-        out(`MWV ${hexWord(0xefff - varInfo.address - 1)},${targetLSB}`, `copy ${varInfo.name} from global to ${targetAddr}`);
-        return;
+      // case "globalStack":
+      // out(`MWV ${hexWord(0xefff - varInfo.address - 1)},${targetLSB}`, `copy ${varInfo.name} from global to ${targetAddr}`);
+      // return;
       case "absolute":
         out(`MWV ${hexWord(varInfo.address)},${targetLSB}`, `copy ${varInfo.name} from global to ${targetAddr}`);
         return;
@@ -149,9 +149,9 @@ export function emitCopyVarToZ(targetAddr: number | string, varName: string, var
       case "zeroPage":
         out(`MZZ ${hexByte(varInfo.address)},${targetLSB}`, `copy ${varInfo.name} from zeroPage to ${targetAddr}`);
         break;
-      case "globalStack":
-        out(`MBB ${hexWord(0xefff - varInfo.address)},${targetLSB}`, `copy ${varInfo.name} from global to ${targetAddr}`);
-        break;
+      // case "globalStack":
+      // out(`MBB ${hexWord(0xefff - varInfo.address)},${targetLSB}`, `copy ${varInfo.name} from global to ${targetAddr}`);
+      // break;
       case "absolute":
         out(`MBZ ${hexWord(varInfo.address)},${targetLSB}`, `copy ${varInfo.name} from global to ${targetAddr}`);
         break;
@@ -175,23 +175,21 @@ function compileVariableAtDeclaration(node: VariableDeclaration, varInfo: IVaria
 }
 
 export function compileVariableDeclaration(node: VariableDeclaration) {
-  const { varInfo } = frameStack.getVariable(node.name, node);
+  // const { varInfo } = frameStack.getVariable(node.name, node);
+  const frame = frameStack.current();
+  const varInfo = frame.addLocalVariable(node);
+
   if (node.atExpr) return compileVariableAtDeclaration(node, varInfo);
 
+  // save the new local variables address in the variable table
+  emitRTPushZ("z_SP", "z_SP2", "int", `save stack address of local variable ${varInfo.name} in variable table`);
+
   if (node.assignExpr) {
-    const arrayInfo = isArray(node.assignExpr);
-    emitGetPtr("z_PTR2", varInfo.name);
-    if (arrayInfo && arrayInfo.count == undefined) {
-      // variable length array
-      // store z_SP into arrays pointer
-      out(`MZZ z_SP+0,z_PTR2 INV z_PTR2`, `Store ptr to ${varInfo.name}`);
-      out(`MZZ z_SP+1,z_PTR2 INV z_PTR2`, `... at fixed stack offset ${varInfo.address}`);
-      // compile bytes from z_SP
-      compileCompoundExpression(node.assignExpr, "z_SP", node.type);
-    } else {
-      // fixed length variable or array
-      compileCompoundExpression(node.assignExpr, "z_PTR2", node.type);
-    }
+    // compile the assignment expression to the stack pointer (z_SP)
+    compileCompoundExpression(node.assignExpr, "z_SP", node.type);
+  } else {
+    // make space for future assignment to this variable
+    out(`INV z_SP ${varInfo.type == "int" ? "INV z_SP" : ""}`);
   }
 }
 

@@ -33,12 +33,12 @@ export const ZP_BASE = 0x00;
 
 export function reset() {}
 
-export function emitHWPushZ(z = "z_A") {
-  out(`LDZ ${z}+0 PHS LDZ ${z}+1 PHS`, `push ${z} onto hardware stack`);
+export function emitHWPushZ(z = "z_A", comment?: string) {
+  out(`LDZ ${z}+0 PHS LDZ ${z}+1 PHS`, comment || `push ${z} onto hardware stack`);
 }
 
-export function emitHWPopZ(z = "z_A") {
-  out(`PLS SDZ ${z}+1 PLS SDZ ${z}+0`, `pop ${z}   from hardware stack`);
+export function emitHWPopZ(z = "z_A", comment?: string) {
+  out(`PLS SDZ ${z}+1 PLS SDZ ${z}+0`, comment || `pop ${z}   from hardware stack`);
 }
 
 export function constEval(expr: Expression): number | undefined {

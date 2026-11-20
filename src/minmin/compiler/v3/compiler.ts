@@ -24,7 +24,7 @@ import {
   PrintStatement,
   Program,
 } from "../../ls/generated/ast";
-import { compileDef, compileCallStatement, compileReturn, compileFunctionCall, emitPreallocateStack } from "./functions";
+import { compileDef, compileCallStatement, compileReturn, compileFunctionCall } from "./functions";
 import { compileIf, compileWhile } from "./controlflow";
 import { ZP_BASE } from "./expressions";
 import { frameStack } from "./stack";
@@ -72,8 +72,9 @@ export function emitRuntimeCall(name: string, comment?: string) {
 }
 
 export const zpAddresses: { name: string; size: 2 | 1; init: number; comment?: string }[] = [
-  { name: "z_FP", size: 2, init: 0xefff, comment: "frame start pointer" },
   { name: "z_SP", size: 2, init: 0xefff, comment: "top of stack pointer" },
+  { name: "z_FP2", size: 2, init: 0xefff, comment: "bottom of the variable stack" },
+  { name: "z_SP2", size: 2, init: 0xefff, comment: "varinfo top of stack pointer" },
   { name: "z_PTR", size: 2, init: 0x0000, comment: "ptr to current var in runtime stack" },
   { name: "z_PTR2", size: 2, init: 0x0000, comment: "secondary pointer for array operations" },
   { name: "z_A", size: 2, init: 0x0000, comment: "acc / expr result / fn return value" },
@@ -85,7 +86,6 @@ export const zpAddresses: { name: string; size: 2 | 1; init: number; comment?: s
   { name: "z_CNT", size: 2, init: 0x0000, comment: "array slice count" },
   { name: "z_cnt", size: 1, init: 0x00, comment: "loop counter" },
   { name: "z_flag", size: 1, init: 0x00, comment: "sign flag (div)" },
-  { name: "z_SP2", size: 2, init: 0xefff, comment: "top of fixed stack pointer" },
 ];
 
 export function emitZeroPage() {
@@ -104,8 +104,7 @@ export function reset() {
   runtimeUsed.clear();
   runtimeUsed.add("getPtr");
   runtimeUsed.add("signext");
-  runtimeUsed.add("loadZA");
-  runtimeUsed.add("storeZA");
+  runtimeUsed.add("memCopy");
 
   expressionCompiler.reset();
   cached.reset();
@@ -136,7 +135,9 @@ export function compile(fname: string, mainProgram: Program, libraries: Program[
 
   out(`; Code compiled from ${fname}\n`);
   out("#org 0x0100");
-  out(`MIV CompileEnd,z_FP MVV z_FP,z_SP`);
+  // out(`MIV CompileEnd,z_SP`);
+  out(`MIV 0x1000,z_SP`);
+  out(`MIV 0x2000,z_SP2 `);
 
   currentUri = mainProgram.$document?.uri.toString();
   reachableDefs = computeReachableDefs(mainProgram, libraries);
@@ -159,23 +160,15 @@ export function compile(fname: string, mainProgram: Program, libraries: Program[
 
 export function compileMain(mainProgram: Program) {
   // Main program body: everything except Def/Use at top level.
-  const frame = frameStack.addFrame("__global", "global");
-
-  // precompute the local frame
-  for (const el of mainProgram.elements) {
-    if (isVariableDeclaration(el)) {
-      frameStack.addLocalVariable(el);
-    }
-  }
+  const frame = frameStack.pushGlobalFrame(mainProgram.elements);
 
   out(`__main:`);
-  emitPreallocateStack();
   format.indent += 2;
+  frame.print();
   for (const el of mainProgram.elements) {
     if (isDef(el) || isUse(el)) continue;
     compileStatement(el);
   }
-  frameStack.printFrame();
   out(`\nJPA ${os("_Prompt")}`);
   format.indent -= 2;
 }

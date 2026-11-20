@@ -132,7 +132,11 @@ export function getCompoundExpressionArraySize(e: CompoundExpression | undefined
   return size;
 }
 
-export function compileCompoundExpression(e: CompoundExpression, targetPtr: "z_PTR2" | "z_SP", targetType: "int" | "char" | "unknown"): void {
+export function compileCompoundExpression(
+  e: CompoundExpression,
+  targetPtr: "z_PTR2" | "z_SP" | "z_SP2",
+  targetType: "int" | "char" | "unknown",
+): void {
   // prerequisite: ptr points to &target[index||0]
   // eg int a = 0_1_2_3 // compile to z_SP
   // eg int a = a[0|3]; a = 0_1_2_3; // compile to z_PTR2
