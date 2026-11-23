@@ -14,8 +14,13 @@ export function compileBlock(name: string, stmts: LocalElement[]) {
   out(`${curFrame.name}_end:`, `block epilogue`);
   format.indent += 2;
   curFrame.print();
-  if (curFrame.frameSize > 0) out(`SIV ${curFrame.frameSize},z_SP`, "Epilogue: pop locals off stack");
-  else out(`; No locals to pop off stack`, "Epilogue: no locals");
+  if (curFrame.frameSize > 0) {
+    out(`SIV ${curFrame.frameSize},z_SP2`, "pop locals off stack");
+    out(`MRZ z_SP2,z_SP+0 INV z_SP2`, `pop SP data frame`);
+    out(`MRZ z_SP2,z_SP+1 DEV z_SP2`, `pop SP data frame`);
+  } else {
+    out(`; No locals to pop off stack`, "Epilogue: no locals");
+  }
   format.indent -= 2;
 
   // cached.blockPath = cached.blockPath.slice(

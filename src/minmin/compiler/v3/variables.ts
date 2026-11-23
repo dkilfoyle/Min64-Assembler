@@ -204,11 +204,6 @@ export function compileVariableAssignment(node: VariableAssignment) {
   // z_PTR2 = &lhs
   // z_PTR = &rhs
 
-  if (lhs.type.endsWith("*")) {
-    emitGetPtr("z_PTR2", lhsVarName, node.indexExpr); // z_PTR2 = &lhs[index]
-    compileCompoundExpression(rhs, "z_PTR2", lhsBaseType);
-    return;
-  }
   emitGetPtr("z_PTR2", lhsVarName, node.indexExpr); // z_PTR2 = &lhs[index]
   compileCompoundExpression(rhs, "z_PTR2", lhsBaseType);
 }
@@ -254,10 +249,12 @@ export function compileVariableReference(e: VariableReference): IExpressionType 
   } else {
     // eg a or a[5] or &a
     if (e.isAddress) {
+      // &a
       emitGetPtr("z_A", varName, e.index?.startExpr);
       if (varInfo.type.endsWith("*")) throw new MinCompileError(`Cannot take address of pointer type`, e);
       return (varInfo.type + "*") as IExpressionType; // int* or char*
     } else {
+      // a or a[5]
       emitCopyVarToZ("z_A", varName, e.index?.startExpr);
       return varInfo.type; // int or char
     }

@@ -136,8 +136,9 @@ export function compile(fname: string, mainProgram: Program, libraries: Program[
   out(`; Code compiled from ${fname}\n`);
   out("#org 0x0100");
   // out(`MIV CompileEnd,z_SP`);
-  out(`MIV 0x1000,z_SP`);
-  out(`MIV 0x2000,z_SP2 `);
+  out(`MIV 0x1000,z_SP`, "init stack pointers");
+  out(`MIV 0x2000,z_SP2`);
+  out(`MIV 0x2000,z_FP2`);
 
   currentUri = mainProgram.$document?.uri.toString();
   reachableDefs = computeReachableDefs(mainProgram, libraries);

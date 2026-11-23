@@ -11,12 +11,12 @@ export function emitPointerOffset(z_PTR: string, offset: number, targetPtr: stri
   out(`MIV ${hexWord(offset)},${targetPtr} AVV ${z_PTR},${targetPtr}`, `${targetPtr} = ${z_PTR}[${offset}]`);
 }
 
-// export function emitDereferencePointer(z_PTR: string) {
-//   // convert z_PTR (pointer to pointer) into the actual heap address it points to
-//   out(`MTZ ${z_PTR},z_TMP1+1 DEV ${z_PTR}`, `Deference z_PTR to z_TMP1`);
-//   out(`MTZ ${z_PTR},z_TMP1+0`, `z_TMP1 = **${z_PTR} (pointer to heap location)`);
-//   out(`MVV z_TMP1,${z_PTR}`, `${z_PTR} = heap address of pointer`);
-// }
+export function emitDereferencePointer(z_PTR: string) {
+  // convert z_PTR (pointer to pointer) into the actual heap address it points to
+  out(`MTZ ${z_PTR},z_TMP1+1 DEV ${z_PTR}`, `Deference z_PTR to z_TMP1`);
+  out(`MTZ ${z_PTR},z_TMP1+0`, `z_TMP1 = **${z_PTR} (pointer to heap location)`);
+  out(`MVV z_TMP1,${z_PTR}`, `${z_PTR} = heap address of pointer`);
+}
 
 // function emitGetGlobalStackPtr(z_PTR: string, varInfo: IVariable) {
 //   // variables in the global stack can be accessed from absolute address 0xefff rather than offset from z_FP
@@ -52,10 +52,9 @@ export function emitGetPtr(z_PTR: string, varName: string, varIndex?: Expression
   switch (varInfo.location) {
     case "stack":
       // pointers to each variable data exist on the variable table
-      // the current top of the variable table is at z_SP2
-      // each variable is located at z_SP2 - (frameSize + offset)
+      // varInfo.address is offset from Z_FP2
       if (!(z_PTR == "z_PTR" || z_PTR == "z_PTR2")) throw new MinCompileError(`emitGetPtr: Unsupported z_PTR value: ${z_PTR}`);
-      const sp2offset = frame.frameSize + varInfo.address;
+      const sp2offset = varInfo.address;
       out(`MIV ${hexWord(sp2offset)},z_TMP1`, `sp2Offset for ${varInfo.name} = ${sp2offset}`);
       z_PTR == "z_PTR" ? out(`JPS __getVarPtr`, `z_PTR = &var[0] in stack`) : out(`JPS __getVarPtr2`, `z_PTR2 = &var[0] in stack`);
       break;

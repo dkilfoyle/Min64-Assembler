@@ -29,10 +29,10 @@ export function emitRTPushZ(sourceZ: string, targetZ: "z_SP" | "z_SP2", type = "
 
 export function emitRTPopZ(sourceZ: string, destZ: string, type = "int", comment?: string) {
   if (type === "int") {
-    out(`MTZ ${sourceZ},${destZ}+1 DEV ${sourceZ}`, comment || `pop int LSB from stack ${destZ}`);
-    out(`MTZ ${sourceZ},${destZ}+0 DEV ${sourceZ}`, comment || `pop int MSB from stack ${destZ}`);
+    out(`DEV ${sourceZ} MTZ ${sourceZ},${destZ}+1`, comment || `pop int LSB from stack ${destZ}`);
+    out(`DEV ${sourceZ} MTZ ${sourceZ},${destZ}+0`, comment || `pop int MSB from stack ${destZ}`);
   } else {
-    out(`MTZ ${sourceZ},${destZ}+0 DEV ${sourceZ} `, comment || `pop char from stack ${destZ}`);
+    out(` DEV ${sourceZ} MTZ ${sourceZ},${destZ}+0`, comment || `pop char from stack ${destZ}`);
   }
 }
 
@@ -181,6 +181,9 @@ class FrameStack {
     let fpName = name;
     let inReach = true;
 
+    // TODO: Implement proper scoping rules for variable lookup, including handling of nested functions and blocks.
+    // return accumulated offset by summing frame sizes from the current frame up to the frame containing the variable
+
     for (let i = this.stack.length - 1; i >= 0; i--) {
       const frame = this.stack[i];
       const isGlobalFrame = frame.name.startsWith("__global");
@@ -210,7 +213,7 @@ class FrameStack {
     const frame = new Frame(def.name, "function");
 
     // add parameters to the frame
-    for (let i = def.params.length - 1; i >= 0; i--) {
+    for (let i = 0; i < def.params.length; i++) {
       frame.addParamVariable(def.params[i], i);
     }
 

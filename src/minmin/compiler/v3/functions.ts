@@ -1,6 +1,6 @@
 import { hexWord, MinCompileError } from "../utils";
 import { type IExpressionType } from "./variables";
-import { FunctionCall, type ReturnStatement, Def, CallStatement } from "../../ls/generated/ast";
+import { FunctionCall, type ReturnStatement, Def, CallStatement, isCallStatement, isReturnStatement } from "../../ls/generated/ast";
 import { compileStatement, out, format, reachableDefs } from "./compiler";
 import { emitRTPopZ, emitRTPushZ, frameStack } from "./stack";
 import { cached } from "./cache";
@@ -15,23 +15,17 @@ function emitFunctionEpilogue() {
   out(`${frame.name}_end:`, `function epilogue`);
   format.indent += 2;
 
-  const firstStackVar = frame.getFirstStackVariable();
-  if (firstStackVar) {
-    emitGetPtr("z_PTR2", firstStackVar!.name); // get the first stack var, its pointer is the frame start
+  if (frame.frameSize > 0) {
+    // pop the pointer frame SP2 back to FP2
+    out(`MVV z_FP2,z_SP2`, `pop SP2 pointer frame`); // SP2 now points to the pointer to first stack variable
 
-    // const returnVar = frame.variables.get("__return");
-    // if (returnVar) {
-    //   // copy z_B bytes from z_PTR to z_PTR2
-    //   // compileReturn has already set up z_B and z_PTR
-    //   // TODO: This is only necessary for returned arrays
-    //   // out(`JPS __memCopy`);
-    //   out(`MVV z_PTR2,z_SP`, `z_SP points to end of return value`);
-    // } else {
-    //   out(`MVV z_PTR2,z_SP`, `pop the data frame`);
-    // }
-    out(`MVV z_PTR2,z_SP`, `pop the data frame`);
-    out(`MIV ${hexWord(frame.frameSize)},z_TMP1 SVV z_TMP1,z_SP2`, `pop the ptr frame`);
+    // pop the data frame (z_SP)
+    out(`MRZ z_SP2,z_SP+0 INV z_SP2`, `pop SP data frame`);
+    out(`MRZ z_SP2,z_SP+1 DEV z_SP2`, `pop SP data frame`);
   }
+
+  // restore callers FP2
+  emitRTPopZ("z_SP2", "z_FP2", "int", `restore caller's frame pointer`);
 
   frame.print();
   format.indent -= 2;
@@ -61,16 +55,29 @@ export function compileFunctionCall(e: FunctionCall): IExpressionType {
   const functionName = e.functionName.$refText;
   const functionDef = reachableDefs.find((def) => def.name === functionName);
   if (!functionDef) throw new MinCompileError(`Function definition not found for ${functionName}`, e);
+  const callerFrame = frameStack.current();
 
   const comment = `call ${functionName}(${e.args.length} arg${e.args.length === 1 ? "" : "s"})`;
 
-  // push the arguments onto caller's frame
-  // arrays are pushed as a pointer with the array value copied into the callee's variable frame from z_SP2
-  for (let i = 0; i < e.args.length; i++) {
-    const arg = e.args[i];
-    const paramType = functionDef.params[i].type;
-    emitRTPushZ("z_SP", "z_SP2", "int", `save pointer to argument ${i}`);
-    compileCompoundExpression(arg, "z_SP", paramType);
+  // Save the caller's frame pointer
+  emitRTPushZ("z_FP2", "z_SP2", "int", `push caller's frame pointer`);
+
+  if (e.args.length > 0) {
+    // Save the current pointer stack
+    emitHWPushZ("z_SP2", `save current pointer stack => new FP2`);
+
+    // push the arguments onto caller's frame using caller's frame pointer
+    for (let i = 0; i < e.args.length; i++) {
+      const arg = e.args[i];
+      const paramType = functionDef.params[i].type;
+      emitRTPushZ("z_SP", "z_SP2", "int", `save pointer to argument ${i}`);
+      compileCompoundExpression(arg, "z_SP", paramType);
+    }
+
+    // Set the new FP2
+    emitHWPopZ("z_FP2", `pop the stored SP2 to become the new FP2`);
+  } else {
+    out(`MVV z_SP2,z_FP2`, `no arguments, FP2 starts here`);
   }
 
   out(`JPS ${functionName}`, comment);
@@ -84,24 +91,21 @@ export function compileCallStatement(node: CallStatement) {
 }
 
 export function compileReturn(node: ReturnStatement) {
-  // compile the return expression onto the stack
-  // and push a pointer to it to the variable table
+  const functionFrame = frameStack.getFunctionFrame();
+
   out(`PHS`);
   emitRTPushZ("z_SP", "z_SP2", "int", `save pointer to return value on pointer stack`);
   out(`PLS`);
+
+  functionFrame.addReturnVariable();
   compileCompoundExpression(node.expr, "z_SP", "unknown");
 
   if (isArray(node.expr)) {
     // length will be current z_SP - saved z_SP
     emitRTPopZ("z_SP2", "z_A", "int", `z_A = &returned array`);
     out(`MVV z_SP,z_B SVV z_PTR,z_B`, `z_B = num of bytes in return value`);
-  } else {
-    // not an array, so z_A already contains the return value
-    // out(`MIV 0x0000,z_B`, `z_B = 0 as result is not array`); // perhaps not necessary
+    throw new MinCompileError(`Array return values not yet supported`, node);
   }
-
-  const functionFrame = frameStack.getFunctionFrame();
-  functionFrame.addReturnVariable();
 
   out(`JPA ${functionFrame.name}_end`, `jump to function epilogue`);
   // stack pop and RTS are in Def epilogue

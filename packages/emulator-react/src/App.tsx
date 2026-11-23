@@ -15,9 +15,9 @@ import { type IEmulationState } from "./emulator14/machine";
 import "baukasten-ui/dist/baukasten-base.css";
 // import "baukasten-ui/dist/baukasten-vscode.css";
 import "baukasten-ui/dist/baukasten-web.css";
-import { Badge, Button, Divider, Heading, Icon, Input, Select, Slider } from "baukasten-ui/core";
+import { Badge, Button, Icon, Input, Select } from "baukasten-ui/core";
 import clsx from "clsx";
-import { getScrollbarSize, List, type RowComponentProps } from "react-window";
+import { List, type RowComponentProps } from "react-window";
 import "./App.css";
 
 import { osShortLabels } from "./emulator14/oslabels";
@@ -72,6 +72,7 @@ export const App: React.FC = () => {
   const z_SP2 = useMemo(() => (emulationState ? getWord(emulationState.memory, 4) : 0x2000), [emulationState]);
   const z_PTR = useMemo(() => (emulationState ? getWord(emulationState.memory, 6) : 0), [emulationState]);
   const z_PTR2 = useMemo(() => (emulationState ? getWord(emulationState.memory, 8) : 0), [emulationState]);
+  const z_FP = useMemo(() => (emulationState ? getWord(emulationState.memory, z_FP2) : 0x1000), [emulationState]);
 
   const addrStart = useMemo(() => addrTarget & 0xfff0, [addrTarget]);
   const hoverByte = useMemo(() => (addrHover !== null ? emulationState?.memory[addrHover] : null), [addrHover, emulationState]);
@@ -170,9 +171,10 @@ export const App: React.FC = () => {
                 "memory-cell-target": rowAddress + index >= addrTarget && rowAddress + index <= addrTargetEnd,
                 "memory-cell-ptr": rowAddress + index === z_PTR,
                 "memory-cell-ptr2": rowAddress + index === z_PTR2,
-                "memory-cell-fp": rowAddress + index === z_FP2,
-                "memory-cell-sp2": rowAddress + index === z_SP2,
+                "memory-cell-fp": rowAddress + index === z_FP,
                 "memory-cell-sp": rowAddress + index === z_SP,
+                "memory-cell-fp2": rowAddress + index === z_FP2,
+                "memory-cell-sp2": rowAddress + index === z_SP2,
                 "memory-cell-hover": addrHover !== null && rowAddress + index === addrHover,
               })}>
               {byte.toString(16).padStart(2, "0").toUpperCase()}
@@ -256,13 +258,29 @@ export const App: React.FC = () => {
                 variant="secondary"
                 className="memory-cell-fp"
                 onClick={() => {
+                  setAddrTarget(z_FP - 16 * 8);
+                }}>
+                FP
+              </Button>
+              <Button
+                variant="secondary"
+                className="memory-cell-sp"
+                onClick={() => {
                   setAddrTarget(z_SP - 16 * 8);
                 }}>
                 SP
               </Button>
               <Button
                 variant="secondary"
-                className="memory-cell-sp"
+                className="memory-cell-fp2"
+                onClick={() => {
+                  setAddrTarget(z_FP2 - 16 * 8);
+                }}>
+                FP2
+              </Button>
+              <Button
+                variant="secondary"
+                className="memory-cell-sp2"
                 onClick={() => {
                   setAddrTarget(z_SP2 - 16 * 8);
                 }}>

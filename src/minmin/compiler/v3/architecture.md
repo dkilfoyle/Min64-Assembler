@@ -14,26 +14,41 @@ z_B - number of bytes in array
 z_SP - top of the stack, the next free position
 z_PTR - currently selected stack variable, address of the LSB
 z_PTR2 - destination pointer
-z_FP - frame base, stack locations are relative to this
-z_VP - current top of the variable frame
+z_FP2 - frame base for the pointer stack
+z_SP2 - top of the pointer stack, the next free position
 
 # Stack
 
-The stack frame grows upwards from the end of the binary data
-Every function adds a new frame with z_FP = current z_SP
-Order of items on the frame is:
+There are two separate stacks: a data stack and a pointer stack
+The pointer stack contains a 16bit address pointer for a named variable or a function parameter that points to the start of that variables data on the data stack. This allows to have arrays of runtime variable length.
 
-1. callerFP  <-- FP
-2. params left to right
-3. locals
-4. calls
 
-arguments are passed by value
+Order of building the frame:
+
+1. compileFunctionCall
+   1. push the caller FP2 to SP2
+   2. set FP2 = SP2 - the first param or the first local
+   3. params left to right
+      1. these are compiled in the caller's stack but will be addressed from the callee's
+2. compileDef
+   1. locals
+   2. calls
+3. return statement
+   1. if return expr is array
+      1. push the current SP2 = pointer to the return value
+      2. compile return compound expression
+      3. copy entire array to **FP2
+   2. else
+      1. compile return compound expression -> result in z_A
+4. function epilog
+   1. pop pointer frame by setting SP2 = FP2
+   2. z_SP2 now points to the first stack pointer
+   3. set z_SP to the word at z_SP2 = pops the data stack
+   4. restore the caller FP2 by pruning off 2 bytes from z_SP2 
 
 Every argument and variable declaration:
-1. saves z_SP as a pointer to it's stack position in the varInfo stack from z_FP2
-2. copies it's value into the stack from z_SP
-3.  
+1. push current z_SP onto the pointer stack
+2. compile it's value onto the data stack from z_SP
 
 ```
 int a = 3;
