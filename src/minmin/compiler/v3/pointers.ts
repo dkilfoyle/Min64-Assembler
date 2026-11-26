@@ -2,8 +2,8 @@ import { MinCompileError, hexByte, hexWord } from "../utils";
 import { isNumberLiteral, type Expression, type VariableReference } from "../../ls/generated/ast";
 import { out } from "./compiler";
 import { compileExpression, emitHWPushZ, emitHWPopZ } from "./expressions";
-import { emitRTPopZ, emitRTPushZ, frameStack } from "./stack";
-import type { IVariable } from "./variables";
+import { POINTER_STACK_START, emitRTPopZ, emitRTPushZ, frameStack } from "./stack";
+import type { IExpressionType, IVariable } from "./variables";
 import { cached } from "./cache";
 
 export function emitPointerOffset(z_PTR: string, offset: number, targetPtr: string) {
@@ -39,8 +39,20 @@ export function emitDereferencePointer(z_PTR: string) {
 //   }
 // }
 
+function emitDereferenceAddressToZ(address: number, z_PTR: string, comment?: string) {
+  out(`MRZ ${hexWord(address)},${z_PTR}+0`, comment || `${z_PTR}=**${hexWord(address)}`);
+  out(`MRZ ${hexWord(address + 1)},${z_PTR}+1`, comment || `${z_PTR}=**${hexWord(address)}`);
+}
+
+function getIndexedOffset(varIndex?: Expression | number) {
+  if (!varIndex) return 0;
+  if (isNumberLiteral(varIndex)) return varIndex.value * 2; // we are indexing the pointer stack which are all 16bit pointers * (varType.includes("int") ? 2 : 1);
+  if (typeof varIndex === "number") return varIndex * 2; // we are indexing the pointer stack which are all 16bit pointers
+  return undefined;
+}
+
 export function emitGetPtr(z_PTR: string, varName: string, varIndex?: Expression | number, preserveZA?: boolean) {
-  const { frame, varInfo } = frameStack.getVariable(varName);
+  const { frame, varInfo, fpOffset } = frameStack.getVariable(varName);
   const cacheName = frame + (varIndex ? `[${typeof varIndex === "number" ? varIndex : varIndex.$cstNode?.text}]` : "");
 
   cached.unsetZA();
@@ -48,22 +60,43 @@ export function emitGetPtr(z_PTR: string, varName: string, varIndex?: Expression
   // if (cached.z_PTR == cacheName) return;
   // else cached.z_PTR = cacheName;
 
+  const indexOffset = getIndexedOffset(varIndex);
+
   // first get the pointer to varName[0]
   switch (varInfo.location) {
     case "stack":
       // pointers to each variable data exist on the variable table
       // varInfo.address is offset from Z_FP2
-      if (!(z_PTR == "z_PTR" || z_PTR == "z_PTR2")) throw new MinCompileError(`emitGetPtr: Unsupported z_PTR value: ${z_PTR}`);
-      const sp2offset = varInfo.address;
-      out(`MIV ${hexWord(sp2offset)},z_TMP1`, `sp2Offset for ${varInfo.name} = ${sp2offset}`);
+      if (!(z_PTR == "z_PTR" || z_PTR == "z_PTR2")) {
+        debugger;
+        throw new MinCompileError(`emitGetPtr: Unsupported z_PTR value: ${z_PTR}`);
+      }
+      if (fpOffset === undefined) throw new MinCompileError(`emitGetPtr: fpOffset is undefined for variable ${varInfo.name}`);
+      out(`MIV ${hexWord(fpOffset)},z_TMP1`, `sp2Offset for ${varInfo.name} = ${fpOffset}`);
       z_PTR == "z_PTR" ? out(`JPS __getVarPtr`, `z_PTR = &var[0] in stack`) : out(`JPS __getVarPtr2`, `z_PTR2 = &var[0] in stack`);
       break;
+    case "globalStack":
+      if (fpOffset === undefined) throw new MinCompileError(`emitGetPtr: fpOffset is undefined for variable ${varInfo.name}`);
+      if (indexOffset != undefined) {
+        out(
+          `MWV ${hexWord(POINTER_STACK_START + fpOffset + indexOffset)},${z_PTR}`,
+          `${z_PTR}=&${varName}[${indexOffset}] (${varInfo.location})`,
+        );
+        return;
+      } else {
+        out(`MWV ${hexWord(POINTER_STACK_START + fpOffset)},${z_PTR}`, `${z_PTR}=&${varName} (${varInfo.location})`);
+      }
+      break;
     case "zeroPage":
-      out(`MIV ${hexWord(varInfo.address)},${z_PTR}`, `${z_PTR} = &${varName}`);
-      break;
     case "absolute":
-      out(`MIV ${hexWord(varInfo.address)},${z_PTR}`, `${z_PTR} = &${varName}`);
+      if (indexOffset != undefined) {
+        out(`MIV ${hexWord(varInfo.address + indexOffset)},${z_PTR}`, `${z_PTR}=&${varName}[${indexOffset}] (${varInfo.location})`);
+        return;
+      } else {
+        out(`MIV ${hexWord(varInfo.address)},${z_PTR}`, `${z_PTR}=&${varName} (${varInfo.location})`);
+      }
       break;
+
     default:
       throw new MinCompileError(`Cannot get pointer to heap variable ${varName}`);
   }
@@ -72,6 +105,7 @@ export function emitGetPtr(z_PTR: string, varName: string, varIndex?: Expression
     if (typeof varIndex === "number" || isNumberLiteral(varIndex)) {
       // handle constant value index eg x[10]
       const index = typeof varIndex === "number" ? varIndex : varIndex.value;
+      if (varInfo.type == "int" || varInfo.type == "char") debugger;
       const offset = index * (varInfo.type == "int*" ? 2 : 1);
       if (offset == 0) {
         // offset is 0, no adjustment needed for targetPtr
@@ -83,7 +117,9 @@ export function emitGetPtr(z_PTR: string, varName: string, varIndex?: Expression
     } else {
       // handle variable value index eg x[i]
       if (preserveZA) emitHWPushZ("z_A");
+      emitHWPushZ("z_PTR"); // compiling the index i will overwrite the PTR for x
       compileExpression(varIndex);
+      emitHWPopZ("z_PTR");
       if (varInfo.type == "int" || varInfo.type == "int*") {
         out(`LLV z_A`, `z_A = array index ${varIndex.$cstNode?.text} * size(int)`);
       }
@@ -110,6 +146,11 @@ export function emitGetArrayPtr(ptrReg: string, varRef: VariableReference) {
   const { varInfo } = frameStack.getVariable(varName);
   const elSize = varInfo.type == "int*" ? 2 : varInfo.type == "char*" ? 1 : 0;
   if (!elSize) throw new MinCompileError(`Unsupported variable type for slice`, varRef);
+
+  if (ptrReg == "z_A") {
+    debugger;
+    throw new MinCompileError(`emitGetArrayPtr: Unsupported ptrReg value: ${ptrReg}`, varRef);
+  }
 
   // whole array: return base pointer in z_PTR
   if (!varRef.index) {

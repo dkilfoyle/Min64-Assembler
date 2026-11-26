@@ -19,7 +19,7 @@ export interface IVariable {
   name: string;
   kind: "param" | "local" | "return";
   type: IExpressionType;
-  location: "stack" | "zeroPage" | "absolute";
+  location: "stack" | "globalStack" | "zeroPage" | "absolute";
   // global is for variables stored in the global stack frame and address is the absolute address in memory
   address: number; // for stack var this is the offset from the frame pointer
   count?: number; // for array types, the number of elements
@@ -44,6 +44,7 @@ export function emitCopyZToPtr(
       break;
     case "char*":
     case "int*":
+      debugger;
       if (z != "z_A") throw new MinCompileError("Pointer copy only supported from z_A");
       switch (targetPtr) {
         case "z_SP":
@@ -76,6 +77,7 @@ export function emitCopyZToVar(sourceZ: string, varName: string, varIndex?: Expr
 
   switch (varInfo.location) {
     case "stack":
+    case "globalStack":
       // copying from z_A on to the stack
       if (varInfo.address > 255) throw new MinCompileError(`Maximum frame size is 255, got ${varInfo.address} for ${varName}`);
       emitGetPtr("z_PTR2", varName, varIndex, true);
@@ -98,10 +100,6 @@ export function emitCopyZToVar(sourceZ: string, varName: string, varIndex?: Expr
       out(`MZB ${sourceZ}+0,${hexWord(varInfo.address)}`, `${frame.name}.${varInfo.name} from ${sourceZ} -> global`);
       out(`MZB ${sourceZ}+1,${hexWord(varInfo.address + 1)}`, `${frame.name}.${varInfo.name} from ${sourceZ} -> global`);
       return;
-    // case "globalStack":
-    // out(`MZB ${sourceZ}+0,${hexWord(0xefff - varInfo.address)}`, `${frame.name}.${varInfo.name} from ${sourceZ} -> global`);
-    // out(`MZB ${sourceZ}+1,${hexWord(0xefff - varInfo.address + 1)}`, `${frame.name}.${varInfo.name} from ${sourceZ} -> global`);
-    // return;
     default:
       throw new MinCompileError(`Unsupported location for variable ${varName}`);
   }
@@ -127,15 +125,13 @@ export function emitCopyVarToZ(targetAddr: number | string, varName: string, var
   if (varInfo.type == "int") {
     switch (varInfo.location) {
       case "stack":
+      case "globalStack":
         emitGetPtr("z_PTR", varName, varIndex, false);
         emitCopyPtrToZ("z_PTR", "z_A", varInfo.type, `copy ${varInfo.name} from stack to z_A`);
         return;
       case "zeroPage":
         out(`MVV ${hexByte(varInfo.address)},${targetLSB}`, `copy ${varInfo.name} from zeroPage to ${targetAddr}`);
         return;
-      // case "globalStack":
-      // out(`MWV ${hexWord(0xefff - varInfo.address - 1)},${targetLSB}`, `copy ${varInfo.name} from global to ${targetAddr}`);
-      // return;
       case "absolute":
         out(`MWV ${hexWord(varInfo.address)},${targetLSB}`, `copy ${varInfo.name} from global to ${targetAddr}`);
         return;
@@ -143,6 +139,7 @@ export function emitCopyVarToZ(targetAddr: number | string, varName: string, var
   } else {
     switch (varInfo.location) {
       case "stack":
+      case "globalStack":
         emitGetPtr("z_PTR", varName, varIndex, false); // z_PTR = &varName
         out(`MTZ z_PTR,${targetLSB}`, `copy ${varInfo.name} from stack to ${targetAddr}`);
         break;
@@ -166,8 +163,8 @@ function compileVariableAtDeclaration(node: VariableDeclaration, varInfo: IVaria
     if (node.assignExpr.exprs.length !== 1)
       throw new MinCompileError(`Expected a single assignment expression for variable @ declaration`, node.assignExpr);
     const assignType = compileExpression(node.assignExpr.exprs[0]);
-    if (!varInfo.type.startsWith(assignType)) throw new MinCompileError(`Type mismatch for variable @ declaration`, node.assignExpr.exprs[0]);
-    emitCopyZToAddr("z_A", varInfo.address, assignType, `copy z_A to ${varInfo.address}`);
+    // TODO: compileExpression should have option to cast the result to the variable type
+    emitCopyZToAddr("z_A", varInfo.address, varInfo.type, `copy z_A to ${varInfo.address}`);
   } else {
     // char r @ 0x00ff
     // do nothing
@@ -184,9 +181,17 @@ export function compileVariableDeclaration(node: VariableDeclaration) {
   // save the new local variables address in the variable table
   emitRTPushZ("z_SP", "z_SP2", "int", `save stack address of local variable ${varInfo.name} in variable table`);
 
+  if (node.name == "buf") debugger;
+
   if (node.assignExpr) {
-    // compile the assignment expression to the stack pointer (z_SP)
-    compileCompoundExpression(node.assignExpr, "z_SP", node.type);
+    const sizeExpression = isArraySizeDecl(node);
+    if (sizeExpression) {
+      // declaration of sized array eg int a = a[0|n]
+      compileArrayDeclaration(node.assignExpr, varInfo, sizeExpression);
+    } else {
+      // compile the assignment expression to the stack pointer (z_SP)
+      compileCompoundExpression(node.assignExpr, "z_SP", node.type);
+    }
   } else {
     // make space for future assignment to this variable
     out(`INV z_SP ${varInfo.type == "int" ? "INV z_SP" : ""}`);

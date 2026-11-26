@@ -1,0 +1,63 @@
+use "timerlib.min"
+
+# -----------------------------------------------
+# Benchmark compatible with both original Min
+# and Extended Min. Uses only int/char types,
+# no casts, no long, no signed-constant +=.
+# -----------------------------------------------
+# REQUIRES - Clock timer card and timerlib.min
+# https://github.com/michaelkamprath/minimal-64x4-expansion-cards/tree/main/timer
+# -----------------------------------------------
+
+def bubbleSort(char &arr, int length):
+  int i = 0
+  while i < length - 1:
+    int j = 0
+    int top = length - 1 - i
+    while j < top:
+      if arr[j] > arr[j + 1]:
+        char t = arr[j]
+        arr[j] = arr[j + 1]
+        arr[j + 1] = t
+      j += 1
+    i += 1
+
+def linearSearch(char &arr, int length, int target):
+  int i = 0
+  while i < length:
+    if arr[i] == target:
+      return i
+    i += 1
+  return 0
+
+# --- main benchmark ---
+
+print("BENCH:")
+
+timerReset()
+
+int round = 0
+int check = 0
+
+while round < 10:
+  # 1. Sort a scrambled 20-char array
+  char buf = buf[|20]
+  buf = "TNKFBQMJGCPLIOEHADRS"
+  bubbleSort(buf, 20)
+
+  # 2. Search sorted array
+  check = check + linearSearch(buf, 20, 65)
+  check = check + linearSearch(buf, 20, 84)
+  check = check + linearSearch(buf, 20, 77)
+
+  print(".")
+  round += 1
+
+timerLatch()
+
+print("\nDONE\n")
+print("check = ")
+print(check)
+print("\ntime = ")
+timerValue()
+print("\n")

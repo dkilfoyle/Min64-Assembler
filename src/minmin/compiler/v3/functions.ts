@@ -1,6 +1,15 @@
 import { hexWord, MinCompileError } from "../utils";
 import { type IExpressionType } from "./variables";
-import { FunctionCall, type ReturnStatement, Def, CallStatement, isCallStatement, isReturnStatement } from "../../ls/generated/ast";
+import {
+  FunctionCall,
+  type ReturnStatement,
+  Def,
+  CallStatement,
+  isCallStatement,
+  isReturnStatement,
+  ParameterDeclaration,
+  isVariableReference,
+} from "../../ls/generated/ast";
 import { compileStatement, out, format, reachableDefs } from "./compiler";
 import { emitRTPopZ, emitRTPushZ, frameStack } from "./stack";
 import { cached } from "./cache";
@@ -30,6 +39,7 @@ function emitFunctionEpilogue() {
   frame.print();
   format.indent -= 2;
   frameStack.pop();
+
   // cached.blockPath = cached.blockPath.slice(
   //   0,
   //   cached.blockPath.lastIndexOf("."),
@@ -69,9 +79,18 @@ export function compileFunctionCall(e: FunctionCall): IExpressionType {
     // push the arguments onto caller's frame using caller's frame pointer
     for (let i = 0; i < e.args.length; i++) {
       const arg = e.args[i];
-      const paramType = functionDef.params[i].type;
-      emitRTPushZ("z_SP", "z_SP2", "int", `save pointer to argument ${i}`);
-      compileCompoundExpression(arg, "z_SP", paramType);
+      const param = functionDef.params[i] as ParameterDeclaration;
+      if (param.byRef) {
+        // byRef parameters are passed by reference
+        // this only makes sense if the argument is a variable
+        if (!(arg.exprs.length == 1 && isVariableReference(arg.exprs[0]))) throw new MinCompileError(`byRef parameter must be a variable`, arg);
+        emitGetPtr("z_PTR", arg.exprs[0].varName.$refText, arg.exprs[0].index?.startExpr);
+        emitRTPushZ("z_PTR", "z_SP2", "int", `save pointer to argument ${i}`);
+      } else {
+        // non-byRef parameters are passed by value, ie a copy of the variable is pushed on to the stack
+        emitRTPushZ("z_SP", "z_SP2", "int", `save pointer to argument ${i}`);
+        compileCompoundExpression(arg, "z_SP", param.type);
+      }
     }
 
     // Set the new FP2

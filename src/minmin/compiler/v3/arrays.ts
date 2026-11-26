@@ -4,6 +4,8 @@ import {
   CompoundExpression,
   isBinaryExpression,
   isCompoundExpression,
+  isConstExpression,
+  isNumberLiteral,
   isStringLiteral,
   isVariableReference,
   RangeIndex,
@@ -145,47 +147,24 @@ export function compileCompoundExpression(
 
   for (let i = 0; i < e.exprs.length; i++) {
     const resultType = compileExpression(e.exprs[i]);
-    emitCopyZToPtr("z_A", resultType, targetPtr, targetType);
+    if (resultType == "int" || resultType == "char") emitCopyZToPtr("z_A", resultType, targetPtr, targetType);
   }
 }
 
-export function compileArrayDeclaration(
-  node: VariableDeclaration,
-  varInfo: IVariable,
-  arrayType: "slice" | "compound" | "string" | undefined,
-  count: number | undefined,
-) {
-  if (!arrayType) return;
-  if (arrayType === "slice") {
-    // handle slice declaration
-  } else if (arrayType === "compound") {
-    // handle compound array declaration
-  } else if (arrayType === "string") {
-    // handle string array declaration
-  }
-
-  const arraySizeExpr = isArraySizeDecl(node);
-  if (arraySizeExpr) {
-    // int a = a[0|n]
-    if (count !== undefined) {
-      // compile time known array size
-      out(`MIV ${hexWord(count * (node.type === "int" ? 2 : 1))},z_TMP1 AVV z_TMP1,z_SP`, "Advance z_SP by size of array");
-    } else {
-      // variable length array
-      // store the current stack pointer at varInfo.address which is the invisible pointer to the variable length array
-      emitCopyZToAddr("z_SP", varInfo.address, "int", `Store pointer to variable length array at ${varInfo.address}`);
-      // need to compile the array endExpr eg int a = a[0|n] compile n
-      compileExpression(arraySizeExpr); // evaluate the array size expression
-      // advance the stack pointer by the array size
-      out(`AIV ${hexWord(1)},z_A`, `z_A = array count = endExpr+1`);
-      if (node.type === "int") out(`LLZ z_A`, `Multiply array count by 2 for int`);
-      out(`AVV z_FP,z_A`, `Advance z_SP to reserve space for variable length array`);
-    }
+export function compileArrayDeclaration(node: CompoundExpression, varInfo: IVariable, sizeExpression: Expression) {
+  // int a = a[0|n]
+  if (isNumberLiteral(sizeExpression)) {
+    // compile time known array size
+    const count = constEval(sizeExpression);
+    if (count === undefined) throw new MinCompileError(`Cannot determine array size at compile time`, sizeExpression);
+    out(`MIV ${hexWord(count * (varInfo.type === "int" ? 2 : 1))},z_TMP1 AVV z_TMP1,z_SP`, "Advance z_SP by size of ${varInfo.type} array");
   } else {
-    // int a = 1_2_3
-    // int a = b[1|3]
-    // int c = "bla"
-    // int a = 6
-    compileCompoundExpression(node.assignExpr!, "z_SP", node.type); // z_A = result of expression
+    // variable length array
+    // need to compile the array endExpr eg int a = a[0|n] compile n
+    compileExpression(sizeExpression); // evaluate the array size expression
+    // advance the stack pointer by the array size
+    out(`AIV ${hexWord(1)},z_A`, `z_A = array count = endExpr+1`);
+    if (varInfo.type === "int") out(`LLZ z_A`, `Multiply array count by 2 for int`);
+    out(`AVV z_A,z_SP`, `Advance z_SP to reserve space for variable length array`);
   }
 }

@@ -3,20 +3,17 @@ import { hexWord, MinCompileError } from "../utils";
 import type { IVariable } from "./variables";
 import {
   GlobalElement,
-  isDef,
-  isVariableDeclaration,
-  Program,
-  VariableReference,
   type Def,
   type LocalElement,
   type NamedElement,
-  type ParameterDeclaration,
   type SimpleStatement,
   type VariableDeclaration,
 } from "../../ls/generated/ast";
 import { constEval } from "./expressions";
 import { options, out } from "./compiler";
-import { getCompoundExpressionArraySize, getSliceLength, isArray, isArraySizeDecl } from "./arrays";
+import { isArray, isArraySizeDecl } from "./arrays";
+
+export const POINTER_STACK_START = 0x2000;
 
 export function emitRTPushZ(sourceZ: string, targetZ: "z_SP" | "z_SP2", type = "int", comment?: string) {
   if (type === "int") {
@@ -47,11 +44,11 @@ export function emitRTPullZ(destZ: string, type = "int") {
 
 class Frame {
   name: string;
-  kind: "function" | "block" | "global";
+  kind: "function" | "global" | "globalBlock" | "functionBlock";
   variables: Map<string, IVariable>;
   frameSize: number;
 
-  constructor(name: string, kind: "function" | "block" | "global") {
+  constructor(name: string, kind: "function" | "global" | "globalBlock" | "functionBlock") {
     this.name = name;
     this.kind = kind;
     this.variables = new Map();
@@ -59,13 +56,11 @@ class Frame {
   }
 
   addLocalVariable(node: VariableDeclaration) {
-    const isGlobalFrame = this.name.startsWith("__global");
-
     const varInfo: IVariable = {
       name: node.name,
       kind: "local",
       type: node.type,
-      location: "stack",
+      location: this.kind.startsWith("global") ? "globalStack" : "stack",
       address: 0,
     };
 
@@ -76,10 +71,17 @@ class Frame {
       varInfo.address = address;
     } else {
       varInfo.address = this.frameSize;
-      const arrayInfo = isArray(node.assignExpr);
-      if (arrayInfo?.arrayType) {
+      const isArrayDecl = isArraySizeDecl(node);
+
+      if (isArrayDecl) {
         varInfo.type = `${node.type}*`;
-        varInfo.count = arrayInfo.count;
+        varInfo.count = constEval(isArrayDecl);
+      } else {
+        const arrayInfo = isArray(node.assignExpr);
+        if (arrayInfo) {
+          varInfo.type = `${node.type}*`;
+          varInfo.count = arrayInfo.count;
+        }
       }
       this.frameSize += 2; // all variable table entrie are 16 bit pointer
     }
@@ -93,10 +95,10 @@ class Frame {
       name: node.name,
       kind: "param",
       type: node.type,
-      location: "stack",
-      address: this.frameSize, // index * 2 - 2, // address is a negative offset from FP0 with params added right to left
+      location: this.kind.startsWith("global") ? "globalStack" : "stack",
+      address: this.frameSize,
     };
-    this.frameSize += 2; // all variable table entrie are 16 bit pointer
+    this.frameSize += 2; // all variable table entries are 16 bit pointer
     this.variables.set(varInfo.name, varInfo);
     return varInfo;
   }
@@ -112,13 +114,6 @@ class Frame {
     this.frameSize += 2;
     this.variables.set(varInfo.name, varInfo);
     return varInfo;
-  }
-
-  getFirstStackVariable() {
-    for (const [name, varInfo] of this.variables) {
-      if (varInfo.location === "stack") return varInfo;
-    }
-    return undefined;
   }
 
   print() {
@@ -163,98 +158,67 @@ class FrameStack {
     throw new MinCompileError("No function frame found");
   }
 
-  // return the current stack pointer (SP) = offset from FP
-  getSP() {
-    let sp = 0;
-    for (let i = this.stack.length - 1; i >= 0; i--) {
-      const frame = this.stack[i];
-      const isFunctionFrame = frame.kind === "function";
-      const isRootFrame = i == 0;
-
-      sp += frame.frameSize;
-      if (isRootFrame || isFunctionFrame) break;
-    }
-    return sp;
-  }
-
-  getVariable(name: string, node?: AstNode): { frame: Frame; varInfo: IVariable } {
+  getVariable(name: string, node?: AstNode): { frame: Frame; varInfo: IVariable; fpOffset?: number } {
     let fpName = name;
-    let inReach = true;
+    let fpOffset = 0;
+    let firstFunctionFrameIndex = -1;
+    let firstMatchingVar: IVariable | undefined = undefined;
 
-    // TODO: Implement proper scoping rules for variable lookup, including handling of nested functions and blocks.
-    // return accumulated offset by summing frame sizes from the current frame up to the frame containing the variable
+    if (name == "buf") debugger;
+
+    // process
+    // search down the stack
+    // check if the current frame is in scope = we haven't reached the bottom of the current function frame yet, OR
+    // we are in the global frame
+    // if in scope AND we haven't found a matching variable yet, look for a match
+    // once we find a match start accumulating the fpOffset until we reach the first function frame or bottom of stack
 
     for (let i = this.stack.length - 1; i >= 0; i--) {
       const frame = this.stack[i];
-      const isGlobalFrame = frame.name.startsWith("__global");
+      const isGlobalFrame = frame.kind.startsWith("global");
       const isFunctionFrame = frame.kind === "function";
+      if (isFunctionFrame && firstFunctionFrameIndex === -1) firstFunctionFrameIndex = i;
+      const inScope = i >= firstFunctionFrameIndex || isGlobalFrame;
 
-      if (isGlobalFrame) inReach = true;
-
-      fpName = `${frame.name}.${fpName}`;
-      if (inReach) {
-        // search stack up to function level and global frames
+      if (inScope && !firstMatchingVar) {
         const varInfo = frame.variables.get(name);
-        if (varInfo) return { frame, varInfo };
+        if (varInfo) {
+          firstMatchingVar = varInfo;
+          if (varInfo.location == "zeroPage" || varInfo.location == "absolute") return { frame, varInfo };
+          fpOffset = varInfo.address;
+        } else {
+          fpOffset += frame.frameSize;
+        }
+      } else {
+        fpOffset += frame.frameSize;
       }
 
-      if (isFunctionFrame) inReach = false; // can't search in calling functions
+      if (firstMatchingVar && (i == firstFunctionFrameIndex || i == 0)) {
+        return { frame, varInfo: firstMatchingVar, fpOffset };
+      }
     }
-    debugger;
-    throw new MinCompileError(`Symbol ${name} not found in frameStack ${fpName}`, node);
+    throw new MinCompileError(`Symbol ${name} not found in frameStack`, node);
   }
 
-  buildFunctionFrame(def: Def) {
-    // function stack frame is
-    // params - 2 bytes each, right to left, address is a negative offset from FP0
-    // FP - 2 bytes = FP0
-    // locals with known compile time size
-    // variable sized arrays and parameters to called functions
+  pushFunctionFrame(def: Def) {
     const frame = new Frame(def.name, "function");
-
     // add parameters to the frame
     for (let i = 0; i < def.params.length; i++) {
       frame.addParamVariable(def.params[i], i);
     }
-
-    // add locals to the frame
-    // def.block.forEach((stmt) => {
-    //   if (isVariableDeclaration(stmt)) frame.addLocalVariable(stmt);
-    // });
-
-    return frame;
-  }
-
-  buildBlockFrame(name: string, block: Array<LocalElement | SimpleStatement>) {
-    const frame = new Frame(name, "block");
-    // block.forEach((stmt) => {
-    //   if (isVariableDeclaration(stmt)) frame.addLocalVariable(stmt);
-    // });
-    return frame;
-  }
-
-  buildGlobalFrame(block: Array<GlobalElement>) {
-    const frame = new Frame("__global", "global");
-    // block.forEach((stmt) => {
-    //   if (isVariableDeclaration(stmt)) frame.addLocalVariable(stmt);
-    // });
-    return frame;
-  }
-
-  pushFunctionFrame(def: Def) {
-    const frame = this.buildFunctionFrame(def);
     this.push(frame);
     return frame;
   }
 
   pushBlockFrame(name: string, block: Array<LocalElement | SimpleStatement>) {
-    const frame = this.buildBlockFrame(name, block);
+    const parentFrame = frameStack.current();
+    const frame = parentFrame.kind.startsWith("global") ? new Frame(name, "globalBlock") : new Frame(name, "functionBlock");
     this.push(frame);
     return frame;
   }
 
   pushGlobalFrame(block: Array<GlobalElement>) {
-    const frame = this.buildGlobalFrame(block);
+    const frame = new Frame("__g", "global");
     this.push(frame);
     return frame;
   }

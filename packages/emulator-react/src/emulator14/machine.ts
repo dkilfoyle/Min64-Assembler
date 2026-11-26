@@ -6,6 +6,7 @@ import { parseIntelHex, applyHexRecords } from "./intelHex";
 import type { RunTypes, StepTypes } from "../api";
 import { disassembleOne, disassembleRange } from "./disassembler";
 import { osAddressToLabel } from "./oslabels";
+import { MinCpuTimer } from "./timer";
 
 export interface IEmulationState {
   pc: number;
@@ -41,6 +42,10 @@ export class Machine {
   // callStack: ICallStackEntry[] = [];
   breakpoints: IBreakpoint[] = [];
   stopStepOverPC = -1;
+
+  constructor() {
+    this.mem.io.push(new MinCpuTimer());
+  }
 
   /** Resets the CPU (PC=0, BANK=0) and clears pending I/O, ready to boot from FLASH bank 0. */
   async reset() {

@@ -54,9 +54,19 @@ type FlashState =
   | "erase-unlocked1" // saw 0xAA,0x55,0x80,0xAA
   | "erase-unlocked2"; // saw 0xAA,0x55,0x80,0xAA,0x55 -> next write is 0x30 (sector) or 0x10 (chip)
 
+export abstract class MemoryMappedIO {
+  read(address: number): number | undefined {
+    return undefined;
+  }
+  write(address: number, value: number): boolean {
+    return false;
+  }
+}
+
 export class Memory {
   readonly ram = new Uint8Array(RAM_SIZE);
   readonly flash = new Uint8Array(FLASH_SIZE).fill(0xff);
+  io: MemoryMappedIO[] = [];
   nibbleRead = new Array<number>(0x1000).fill(0);
   nibbleWrite = new Array<number>(0x1000).fill(0);
 
@@ -108,6 +118,12 @@ export class Memory {
     if (addr < BANK_SIZE && this.flashWindowActive()) {
       return this.flash[this.bank * BANK_SIZE + addr];
     }
+
+    for (let i = 0; i < this.io.length; i++) {
+      const handled = this.io[i].read(addr);
+      if (handled != undefined) return handled;
+    }
+
     this.nibbleRead[addr >> 4]++;
     return this.ram[addr];
   }
@@ -119,6 +135,10 @@ export class Memory {
     if (addr < BANK_SIZE && this.flashWindowActive()) {
       this.handleFlashWrite(this.bank * BANK_SIZE + addr, value);
       return;
+    }
+    for (let i = 0; i < this.io.length; i++) {
+      const handled = this.io[i].write(addr, value);
+      if (handled) return;
     }
     this.nibbleWrite[addr >> 4]++;
     this.ram[addr] = value;

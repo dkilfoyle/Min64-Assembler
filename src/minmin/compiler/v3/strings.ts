@@ -1,5 +1,5 @@
 import type { CharLiteral, StringLiteral } from "../../ls/generated/ast";
-import { hexWord } from "../utils";
+import { hexByte, hexWord } from "../utils";
 import { out } from "./compiler";
 import type { IExpressionType } from "./variables";
 
@@ -36,12 +36,11 @@ export function emitStringLiterals() {
 //   }
 // }
 
-// TODO: String literals should be compiled to fixed data segment rather than dynamically on to stack
-export function compileStringLiteral(e: StringLiteral): IExpressionType {
-  out(`MVV z_SP,z_A`, `copy z_A =&str`);
+export function compileStringLiteral(e: StringLiteral, destZ: string = "z_PTR2"): IExpressionType {
+  out(`MVV ${destZ},z_A`, `z_A = &str[0]`);
   const str = e.value;
-  str.split("").forEach((c) => out(`MIV ${hexWord(c.charCodeAt(0))},z_SP INV z_SP`, `push character '${c}' onto stack`));
-  out(`MIV ${hexWord(str.length)},z_B`, `set z_B to length of string`);
+  str.split("").forEach((c) => out(`MIT ${hexByte(c.charCodeAt(0))},${destZ} INV ${destZ}`, `push character '${c}' onto ${destZ} stack`));
+  out(`MIV ${hexWord(str.length)},z_B`, `z_B = length of string`);
   return "char*";
 }
 

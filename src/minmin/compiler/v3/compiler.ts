@@ -68,6 +68,9 @@ export function emitRuntimeCall(name: string, comment?: string) {
     throw new MinCompileError(`Runtime definition not found for ${name}`, {} as any);
   }
   runtimeUsed.add(name);
+  // add any dependencies
+  if (name == "shr16") runtimeUsed.add("shl16");
+  if (name == "shl16") runtimeUsed.add("shr16");
   out(`JPS __${name}`, comment);
 }
 
@@ -203,8 +206,19 @@ export function compileStatement(node: LocalElement) {
 export function compilePrint(print: PrintStatement) {
   print.args.forEach((arg, i) => {
     arg.exprs.forEach((expr, j) => {
-      if (isNumberLiteral(expr) || isStringLiteral(expr)) {
+      if (isNumberLiteral(expr)) {
         out(`JPS ${os("_Print")} "${expr.value}", 0`, "_Print");
+        return;
+      }
+      if (isStringLiteral(expr)) {
+        if (expr.value.includes("\n")) {
+          expr.value.split("\n").forEach((line) => {
+            if (line == "") out(`JPS ${os("_Print")} 10, 0`, "_Print");
+            else out(`JPS ${os("_Print")} "${line}", 0`, "_Print");
+          });
+        } else {
+          out(`JPS ${os("_Print")} "${expr.value}", 0`, "_Print");
+        }
         return;
       }
       const resType = expressionCompiler.compileExpression(expr);

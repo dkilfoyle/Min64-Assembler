@@ -93,16 +93,17 @@ export function getExpressionType(e: Expression): string {
  * if int or char scalar in z_A
  * if int* or char* pointer in z_A, numBytes in z_B
  **/
-export function compileExpression(e: Expression): IExpressionType {
+export function compileExpression(e: Expression, destZ: string = "z_A"): IExpressionType {
   // TODO: possible optimisations
   // option to preserve z_A or not
   // check if e is a leaf
   // option to compile to different target virtual register eg z_B or z_TEMP
+  // option to cast the result to a specific type
 
-  if (cached.isZA(e)) {
-    out("", `cached z_A ${cached.z_A!.id}`);
-    return cached.z_A!.type;
-  }
+  // if (destZ == "z_A" && cached.isZA(e)) {
+  //   out("", `cached z_A ${cached.z_A!.id}`);
+  //   return cached.z_A!.type;
+  // }
 
   let resultType: IExpressionType;
   switch (true) {
@@ -110,7 +111,7 @@ export function compileExpression(e: Expression): IExpressionType {
       resultType = compileNum(e); // result is int
       break;
     case isStringLiteral(e):
-      resultType = compileStringLiteral(e); // result is char*
+      resultType = compileStringLiteral(e, "z_PTR2"); // result is char*
       break;
     case isCharLiteral(e):
       resultType = compileCharLiteral(e); // result is char
@@ -183,6 +184,7 @@ function compileBinary(e: BinaryExpression): IExpressionType {
     }
     if (e.op == "-" && isNumberLiteral(e.right)) {
       if (e.right.value == 1) {
+        compileExpression(e.left);
         out(`DEV z_A`, `--`);
         return "int";
       } else if ((e.right.value & 0xff00) == 0) {
