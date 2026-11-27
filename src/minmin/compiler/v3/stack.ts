@@ -14,6 +14,7 @@ import { options, out } from "./compiler";
 import { isArray, isArraySizeDecl } from "./arrays";
 
 export const POINTER_STACK_START = 0x2000;
+export const DATA_STACK_START = 0x1200;
 
 export function emitRTPushZ(sourceZ: string, targetZ: "z_SP" | "z_SP2", type = "int", comment?: string) {
   if (type === "int") {
@@ -163,8 +164,6 @@ class FrameStack {
     let fpOffset = 0;
     let firstFunctionFrameIndex = -1;
     let firstMatchingVar: IVariable | undefined = undefined;
-
-    if (name == "buf") debugger;
 
     // process
     // search down the stack

@@ -13,8 +13,8 @@ import {
   type VariableDeclaration,
 } from "../../ls/generated/ast";
 import { out } from "./compiler";
-import { compileExpression, constEval } from "./expressions";
-import { frameStack } from "./stack";
+import { compileExpression, constEval, emitHWPeek, emitHWPopZ, emitHWPushZ } from "./expressions";
+import { emitRTPushZ, frameStack } from "./stack";
 
 /*
 Instantiation
@@ -145,10 +145,17 @@ export function compileCompoundExpression(
   // eg foo(0_1_2_3) // compile to z_SP
   // eg return 0_1_2_3 // compile to z_SP
 
+  // TODO: Cache/preserve register values
+
+  emitHWPushZ(targetPtr, `save copy ${targetPtr} for compound expression target`);
+
   for (let i = 0; i < e.exprs.length; i++) {
-    const resultType = compileExpression(e.exprs[i]);
+    const resultType = compileExpression(e.exprs[i]); // this might contaminate Z_PTR2 which is the usual targetPtr
+    emitHWPeek(targetPtr, `peek pointer to target for compound expression`);
     if (resultType == "int" || resultType == "char") emitCopyZToPtr("z_A", resultType, targetPtr, targetType);
   }
+
+  out(`PLS PLS`, `Discard saved ${targetPtr}`);
 }
 
 export function compileArrayDeclaration(node: CompoundExpression, varInfo: IVariable, sizeExpression: Expression) {

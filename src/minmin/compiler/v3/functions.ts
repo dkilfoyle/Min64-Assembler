@@ -26,12 +26,13 @@ function emitFunctionEpilogue() {
 
   if (frame.frameSize > 0) {
     // pop the pointer frame SP2 back to FP2
-    out(`MVV z_FP2,z_SP2`, `pop SP2 pointer frame`); // SP2 now points to the pointer to first stack variable
+    out(`MVV z_FP2,z_SP2`, `restore SP2 pointer frame`); // SP2 now points to the pointer to first stack variable
 
     // pop the data frame (z_SP)
-    out(`MRZ z_SP2,z_SP+0 INV z_SP2`, `pop SP data frame`);
-    out(`MRZ z_SP2,z_SP+1 DEV z_SP2`, `pop SP data frame`);
+    // out(`MRZ z_SP2,z_SP+0 INV z_SP2`, `pop SP data frame`);
+    // out(`MRZ z_SP2,z_SP+1 DEV z_SP2`, `pop SP data frame`);
   }
+  emitRTPopZ("z_SP2", "z_SP", "int", `restore SP data frame`);
 
   // restore callers FP2
   emitRTPopZ("z_SP2", "z_FP2", "int", `restore caller's frame pointer`);
@@ -71,6 +72,7 @@ export function compileFunctionCall(e: FunctionCall): IExpressionType {
 
   // Save the caller's frame pointer
   emitRTPushZ("z_FP2", "z_SP2", "int", `push caller's frame pointer`);
+  emitRTPushZ("z_SP", "z_SP2", "int", `push caller's data stack pointer`);
 
   if (e.args.length > 0) {
     // Save the current pointer stack

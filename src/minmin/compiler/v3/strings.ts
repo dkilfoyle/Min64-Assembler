@@ -46,6 +46,6 @@ export function compileStringLiteral(e: StringLiteral, destZ: string = "z_PTR2")
 
 export function compileCharLiteral(e: CharLiteral): IExpressionType {
   const char = e.value;
-  out(`MIV ${hexWord(char.charCodeAt(0))},z_A+0`, `load character literal '${char}' into z_A`);
+  out(`MIV ${hexWord(char.charCodeAt(0))},z_A+0`, `load character literal '${char.replace(/\r?\n/g, "\\n")}' into z_A`);
   return "char";
 }

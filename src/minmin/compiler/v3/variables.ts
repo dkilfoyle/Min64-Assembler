@@ -181,8 +181,6 @@ export function compileVariableDeclaration(node: VariableDeclaration) {
   // save the new local variables address in the variable table
   emitRTPushZ("z_SP", "z_SP2", "int", `save stack address of local variable ${varInfo.name} in variable table`);
 
-  if (node.name == "buf") debugger;
-
   if (node.assignExpr) {
     const sizeExpression = isArraySizeDecl(node);
     if (sizeExpression) {

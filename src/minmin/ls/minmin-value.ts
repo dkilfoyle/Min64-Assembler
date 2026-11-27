@@ -11,6 +11,14 @@ export class MinminConverter extends DefaultValueConverter {
       return input.slice(0, -1);
     }
 
+    if (rule.name == "CHAR") {
+      // strip surround quotations from a CHAR literal, preserving possibility of control chars such as \n
+      // the super fallback below strips quotations from STRING literals
+      if (input == `"\\n"`) return "\n";
+      const result = input.replace(/^(["'])(.)\1$/s, "$2");
+      return result;
+    }
+
     // Fall back to default behavior for INT, STRING, ID, etc.
     return super.runConverter(rule, input, cstNode);
   }

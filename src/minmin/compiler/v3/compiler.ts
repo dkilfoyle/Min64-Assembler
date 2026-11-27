@@ -27,7 +27,7 @@ import {
 import { compileDef, compileCallStatement, compileReturn, compileFunctionCall } from "./functions";
 import { compileIf, compileWhile } from "./controlflow";
 import { ZP_BASE } from "./expressions";
-import { frameStack } from "./stack";
+import { DATA_STACK_START, frameStack, POINTER_STACK_START } from "./stack";
 import { cached } from "./cache";
 import { emitStringLiterals } from "./strings";
 import { emitGetPtr } from "./pointers";
@@ -139,9 +139,9 @@ export function compile(fname: string, mainProgram: Program, libraries: Program[
   out(`; Code compiled from ${fname}\n`);
   out("#org 0x0100");
   // out(`MIV CompileEnd,z_SP`);
-  out(`MIV 0x1000,z_SP`, "init stack pointers");
-  out(`MIV 0x2000,z_SP2`);
-  out(`MIV 0x2000,z_FP2`);
+  out(`MIV ${hexWord(DATA_STACK_START)},z_SP`, "init stack pointers");
+  out(`MIV ${hexWord(POINTER_STACK_START)},z_SP2`);
+  out(`MIV ${hexWord(POINTER_STACK_START)},z_FP2`);
 
   currentUri = mainProgram.$document?.uri.toString();
   reachableDefs = computeReachableDefs(mainProgram, libraries);

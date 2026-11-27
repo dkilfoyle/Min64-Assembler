@@ -41,6 +41,10 @@ export function emitHWPopZ(z = "z_A", comment?: string) {
   out(`PLS SDZ ${z}+1 PLS SDZ ${z}+0`, comment || `pop ${z}   from hardware stack`);
 }
 
+export function emitHWPeek(z = "z_A", comment?: string) {
+  out(`LDS 0x01 SDZ ${z}+1 LDS 0x02 SDZ ${z}+0`, comment || `peek ${z} from hardware stack`);
+}
+
 export function constEval(expr: Expression): number | undefined {
   switch (true) {
     case isNumberLiteral(expr):
